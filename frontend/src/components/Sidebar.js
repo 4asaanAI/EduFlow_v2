@@ -3,6 +3,7 @@ import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getConversations, updateConversation, deleteConversation, getSchoolSettings } from '../lib/api';
 import { canUseTool, filterToolsForUser } from '../lib/toolPermissions';
+import { PROFILE_MATRIX } from '../lib/profileMatrix.generated';
 import {
   Activity, IndianRupee, Users, BarChart2, Bell, FileText, HeartPulse, Megaphone,
   CalendarDays, UserPlus, MessageSquare, Pin, Star, Trash2, Plus, BookOpen,
@@ -31,11 +32,11 @@ const TOOLS_BY_ROLE = {
   owner: [
     ...HUB_TOOLS,
     { id: 'school-pulse', name: 'School Pulse', subtitle: "Today's overview", icon: Activity, color: '#fb923c' },
-    // Epic 7 — find any person (students + staff). Owner + Principal only; the
+    // Epic 7 - find any person (students + staff). Owner + Principal only; the
     // principal pool below is built from this owner list, so this one definition
     // serves both. Rendered via TOOL_GROUPS (top strip) for each.
     // D-44 part 2: this list also carried a 'fee-receipts' row further down, which
-    // loaded this exact same screen — the owner's own menu offered one screen twice.
+    // loaded this exact same screen - the owner's own menu offered one screen twice.
     // The duplicate row is gone; the subtitle now names receipts so nothing is lost
     // from what a person scanning this list is looking for.
     { id: 'fee-collection', name: 'Fee Collection', subtitle: 'Payments, receipts & export', icon: IndianRupee, color: '#4f8ff7' },
@@ -176,19 +177,26 @@ const reviewedAdminTools = (subCategory) => REVIEWED_ADMIN_TOOL_IDS.filter(
   id => canUseTool({ role: 'admin', sub_category: subCategory }, id),
 );
 
-const ADMIN_SUBCATEGORY_TOOLS = {
-  accountant: reviewedAdminTools('accountant'),
-  transport_head: ['student-database', 'transport-manager', 'transport-optimisation', 'asset-tracker', 'custom-form-builder', 'raise-maintenance'],
-  principal: reviewedAdminTools('principal'),
-  // D-49: 'id-card-generator' removed — the server refuses a receptionist, so
-  // offering the button only produced a refusal when they pressed it.
-  receptionist: ['student-database', 'enquiry-register', 'commercial-operations', 'parent-message', 'student-transfer', 'asset-tracker', 'incident-tracker', 'raise-maintenance', 'custom-form-builder'],
-  it_tech: ['tech-issues', 'raise-maintenance', 'custom-form-builder', 'query-section'],
-  maintenance: ['maintenance-schedule', 'vendor-log', 'raise-maintenance'],
-  // Owner request 10, 2026-08-06: 'audit-log' removed — the action log is owner
-  // and principal only now, on the server as well (routes/audit.py).
-  management: reviewedAdminTools('management'),
-};
+// R2-1: every one of these is now derived from the profile matrix rather than typed
+// out here. The five below management used to be hand-written arrays in this file -
+// a second copy of the answer, sitting next to the module written to stop there being
+// a second copy. `support_staff` had no entry at all, so it fell through to the whole
+// generic admin list; it is in the matrix now, with two screens.
+//
+// The order comes from REVIEWED_ADMIN_TOOL_IDS, so the sidebar reads the same way it
+// always did. The membership comes from the matrix.
+//
+// Rules previously recorded here, now living in `backend/services/profile_matrix.py`
+// alongside their reasoning:
+//   D-49 - a receptionist gets no 'id-card-generator'; the server refuses one, so the
+//          button only ever produced a refusal.
+//   Owner request 10, 2026-08-06 - 'audit-log' is owner and principal only, on the
+//          server too (routes/audit.py).
+const ADMIN_SUBCATEGORY_TOOLS = Object.fromEntries(
+  Object.keys(PROFILE_MATRIX)
+    .filter(sub => sub !== 'owner')
+    .map(sub => [sub, reviewedAdminTools(sub)]),
+);
 
 // ─── Grouped navigation config per role ──────────────────────────────────────
 const TOOL_GROUPS = {
@@ -230,7 +238,7 @@ const TOOL_GROUPS = {
   },
 };
 
-// Exported for tests — D-49: the menus and the server have to agree about who is
+// Exported for tests - D-49: the menus and the server have to agree about who is
 // offered Certificates and ID Cards, and the only way to keep them agreeing is for a
 // test to be able to read the menu definition.
 export { TOOLS_BY_ROLE, ADMIN_SUBCATEGORY_TOOLS, getSidebarTools };
@@ -318,13 +326,13 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   const [menuConvId, setMenuConvId] = useState(null);
   const [renamingId, setRenamingId] = useState(null);
   const [renameVal, setRenameVal] = useState('');
-  // (chatsExpanded removed with the "N more chats" expander — the zone now
+  // (chatsExpanded removed with the "N more chats" expander - the zone now
   //  lists every conversation and scrolls on its own.)
   // Whether the Recent Chats section is open at all. Collapsing belongs on the
-  // heading — that is where people reach for it — not on a link buried under the
+  // heading - that is where people reach for it - not on a link buried under the
   // list, which you had to scroll past the whole list to reach.
   const [chatsSectionOpen, setChatsSectionOpen] = useState(true);
-  // Tools collapses exactly like Recent Chats — same control, same behaviour.
+  // Tools collapses exactly like Recent Chats - same control, same behaviour.
   const [toolsSectionOpen, setToolsSectionOpen] = useState(true);
   const [schoolName, setSchoolName] = useState('');
   const [schoolMeta, setSchoolMeta] = useState({ city: '', state: '', phone: '', email: '' });
@@ -359,7 +367,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
     return () => window.removeEventListener('eduflow-navigate', handleNavigate);
   }, [onSelectTool]);
 
-  // School identity — fetched for every role, refreshes when the owner saves settings
+  // School identity - fetched for every role, refreshes when the owner saves settings
   useEffect(() => {
     const loadSchool = () => {
       getSchoolSettings()
@@ -405,7 +413,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
 
   // Epic 9: these were `isDark ? '<hex>' : '<hex>'` pairs. Computing theme
   // colours in JS meant the sidebar painted itself from literals and was
-  // invisible to the design tokens — switching themes recoloured the text and
+  // invisible to the design tokens - switching themes recoloured the text and
   // left the surfaces behind. Reading tokens also means the browser handles
   // the switch, so no re-render is needed for the colours to change.
   const bg = 'var(--bg-sidebar)';
@@ -456,7 +464,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
         {/* Teachers and students reach EVERY one of their screens through these
             group headers, and a collapsed group keeps its tools out of the page
             entirely. Without a handle here, a test sweeping "every screen this role
-            is offered" sees an empty menu and concludes the role has no screens —
+            is offered" sees an empty menu and concludes the role has no screens -
             which is exactly what the 2026-08-07 phone-width sweep hit. */}
         <button onClick={() => toggleGroup(group.id)}
           data-testid={`tool-group-${group.id}`}
@@ -506,7 +514,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
     );
   };
 
-  // Section zone backgrounds — distinct but subtle.
+  // Section zone backgrounds - distinct but subtle.
   // Kept as explicit pairs rather than tokens: these two tints exist to tell
   // the tools zone and the chats zone apart, so they are deliberately NOT the
   // standard surface colour. Retuned onto the navy/paper palette in Epic 9.
@@ -566,7 +574,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
           box-shadow: 0 5px 0 0 var(--brand-blue-press), 0 10px 24px -8px rgba(43,143,240,0.6);
           transform: translateY(-1px);
         }
-        /* Presses INTO its own shadow. transform only — never height or margin,
+        /* Presses INTO its own shadow. transform only - never height or margin,
            or the whole sidebar below it would shift on every click. */
         .new-chat-btn:active {
           transform: translateY(3px);
@@ -595,8 +603,8 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
               The logo is HIDDEN ON PHONES (owner request 14, 2026-08-06). The header
               already shows it there, and this second 52px copy inside the drawer cost
               a chunk of the height that Tools and Recent Chats have to share. The rule
-              is unchanged from what the header comments describe — exactly one EduFlow
-              logo in view at a time — it is just now the header's copy that wins on a
+              is unchanged from what the header comments describe - exactly one EduFlow
+              logo in view at a time - it is just now the header's copy that wins on a
               phone rather than both being drawn. On desktop the header shows none, so
               this one stays. The close button keeps its row either way. */}
           <div className="sidebar-brand-row" style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 52 }}>
@@ -664,25 +672,25 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
             with it, reaching the chat history meant scrolling the whole tool
             list past first, and you could end up with two scrollbars nested
             inside one another. This is a flex column instead, and each zone
-            scrolls within its own share of the height — so both section
+            scrolls within its own share of the height - so both section
             headers stay put and visible at all times.
             `minHeight: 0` is what actually allows a flex child to shrink
             below its content and scroll; without it the zones would grow and
             push each other off the bottom. */}
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 8, overflow: 'hidden', padding: '0 8px 8px' }}>
 
-          {/* Tools zone — cool blue tint */}
+          {/* Tools zone - cool blue tint */}
           <div style={{
             borderRadius: 12, background: toolsZoneBg, border: `1px solid ${toolsZoneBorder}`,
             overflow: 'hidden', display: 'flex', flexDirection: 'column',
-            // `1 1 0` — Tools and Recent Chats SHARE the body evenly, each scrolling
+            // `1 1 0` - Tools and Recent Chats SHARE the body evenly, each scrolling
             // within its own half. The previous `0 1 auto` sized Tools to its content
             // and let only Chats grow, so a tool-heavy role (principal/owner) saw the
             // tool list crushed to ~1.5 rows while Chats took the rest. Collapsed, the
             // zone shrinks to just its header (matching Recent Chats).
             flex: toolsSectionOpen ? '1 1 0' : '0 0 auto', minHeight: 0,
           }}>
-            {/* Collapsible, matching Recent Chats — same control, same place,
+            {/* Collapsible, matching Recent Chats - same control, same place,
                 same chevron, so the two sections behave identically. */}
             <button
               type="button"
@@ -710,7 +718,7 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
             </div>
           </div>
 
-          {/* Chat history zone — warm amber tint.
+          {/* Chat history zone - warm amber tint.
               Epic 6: this used to be hidden entirely when the list was empty
               (`conversations.length > 0`), which meant someone with no recent
               chats had NO route to the archive at all. A door that disappears

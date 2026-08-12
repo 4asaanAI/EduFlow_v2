@@ -69,7 +69,13 @@ def test_owner_can_version_installments_and_preview_without_writes(client, fake_
     )
     assert preview.status_code == 200
     assert preview.json()["data"]["meta"] == {
-        "student_count": 2, "charge_count": 4, "new_charge_count": 4, "total_amount": 26000.0,
+        # right_to_education_count added by R2 step 7: a child on a government-paid place
+        # is never billed a school fee, and the count says so out loud.
+        # stream_disagreement_count added by the R2 audit: a senior child whose own
+        # record contradicts their section is left out and named rather than billed at
+        # a band nobody agrees on.
+        "student_count": 2, "right_to_education_count": 0, "stream_disagreement_count": 0,
+        "charge_count": 4, "new_charge_count": 4, "total_amount": 26000.0,
     }
     assert fake_db.fee_transactions.docs == []
 

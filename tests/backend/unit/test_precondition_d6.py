@@ -1,4 +1,4 @@
-"""D.6 — optimistic-concurrency precondition revalidation.
+"""D.6 - optimistic-concurrency precondition revalidation.
 
 Each write step may carry a `precondition`; the executor re-reads the target inside
 the transaction and aborts the WHOLE plan with `plan_stale` (distinct from
@@ -65,7 +65,7 @@ async def test_changed_precondition_raises_plan_stale_no_write():
         await plan_executor.run(plan, db=db)
     assert ei.value.code == PLAN_STALE
     assert ei.value.step_idx == 0
-    assert ran == []  # the write never ran — no partial state
+    assert ran == []  # the write never ran - no partial state
 
 
 async def test_missing_record_raises_plan_stale():
@@ -81,6 +81,6 @@ async def test_missing_record_raises_plan_stale():
 
 async def test_plan_stale_is_distinct_from_plan_tampered():
     # plan_stale (data freshness, AD5) must not collide with plan_tampered
-    # (token/structure integrity, AD3) — they map to different FE messages (P7).
+    # (token/structure integrity, AD3) - they map to different FE messages (P7).
     assert PLAN_STALE == "plan_stale"
     assert PLAN_STALE != "plan_tampered"

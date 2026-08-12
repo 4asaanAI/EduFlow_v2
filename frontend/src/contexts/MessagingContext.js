@@ -6,11 +6,17 @@ import { useUser } from '@/contexts/UserContext';
 
 const MessagingContext = createContext(null);
 
+// Everyone who works at the school, which is the same rule the server enforces in
+// `require_school_staff`. Deliberately NOT students and NOT guardians: they hold logins
+// on this platform too, and messaging is the staff room.
+//
+// This is the second half of the gate, never the gate itself. The server refuses on its
+// own; this only decides whether the button is worth drawing, so the two lists being out
+// of step shows up as a dead button rather than as access somebody should not have.
+const STAFF_ROLES = ['owner', 'admin', 'teacher'];
+
 function canUseMessaging(user) {
-  return !!user && (
-    user.role === 'owner' ||
-    (user.role === 'admin' && ['principal', 'accountant', 'management'].includes(user.sub_category))
-  );
+  return !!user && STAFF_ROLES.includes(user.role);
 }
 
 export function MessagingProvider({ children }) {

@@ -55,7 +55,7 @@ def _owner() -> dict:
 
 
 OWNER_ONLY_ENDPOINTS = (
-    # P9.6: fee-collection-summary is now owner OR principal — moved to OWNER_OR_PRINCIPAL_ENDPOINTS below.
+    # P9.6: fee-collection-summary is now owner OR principal - moved to OWNER_OR_PRINCIPAL_ENDPOINTS below.
     ("POST", "/api/issues/facility/fr-1/confirm-resolution", None, None),
     ("PATCH", "/api/settings/school", {"school_name": "Aaryans"}, None),
     # Student erase moved to owner-OR-PRINCIPAL on 2026-08-07 (owner request: the
@@ -112,7 +112,7 @@ async def test_owner_only_endpoints_reject_teacher_admin_and_student(
 )
 @pytest.mark.asyncio
 async def test_student_erase_still_rejects_everyone_below_head_of_school(client, headers):
-    """Erase widened to the principal on 2026-08-07 — and to nobody else.
+    """Erase widened to the principal on 2026-08-07 - and to nobody else.
 
     A 404 here would mean the role got past the gate and only missed because the
     student is fictional, so this asserts the refusal explicitly.
@@ -135,7 +135,7 @@ async def test_student_erase_still_rejects_everyone_below_head_of_school(client,
 )
 @pytest.mark.asyncio
 async def test_fee_summary_rejects_non_owner_non_principal(client, headers):
-    """P9.6: fee-collection-summary is owner+principal — teacher/student/accountant still blocked."""
+    """P9.6: fee-collection-summary is owner+principal - teacher/student/accountant still blocked."""
     resp = client.get("/api/reports/fee-collection-summary", headers=headers)
     assert resp.status_code == 403
 

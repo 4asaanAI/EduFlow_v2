@@ -1,4 +1,4 @@
-"""Story B.3 — dual-entrypoint parity for house-points awards.
+"""Story B.3 - dual-entrypoint parity for house-points awards.
 
 The AI `award_house_points` tool now updates the real standings (houses.points +
 house_points_log + audit) identically to the panel, replacing the old un-audited

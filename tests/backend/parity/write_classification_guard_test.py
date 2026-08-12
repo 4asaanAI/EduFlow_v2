@@ -1,9 +1,9 @@
-"""R2.6 (audit X7) — write-tool classification guard.
+"""R2.6 (audit X7) - write-tool classification guard.
 
 `WRITE_TOOL_NAMES` in `ai/tool_functions_v2.py` derives purely from per-tool flags
 (`requires_confirmation` / `dispatch_type == "write"`). A mutating tool registered
 WITHOUT those flags silently bypasses the confirm gate, the AI-write kill-switch,
-the write-ahead audit, and the parity gate — it would be treated as a harmless read.
+the write-ahead audit, and the parity gate - it would be treated as a harmless read.
 
 This CI test closes that hole. Every tool in `TOOL_REGISTRY` must be classified
 EXACTLY once: either it is flagged as a write, or it is on the explicit
@@ -26,7 +26,7 @@ from ai.tool_functions_v2 import TOOL_REGISTRY, WRITE_TOOL_NAMES
 READ_ONLY_ALLOWLIST = frozenset({
     # UI Sweep Epic 10. A considered classification, not a convenience.
     # `draft_document` DOES create an S3 object, a `file_uploads` row and an audit
-    # row — but it changes NO school record: no student, fee, staff member or
+    # row - but it changes NO school record: no student, fee, staff member or
     # attendance mark differs afterwards. There is nothing to undo, so a confirm
     # step would add friction without adding safety, and the kill-switch guards AI
     # writes to school data rather than the production of a file. Its real controls
@@ -40,11 +40,11 @@ READ_ONLY_ALLOWLIST = frozenset({
     # authorized for. Reads the registry, writes nothing.
     "search_tools",
     # Reads every row of an uploaded spreadsheet and reports what WOULD change.
-    # Writes nothing — `import_data_file` is the confirm-gated write.
+    # Writes nothing - `import_data_file` is the confirm-gated write.
     "preview_data_import",
     # Parent messaging reads. `get_messaging_status` and `get_message_templates` are
     # plainly read-only. `get_whatsapp_template_status` is a considered classification,
-    # like `draft_document` above: it DOES write one field — it stores the approval
+    # like `draft_document` above: it DOES write one field - it stores the approval
     # state Twilio just reported back onto the local template row. That row is a mirror
     # of state owned by Meta, not a school record: no student, fee, staff member or
     # message differs afterwards, and re-running it simply re-reads the same truth.
@@ -85,7 +85,7 @@ READ_ONLY_ALLOWLIST = frozenset({
     "get_my_fees",
     "get_my_results",
     "get_my_school_hub",
-    # Owner request 10 (2026-08-06): counts only — the roll, the NSO list and the
+    # Owner request 10 (2026-08-06): counts only - the roll, the NSO list and the
     # people who have left. It writes nothing.
     "get_enrolment_summary",
     # Owner request 4: reads back only the caller's OWN notes. Writes nothing.
@@ -111,16 +111,32 @@ READ_ONLY_ALLOWLIST = frozenset({
     "query_student_record",
     "recall_history",
     "search_students",
+    # Release 2 step 10. Both only read. `explain_student_fee` answers why one family's
+    # bill is the figure it is; `calculate_late_fine` is pure arithmetic and touches no
+    # collection at all. Neither can change a school record.
+    "explain_student_fee",
+    "calculate_late_fine",
+    # The school on one page. Reads six areas and writes one thing: the day's summary is
+    # KEPT the first time it is produced, so tomorrow's reading of today cannot quietly
+    # differ from today's. No school record changes.
+    "get_school_summary",
 })
 
 # Read tools follow a small set of naming conventions. A tool on the read-only
-# allowlist whose name doesn't match one of these prefixes is suspicious — the most
+# allowlist whose name doesn't match one of these prefixes is suspicious - the most
 # likely way X7 recurs is a mutating tool (create_/update_/delete_/…) being dropped
 # onto the allowlist to skip the confirm gate.
 # `preview_` added 2026-08-08 for `preview_data_import`. It is a read verb in the same
 # sense as `draft_`: it reports what a write WOULD do and performs none of it. Deliberately
-# narrow — "preview" cannot plausibly name a mutating tool, so it does not weaken the guard.
-_READ_PREFIXES = ("get_", "query_", "search_", "recall_", "draft_", "preview_")
+# narrow - "preview" cannot plausibly name a mutating tool, so it does not weaken the guard.
+# `explain_` and `calculate_` added 2026-08-12 for `explain_student_fee` and
+# `calculate_late_fine` (Release 2 step 10). Both are read verbs in the same narrow sense:
+# one reports why a family's bill is what it is, the other works out an arithmetic answer,
+# and neither can name a mutating tool without lying about what it does. They were named
+# this way on purpose rather than as `query_…`, because these are the words a person and a
+# model both reach for, and a tool the model does not recognise is a tool nobody uses.
+_READ_PREFIXES = ("get_", "query_", "search_", "recall_", "draft_", "preview_",
+                  "explain_", "calculate_")
 
 
 def _is_flagged_write(tool_def: dict) -> bool:
@@ -145,11 +161,11 @@ def test_every_tool_is_classified_exactly_once():
     assert not unclassified, (
         "These registry tools are neither flagged as writes "
         "(requires_confirmation / dispatch_type=='write') nor on READ_ONLY_ALLOWLIST. "
-        "A new MUTATING tool here would bypass confirm/kill-switch/audit — flag it as a "
+        "A new MUTATING tool here would bypass confirm/kill-switch/audit - flag it as a "
         f"write, or add it to READ_ONLY_ALLOWLIST if it truly only reads: {sorted(unclassified)}"
     )
     assert not double_classified, (
-        "These tools are BOTH flagged-write and on READ_ONLY_ALLOWLIST — remove them from "
+        "These tools are BOTH flagged-write and on READ_ONLY_ALLOWLIST - remove them from "
         f"the allowlist: {sorted(double_classified)}"
     )
 
@@ -164,7 +180,7 @@ def test_allowlisted_read_tools_use_read_prefix():
     """A mutating tool cannot be quietly parked on the read-only allowlist."""
     misnamed = [n for n in READ_ONLY_ALLOWLIST if not n.startswith(_READ_PREFIXES)]
     assert not misnamed, (
-        "These allowlisted tools don't use a read-only naming convention — verify they "
+        "These allowlisted tools don't use a read-only naming convention - verify they "
         f"do not mutate state before allowlisting: {sorted(misnamed)}"
     )
 
@@ -173,7 +189,7 @@ def test_no_write_tool_uses_a_read_prefix():
     """A write tool named like a reader would be a classification smell."""
     suspects = [n for n in WRITE_TOOL_NAMES if n.startswith(_READ_PREFIXES)]
     assert not suspects, (
-        f"These write-flagged tools use a read-only name prefix — rename or reclassify: {sorted(suspects)}"
+        f"These write-flagged tools use a read-only name prefix - rename or reclassify: {sorted(suspects)}"
     )
 
 

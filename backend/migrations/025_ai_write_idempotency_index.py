@@ -7,7 +7,7 @@ async def migrate(db) -> None:
     The atomic plan executor (`ai/plan_executor.py`) claims a per-step key
     ``idempotency_key = f"{plan_token}:{step_idx}"`` inside the confirmed-write
     transaction. The UNIQUE index below is what guarantees exactly-once execution:
-    two concurrent confirms of the same plan race to insert the same key — the loser
+    two concurrent confirms of the same plan race to insert the same key - the loser
     hits DuplicateKey and its transaction aborts, so the action applies exactly once.
 
     Mirrors the declaration in ``database._create_indexes()`` (this migration makes it
@@ -16,5 +16,5 @@ async def migrate(db) -> None:
     try:
         await db.ai_write_idempotency.create_index("idempotency_key", unique=True)
     except Exception:
-        # Index may already exist (created by _create_indexes on app boot) — fine.
+        # Index may already exist (created by _create_indexes on app boot) - fine.
         pass

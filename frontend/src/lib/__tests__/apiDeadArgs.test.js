@@ -1,5 +1,5 @@
 /**
- * D-62 guard — nobody may hand the signed-in user to a helper that does not take one.
+ * D-62 guard - nobody may hand the signed-in user to a helper that does not take one.
  *
  * Why this test exists rather than a code comment:
  *
@@ -35,7 +35,7 @@ const NO_USER_HELPERS = [
 ];
 
 /**
- * D-64 — CLOSED 2026-08-04, and the exemption list is now deliberately EMPTY.
+ * D-64 - CLOSED 2026-08-04, and the exemption list is now deliberately EMPTY.
  *
  * `Layout.js` called `getConversations(currentUser)`. `getConversations` spreads its
  * argument into the query string, so the signed-in person's id, name, email and role
@@ -63,7 +63,7 @@ function collectJsFiles(dir, out = []) {
 }
 
 test('no screen passes the signed-in user to a helper that does not accept one', () => {
-  // A user-ish argument: `currentUser`, `user`, or `props.user`. Deliberately narrow —
+  // A user-ish argument: `currentUser`, `user`, or `props.user`. Deliberately narrow -
   // this must never fire on a legitimate `getStudents({ limit: 500 })`.
   const pattern = new RegExp(
     `\\b(${NO_USER_HELPERS.join('|')})\\s*\\(\\s*(?:[^()]*?,\\s*)?(currentUser|user)\\s*[),]`,
@@ -87,7 +87,7 @@ test('no screen passes the signed-in user to a helper that does not accept one',
 
 test('the api helpers this guards really do not declare a user parameter', () => {
   // If someone re-adds a `user` parameter, the guard above becomes wrong rather than
-  // merely unnecessary — so assert the premise, not just the conclusion.
+  // merely unnecessary - so assert the premise, not just the conclusion.
   const api = fs.readFileSync(path.join(SRC, 'lib', 'api.js'), 'utf8');
   for (const helper of ['getStudents', 'createStudent', 'getFeeTransactions', 'recordFeePayment']) {
     const decl = api.match(new RegExp(`export async function ${helper}\\(([^)]*)\\)`));

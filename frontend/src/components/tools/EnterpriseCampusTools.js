@@ -211,7 +211,7 @@ export function ProcurementInventory() {
     <DataTable title="Inventory" headers={['SKU', 'Item', 'On hand', 'Reorder', 'Actions']}
       rows={items.map(item => [item.sku, item.name, item.on_hand, item.needs_reorder ? <Badge text="Reorder" color="red" /> : <Badge text="Healthy" color="green" />, <div style={{ display: 'flex', gap: 6 }}><ActionBtn label="Receive" onClick={() => stock(item, 'receipt')} /><ActionBtn label="Issue" variant="secondary" onClick={() => stock(item, 'issue')} /></div>])} emptyMsg="No inventory items" />
     <DataTable title="Requisitions" headers={['Purpose', 'Total', 'Status', 'Action']}
-      rows={requisitions.map(item => [item.purpose, `Rs ${Number(item.estimated_total || 0).toLocaleString('en-IN')}`, <Badge text={item.status} color={item.status === 'approved' || item.status === 'received' ? 'green' : item.status === 'rejected' ? 'red' : 'yellow'} />, item.status === 'submitted' ? <div style={{ display: 'flex', gap: 6 }}><ActionBtn label="Approve" onClick={() => decision(item.id, 'approve')} /><ActionBtn label="Reject" variant="danger" onClick={() => decision(item.id, 'reject')} /></div> : item.status === 'approved' ? <ActionBtn label="Create order" onClick={() => order(item.id)} /> : '—'])} emptyMsg="No requisitions" />
+      rows={requisitions.map(item => [item.purpose, `Rs ${Number(item.estimated_total || 0).toLocaleString('en-IN')}`, <Badge text={item.status} color={item.status === 'approved' || item.status === 'received' ? 'green' : item.status === 'rejected' ? 'red' : 'yellow'} />, item.status === 'submitted' ? <div style={{ display: 'flex', gap: 6 }}><ActionBtn label="Approve" onClick={() => decision(item.id, 'approve')} /><ActionBtn label="Reject" variant="danger" onClick={() => decision(item.id, 'reject')} /></div> : item.status === 'approved' ? <ActionBtn label="Create order" onClick={() => order(item.id)} /> : '-'])} emptyMsg="No requisitions" />
     <DataTable title="Purchase orders" headers={['Supplier', 'Total', 'Status', 'Action']}
       rows={orders.map(item => [item.supplier, `Rs ${Number(item.total || 0).toLocaleString('en-IN')}`, <Badge text={item.status} color={item.status === 'received' ? 'green' : 'yellow'} />, item.status === 'ordered' ? <ActionBtn label="Receive" onClick={() => receive(item.id)} /> : 'Completed'])} emptyMsg="No purchase orders" />
   </ToolPage>;
@@ -270,9 +270,9 @@ export function LibraryCirculation() {
       </form>
     </div>}
     <DataTable title="Catalog" headers={['Accession', 'Title', 'Author', 'Available']}
-      rows={titles.map(item => [item.accession_number, item.title, item.author || '—', `${item.copies_available}/${item.copies_total}`])} emptyMsg="No library titles" />
+      rows={titles.map(item => [item.accession_number, item.title, item.author || '-', `${item.copies_available}/${item.copies_total}`])} emptyMsg="No library titles" />
     <DataTable title={manager ? 'Circulation' : 'My loans'} headers={['Title', 'Issued', 'Due', 'Status', 'Action']}
-      rows={loans.map(item => [item.title, item.issued_at?.slice(0, 10), item.due_at?.slice(0, 10), <Badge text={item.status} color={item.status === 'returned' ? 'green' : 'yellow'} />, manager && item.status === 'issued' ? <ActionBtn label="Return" onClick={() => returnLoan(item.id)} /> : '—'])} emptyMsg="No library loans" />
+      rows={loans.map(item => [item.title, item.issued_at?.slice(0, 10), item.due_at?.slice(0, 10), <Badge text={item.status} color={item.status === 'returned' ? 'green' : 'yellow'} />, manager && item.status === 'issued' ? <ActionBtn label="Return" onClick={() => returnLoan(item.id)} /> : '-'])} emptyMsg="No library loans" />
   </ToolPage>;
 }
 

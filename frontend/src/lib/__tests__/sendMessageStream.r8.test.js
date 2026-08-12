@@ -1,5 +1,5 @@
 /**
- * Epic R8 — Frontend Chat Resilience: api.sendMessageStream.
+ * Epic R8 - Frontend Chat Resilience: api.sendMessageStream.
  * FH1 (R8.1 AC1): a 401 refreshes once and retries; a still-401 retry surfaces a
  * VISIBLE error event (never a silent redirect/no-op).
  * R8.4 AC4: the SSE buffer tail is flushed so a final frame without a trailing

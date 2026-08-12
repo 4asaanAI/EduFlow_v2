@@ -1,4 +1,4 @@
-"""Parent messaging — access control, caps, and wording rules.
+"""Parent messaging - access control, caps, and wording rules.
 
 Sending reaches real families and cannot be recalled, so the gates matter as much as
 the feature. Every endpoint carries the mandatory unauthenticated + wrong-role pair.
@@ -173,7 +173,7 @@ def test_render_substitutes_known_placeholders():
 
 
 def test_render_leaves_unknown_placeholder_visible():
-    """A typo must be visible on the confirm card, not silently blanked — otherwise a
+    """A typo must be visible on the confirm card, not silently blanked - otherwise a
     message goes out reading 'Dear ,'."""
     out = msg.render("Hi {guardain_name}", {"guardian_name": "Rakesh"})
     assert "{guardain_name}" in out
@@ -253,7 +253,7 @@ def test_confirm_card_says_family_singular_for_one():
 
 
 async def test_resolution_freezes_the_recipient_list(monkeypatch):
-    """The set approved must be the set sent — not a re-query that may have drifted."""
+    """The set approved must be the set sent - not a re-query that may have drifted."""
     from routes.chat import _resolve_messaging_audience
     from tests.backend.conftest import _fake_db
 

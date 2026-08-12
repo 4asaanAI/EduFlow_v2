@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 USER = {"id": "admin-1", "role": "owner", "name": "Admin User", "initials": "AU"}
 
 # Owner request 20 remainder (2026-08-07): the layout sweep had to check EVERY role's
-# screens at phone width, and this double could only ever sign in one person — the
+# screens at phone width, and this double could only ever sign in one person - the
 # owner. So the browser layout check was structurally incapable of seeing the screens
 # a teacher, an accountant or a parent actually gets, which are different screens.
 #
@@ -135,7 +135,7 @@ class Handler(BaseHTTPRequestHandler):
             self._read_json()
             # THIS DOUBLE'S JOB IS TO MIRROR PRODUCTION, NOT TO MODEL WHAT PRODUCTION
             # OUGHT TO DO. It already returned the single, correct envelope while the
-            # real server returned a double-wrapped one — so every browser test passed
+            # real server returned a double-wrapped one - so every browser test passed
             # against a server that did not exist, and eleven screens showed zeros for
             # an entire initiative before a human noticed (UI Sweep, Epic 4).
             # If you change the endpoint's shape, change it here in the same commit.

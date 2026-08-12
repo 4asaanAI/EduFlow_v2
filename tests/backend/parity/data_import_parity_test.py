@@ -1,8 +1,8 @@
-"""Spreadsheet import — dual-entrypoint parity, and the rules protecting real records.
+"""Spreadsheet import - dual-entrypoint parity, and the rules protecting real records.
 
 This path writes to 1,876 children's records from a file, so the guarantees matter as
 much as the feature:
-  * EVERY row is read — the whole reason this exists is that the chat attachment showed
+  * EVERY row is read - the whole reason this exists is that the chat attachment showed
     Flo 3.4% of the school's export and it answered as if it had read all of it.
   * Blanks are filled; information already on record is NOT overwritten unless asked.
   * Rows are matched on admission number, never on name.
@@ -56,7 +56,7 @@ ROWS = [
 def _seed(fake_db, monkeypatch):
     saved = {c: list(getattr(fake_db, c).docs) for c in ("students", "audit_logs")}
     fake_db.students.docs[:] = [
-        # Aryan already HAS a mobile — that value must survive the import.
+        # Aryan already HAS a mobile - that value must survive the import.
         {"id": "s1", "schoolId": "aaryans-joya", "branch_id": "branch-a",
          "admission_number": "ADM-1", "name": "Aryan", "phone": "9999999999"},
         {"id": "s2", "schoolId": "aaryans-joya", "branch_id": "branch-a",
@@ -130,7 +130,10 @@ async def test_existing_information_is_never_overwritten_by_default(fake_db):
     )
     aryan = next(s for s in fake_db.students.docs if s["admission_number"] == "ADM-1")
     assert aryan["phone"] == "9999999999", "the existing mobile was overwritten"
-    assert aryan["whatsapp_phone"] == "9000000011", "the blank was not filled"
+    # `whatsapp`, not `whatsapp_phone`: corrected 2026-08-11 along with ten other
+    # import targets that named a field the student record does not have. See
+    # tests/backend/unit/test_student_column_coverage_2026_08_11.py.
+    assert aryan["whatsapp"] == "9000000011", "the blank was not filled"
 
 
 async def test_overwrite_is_possible_when_asked_for_explicitly(fake_db):
@@ -231,4 +234,16 @@ async def test_each_change_is_audited_with_the_fields_it_set(fake_db):
     )
     rows = [a for a in fake_db.audit_logs.docs if a.get("action") == "data_import_update"]
     assert len(rows) == 2
-    assert all(r["changes"]["fields"] for r in rows)
+    # R2-18, 2026-08-11: the shape changed from {"import_batch": ..., "fields": {field:
+    # new_value}} to the canonical {field: {"previous": ..., "new": ...}} every other
+    # write path uses. The old shape recorded only the NEW values, while the comment
+    # above it claimed it carried the before values so an import "can be unpicked
+    # later" - it could not, and an import is the one thing done in bulk. The batch id
+    # moved to its own key rather than being mixed in with the fields.
+    assert all(r["changes"] for r in rows)
+    assert all(r.get("import_batch") for r in rows)
+    for row in rows:
+        for field, change in row["changes"].items():
+            assert set(change) == {"previous", "new"}, (
+                f"{field} was audited without the value it held before the import"
+            )

@@ -1,4 +1,4 @@
-"""Deferred tool loading — stop paying for 134 tool schemas on every turn.
+"""Deferred tool loading - stop paying for 134 tool schemas on every turn.
 
 Measured on 2026-08-08: an owner or principal turn shipped ~14,600 tokens of tool
 schemas BEFORE the person had typed anything. Every turn, whether they asked about
@@ -11,7 +11,7 @@ it, gets the real schema back, and the tool becomes callable for the rest of the
 
 **This is a cost optimisation and NOTHING else.** It changes what the model is shown,
 never what the caller may do: `is_tool_authorized` remains the only authorization gate,
-is unchanged, and still runs at dispatch. A deferred tool is not a forbidden tool — it
+is unchanged, and still runs at dispatch. A deferred tool is not a forbidden tool - it
 is one whose instructions arrive on demand. Searching never widens access: the catalogue
 and the search results are both filtered by the caller's own authorization first.
 """
@@ -23,13 +23,13 @@ import re
 from typing import Any, Dict, List, Optional
 
 # Kill switch. Set EDUFLOW_TOOL_SEARCH=0 to advertise everything again, instantly,
-# without a deploy — the behaviour this replaces is one env var away.
+# without a deploy - the behaviour this replaces is one env var away.
 def enabled() -> bool:
     return os.environ.get("EDUFLOW_TOOL_SEARCH", "1") not in ("0", "false", "False")
 
 
 # Tools worth their tokens on every turn: the things people actually ask for daily, plus
-# the search tool itself. Deliberately short — every name here is paid for on every turn
+# the search tool itself. Deliberately short - every name here is paid for on every turn
 # by every user of that role. Anything seasonal or specialist belongs in the deferred
 # set, one search away.
 CORE_TOOL_NAMES = frozenset({
@@ -80,6 +80,19 @@ _SYNONYMS = {
     "visitor": ("log_visitor",),
     "complaint": ("query_incidents", "update_incident_status"),
     "incident": ("query_incidents", "update_incident_status"),
+    # Release 2 audit, 2026-08-12. The office calls the school's four named concessions
+    # "discounts", and the ranking is name-weighted, so "the employee discount" was
+    # putting `apply_discount` first. That tool types a figure in by hand and would be
+    # wrong the next quarter, which is the whole reason the concessions were built as
+    # rules. These entries point the everyday words at the tool that recomputes.
+    "concession": ("set_student_concession", "explain_student_fee",
+                   "record_admission_concession"),
+    "sibling": ("set_student_concession", "explain_student_fee"),
+    "employee": ("set_student_concession",),
+    "rte": ("set_right_to_education", "explain_student_fee"),
+    "fine": ("calculate_late_fine",),
+    "late": ("calculate_late_fine",),
+    "overdue": ("calculate_late_fine", "get_fee_defaulters"),
 }
 
 _WORD_RE = re.compile(r"[a-z0-9]+")
@@ -106,18 +119,18 @@ def catalogue_block(authorized_names: List[str]) -> str:
     """The compact deferred-tool listing embedded in the system prompt.
 
     Names only. A one-line description each would be clearer but costs roughly what
-    this whole mechanism saves — the names are descriptive enough for the model to
+    this whole mechanism saves - the names are descriptive enough for the model to
     know what to search for, which is all this needs to do.
     """
     names = deferred_names(authorized_names)
     if not names:
         return ""
     return (
-        "\n\nADDITIONAL TOOLS (names only — schemas not loaded).\n"
+        "\n\nADDITIONAL TOOLS (names only - schemas not loaded).\n"
         "To use any of these you MUST first call `search_tools` to fetch its schema; "
         "it then becomes callable for the rest of this conversation. Do NOT guess a "
         "deferred tool's parameters, and do NOT tell the person a capability is "
-        "missing just because it is listed here — searching takes one step.\n"
+        "missing just because it is listed here - searching takes one step.\n"
         + ", ".join(names)
     )
 
@@ -126,9 +139,9 @@ def rank(query: str, tool_defs: Dict[str, Dict[str, Any]], limit: int = 8) -> Li
     """Rank authorized tools against a query. Returns tool names, best first.
 
     Supports three query forms, mirroring how coding agents do this:
-      * ``select:a,b,c`` — exact names, no ranking (the model already knows what it wants)
-      * ``+fee reminder`` — require "fee" in the name, rank the rest by the other words
-      * ``fee reminder``  — plain keyword ranking
+      * ``select:a,b,c`` - exact names, no ranking (the model already knows what it wants)
+      * ``+fee reminder`` - require "fee" in the name, rank the rest by the other words
+      * ``fee reminder``  - plain keyword ranking
     """
     q = (query or "").strip()
     if not q:

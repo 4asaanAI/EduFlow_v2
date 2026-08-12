@@ -1,11 +1,11 @@
-"""UI Sweep Epic 1 — Access That Cannot Be Talked Around.
+"""UI Sweep Epic 1 - Access That Cannot Be Talked Around.
 
 Story 1.1  owner authority is not grantable (or removable) through the staff API
 Story 1.2  role / sub_category values the permission system does not recognize
 Story 1.3  a person maintains their own contact details, not their own authority
 
 Closes D-02: the 2026-07-22 change removed "Owner" from a dropdown and was
-reported as closing the privilege-escalation hole. It did not — the API still
+reported as closing the privilege-escalation hole. It did not - the API still
 accepted it. These tests are the proof that it no longer does, and they are
 written against the API, deliberately bypassing the UI entirely.
 """
@@ -41,7 +41,7 @@ def _teacher_headers():
 
 @pytest.fixture(autouse=True)
 def _clean(fake_db):
-    """Isolate every test — these assert on document COUNTS, so leftovers lie."""
+    """Isolate every test - these assert on document COUNTS, so leftovers lie."""
     staff_before = list(fake_db.staff.docs)
     auth_before = list(fake_db.auth_users.docs)
     fake_db.staff.docs[:] = []
@@ -153,7 +153,7 @@ def test_the_last_owner_cannot_be_demoted_through_the_api(client, fake_db):
 
 def test_owner_editing_their_own_record_may_resend_the_unchanged_role(client, fake_db):
     """The staff form posts every field back. Resending `role: "owner"` on a
-    record that already holds it changes nothing and must not be refused —
+    record that already holds it changes nothing and must not be refused -
     the rule is about a CHANGE of authority, not about a string in a body."""
     fake_db.staff.docs.append(
         {"id": "s-own2", "schoolId": SCHOOL, "name": "The Owner", "role": "owner",
@@ -170,7 +170,7 @@ def test_owner_editing_their_own_record_may_resend_the_unchanged_role(client, fa
 
 
 def test_owner_can_still_change_an_ordinary_role(client, fake_db):
-    """The gate is owner-specific — normal role administration is untouched."""
+    """The gate is owner-specific - normal role administration is untouched."""
     fake_db.staff.docs.append(
         {"id": "s-2", "schoolId": SCHOOL, "name": "Carol", "role": "teacher", "sub_category": None}
     )
@@ -187,7 +187,7 @@ def test_owner_can_still_change_an_ordinary_role(client, fake_db):
 
 async def test_a_staff_record_cannot_be_linked_to_an_owner_login(fake_db):
     """Otherwise deactivating that staff record would deactivate the owner's
-    login and revoke their sessions — locking the owner out of the school."""
+    login and revoke their sessions - locking the owner out of the school."""
     fake_db.auth_users.docs.append({
         "id": "auth-owner", "schoolId": SCHOOL, "username": "theowner",
         "username_lower": "theowner", "user_info": {"id": "auth-owner", "role": "owner"},
@@ -239,7 +239,7 @@ def test_sub_category_valid_but_wrong_for_the_role_is_rejected(client, fake_db):
 
 
 def test_unrecognised_role_is_rejected_with_422(client, fake_db):
-    """`principal` is a sub_category, not a role — accepted before this story,
+    """`principal` is a sub_category, not a role - accepted before this story,
     and it granted nothing."""
     resp = client.post("/api/staff/", json=_payload(role="principal"), headers=_owner_headers())
     assert resp.status_code == 422
@@ -250,7 +250,7 @@ def test_changing_only_the_role_cannot_strand_a_mismatched_sub_category(client, 
     """Found by the Epic 1 adversarial pass, not by the original ACs.
 
     Moving a class_teacher to role "admin" without sending a sub_category left
-    `class_teacher` attached to an admin — the exact pairing that matches no
+    `class_teacher` attached to an admin - the exact pairing that matches no
     permission rule, reached by changing the OTHER half of the pair. The record
     is judged as it will end up, not by the shape of the request.
     """
@@ -307,7 +307,7 @@ def test_every_valid_sub_category_belongs_to_exactly_one_role():
 
 
 def test_the_ai_tool_description_matches_what_the_server_accepts():
-    """D-13 — the prompt used to offer the model `role: "owner"` and a
+    """D-13 - the prompt used to offer the model `role: "owner"` and a
     sub_category of `accounts`, neither of which the server will accept."""
     from ai.prompts import TOOL_CREATE_STAFF
 
@@ -372,7 +372,7 @@ def _seed_self(fake_db, **overrides):
     {},
 ])
 def test_nobody_changes_their_own_record(client, fake_db, body):
-    """Owner's decision, 2026-07-22 — reversing the first version of this story.
+    """Owner's decision, 2026-07-22 - reversing the first version of this story.
 
     Changing your own name or phone number is itself a way to misuse an
     account, so nothing about your own record is self-editable: not the
@@ -395,7 +395,7 @@ def test_nobody_changes_their_own_record(client, fake_db, body):
 
 
 def test_the_owner_cannot_self_edit_either(client, fake_db):
-    """The rule is not "staff are restricted" — it is "nobody edits themselves"."""
+    """The rule is not "staff are restricted" - it is "nobody edits themselves"."""
     fake_db.staff.docs.append({
         "id": "s-own3", "schoolId": SCHOOL, "user_id": "own-1", "name": "The Owner",
         "role": "owner", "sub_category": "owner", "phone": "9000000000",
@@ -450,7 +450,7 @@ def test_self_profile_endpoints_are_not_shadowed_by_the_id_route(client, fake_db
 
 
 def test_self_profile_unauthenticated_returns_401(client):
-    """401 before 403 — an anonymous caller is told to sign in, not told the
+    """401 before 403 - an anonymous caller is told to sign in, not told the
     rule about self-editing."""
     assert client.get("/api/staff/me").status_code == 401
     assert client.patch("/api/staff/me", json={"name": "X"}).status_code == 401

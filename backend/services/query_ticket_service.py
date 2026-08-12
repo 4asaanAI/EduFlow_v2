@@ -1,11 +1,11 @@
-"""Query/support-ticket domain service — single shared write path (AD7).
+"""Query/support-ticket domain service - single shared write path (AD7).
 
 Both the REST routes in `routes/queries.py` and the AI tools
 (`create_query_ticket`, `resolve_query_ticket`, `reopen_query_ticket`,
 `assign_query_ticket`, `delete_query_ticket`) call these functions.
 
 The REST create is multipart (optional image attachment); the route handles the
-upload bytes and passes them in — the doc construction is identical either way.
+upload bytes and passes them in - the doc construction is identical either way.
 Authorization (IT-tech/owner gates) stays in the adapters: REST keeps its route
 checks, the AI side is gated by the tool registry + Phase-1 lockdown.
 
@@ -33,7 +33,7 @@ class TicketNotFoundError(Exception):
 
 async def _get(db, actor_ctx: ActorContext, ticket_id: str) -> dict:
     ticket = await db.queries.find_one(
-        # branch-scope: intentional — query tickets are school-wide (matches routes/queries.py)
+        # branch-scope: intentional - query tickets are school-wide (matches routes/queries.py)
         scoped_filter({"id": ticket_id}, actor_ctx.school_id), {"_id": 0}
     )
     if not ticket:
@@ -91,7 +91,7 @@ async def resolve_ticket(db, actor_ctx: ActorContext, params: dict) -> dict:
     await _get(db, actor_ctx, ticket_id)
     now = actor_ctx.now_iso()
     await db.queries.update_one(
-        # branch-scope: intentional — query tickets are school-wide (matches routes/queries.py)
+        # branch-scope: intentional - query tickets are school-wide (matches routes/queries.py)
         scoped_filter({"id": ticket_id}, actor_ctx.school_id),
         {"$set": {
             "status": "resolved",
@@ -110,7 +110,7 @@ async def reopen_ticket(db, actor_ctx: ActorContext, params: dict) -> dict:
         raise TicketValidationError("ticket_id is required")
     await _get(db, actor_ctx, ticket_id)
     await db.queries.update_one(
-        # branch-scope: intentional — query tickets are school-wide (matches routes/queries.py)
+        # branch-scope: intentional - query tickets are school-wide (matches routes/queries.py)
         scoped_filter({"id": ticket_id}, actor_ctx.school_id),
         {"$set": {"status": "open", "resolved_at": None, "resolved_by": None, "resolved_by_name": None}},
     )
@@ -132,11 +132,11 @@ async def assign_ticket(db, actor_ctx: ActorContext, params: dict) -> dict:
         "updated_at": actor_ctx.now_iso(),
     }
     await db.queries.update_one(
-        # branch-scope: intentional — query tickets are school-wide (matches routes/queries.py)
+        # branch-scope: intentional - query tickets are school-wide (matches routes/queries.py)
         scoped_filter({"id": ticket_id}, actor_ctx.school_id), {"$set": update}
     )
     updated = await db.queries.find_one(
-        # branch-scope: intentional — query tickets are school-wide (matches routes/queries.py)
+        # branch-scope: intentional - query tickets are school-wide (matches routes/queries.py)
         scoped_filter({"id": ticket_id}, actor_ctx.school_id),
         {"_id": 0, "attachment_data": 0},
     )
@@ -150,11 +150,11 @@ async def delete_ticket(db, actor_ctx: ActorContext, params: dict) -> dict:
         raise TicketValidationError("ticket_id is required")
     existing = await _get(db, actor_ctx, ticket_id)
     await db.queries.delete_one(
-        # branch-scope: intentional — query tickets are school-wide (matches routes/queries.py)
+        # branch-scope: intentional - query tickets are school-wide (matches routes/queries.py)
         scoped_filter({"id": ticket_id}, actor_ctx.school_id)
     )
     existing.pop("attachment_data", None)
-    # F.10: actor-tagged deletion audit — who deleted what, when.
+    # F.10: actor-tagged deletion audit - who deleted what, when.
     await write_audit_doc(
         db,
         {

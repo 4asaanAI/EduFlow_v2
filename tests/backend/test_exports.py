@@ -55,7 +55,7 @@ def test_exam_results_export_returns_csv(client, fake_db):
 
 def test_exam_results_missing_subject_returns_unknown(client, fake_db):
     """When a subject_id has no matching subject, the CSV row shows 'Unknown'."""
-    # No subject seeded — subject lookup will return None
+    # No subject seeded - subject lookup will return None
     fake_db.exam_results.docs.append(
         {
             "student_id": "student-2",
@@ -102,7 +102,7 @@ def test_exam_results_empty_returns_csv_headers_only(client, fake_db):
     resp = client.get("/api/export/exam-results", headers=_owner_headers())
     assert resp.status_code == 200
     body = resp.text.strip()
-    # Should have exactly one line — the header
+    # Should have exactly one line - the header
     lines = [l for l in body.splitlines() if l.strip()]
     assert len(lines) == 1
     assert "Student ID" in lines[0]

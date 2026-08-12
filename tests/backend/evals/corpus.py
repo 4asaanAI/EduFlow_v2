@@ -1,4 +1,4 @@
-"""R11.1 — golden eval corpus loader + coherence helpers.
+"""R11.1 - golden eval corpus loader + coherence helpers.
 
 The corpus itself lives as data under `_bmad-output/test-artifacts/eval-corpus/`
 (so it is reviewable/diffable independently of test code). This module loads it and

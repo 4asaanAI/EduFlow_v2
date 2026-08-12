@@ -1,11 +1,11 @@
-"""Inspection Remediation BLOCK 3 — T13 (NEW-07), error shape.
+"""Inspection Remediation BLOCK 3 - T13 (NEW-07), error shape.
 
 Three refusals on the chat routes answered HTTP 200 with `{"success": False, ...}`.
-The action was correctly blocked in every case, so this was never a hole — but a
+The action was correctly blocked in every case, so this was never a hole - but a
 refusal that reports itself as a success cannot be counted by anything watching
 rejected requests, and it made the browser try to read a stream that was not there.
 
-CLAUDE.md: "Errors — ALWAYS raise HTTPException, never return raw dicts."
+CLAUDE.md: "Errors - ALWAYS raise HTTPException, never return raw dicts."
 """
 
 from __future__ import annotations

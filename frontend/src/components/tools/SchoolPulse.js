@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { executeTool } from '../../lib/api';
+import { canSeeMoney } from '../../lib/toolPermissions';
 import { Activity, Users, IndianRupee, AlertTriangle, RefreshCw, CheckCircle } from 'lucide-react';
 
 function StatCard({ value, label, color = 'var(--color-accent-blue)', sublabel }) {
@@ -63,6 +64,7 @@ export default function SchoolPulse() {
   }
 
   const summary = data?.summary || {};
+  const showsMoney = canSeeMoney(currentUser);
 
   return (
     <>
@@ -100,8 +102,22 @@ export default function SchoolPulse() {
         <div className="pulse-stats responsive-stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
           <StatCard value={summary.total_students || 0} label="Enrolled Students" color="var(--color-accent-blue)" />
           <StatCard value={summary.attendance_rate || 'N/A'} label="Today's Attendance" color="var(--color-success)" />
-          <StatCard value={data?.fee_stats?.paid || '₹0'} label="Fees Collected" color="var(--color-accent-blue)" sublabel={data?.fee_stats?.collection_rate ? `${data.fee_stats.collection_rate} collected` : undefined} />
-          <StatCard value={data?.fee_stats?.overdue || '₹0'} label="Overdue Fees" color="var(--color-danger)" />
+          {/* R2-2 / decision 1: the management head keeps School Pulse - the
+              attendance and staffing half of it is his daily work - but never sees a
+              rupee figure. He gets the two counts that matter to him instead of the
+              two money tiles, so the screen stays four tiles wide and still tells him
+              something. */}
+          {showsMoney ? (
+            <>
+              <StatCard value={data?.fee_stats?.paid || '₹0'} label="Fees Collected" color="var(--color-accent-blue)" sublabel={data?.fee_stats?.collection_rate ? `${data.fee_stats.collection_rate} collected` : undefined} />
+              <StatCard value={data?.fee_stats?.overdue || '₹0'} label="Overdue Fees" color="var(--color-danger)" />
+            </>
+          ) : (
+            <>
+              <StatCard value={data?.staff_absent_today?.length || 0} label="Staff Absent Today" color="var(--color-accent-blue)" />
+              <StatCard value={data?.pending_leave_requests?.length || 0} label="Leave Awaiting Approval" color="var(--color-danger)" />
+            </>
+          )}
         </div>
 
         <div className="pulse-grid responsive-split-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, maxWidth: 1000 }}>
@@ -173,14 +189,14 @@ export default function SchoolPulse() {
               {(data?.chronic_absent_students?.length || 0) > 0 && (
                 <AlertItem type="warning" text={`${data.chronic_absent_students.length} students absent 3+ consecutive days`} />
               )}
-              {summary.fee_collected && (
+              {showsMoney && summary.fee_collected && (
                 <AlertItem type="success" text={`Fee collection: ${data?.fee_stats?.paid} collected this period`} />
               )}
               {(data?.pending_leave_requests?.length || 0) > 0 && (
                 <AlertItem type="info" text={`${data.pending_leave_requests.length} leave request${data.pending_leave_requests.length !== 1 ? 's' : ''} awaiting approval`} />
               )}
               {!(data?.staff_absent_today?.length) && !(data?.chronic_absent_students?.length) && !(data?.pending_leave_requests?.length) && (
-                <AlertItem type="success" text="All good — no active alerts today!" />
+                <AlertItem type="success" text="All good - no active alerts today!" />
               )}
             </div>
           </div>

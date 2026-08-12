@@ -1,4 +1,4 @@
-"""Epic R6 — Memory Subsystem Safety. AC coverage (X3, XM3, XM4, XM5, XM10).
+"""Epic R6 - Memory Subsystem Safety. AC coverage (X3, XM3, XM4, XM5, XM10).
 
 Tier: FakeDb (unit). Proves the pre-turn hijack is gone, forget is two-step,
 recalled memories are fenced, pending text is redacted, and DPDP erasure +

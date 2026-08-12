@@ -1,4 +1,4 @@
-"""Story A.7 — dual-entrypoint parity for attendance correction.
+"""Story A.7 - dual-entrypoint parity for attendance correction.
 
 Same seed + same actor (owner) through REST PATCH /api/attendance/{id}/correct and
 the AI `correct_attendance` tool → attendance_corrections doc + student_attendance

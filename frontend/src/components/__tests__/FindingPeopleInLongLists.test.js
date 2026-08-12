@@ -44,7 +44,7 @@ describe('fetching the whole list, not the first page of it', () => {
 
   it('walks the pages until every student is collected', async () => {
     // 1,802 students is what this school actually has, and the server caps one
-    // request at 500 — so the answer takes four requests, not one.
+    // request at 500 - so the answer takes four requests, not one.
     const TOTAL = 1802;
     const pageOf = (page) => {
       const start = (page - 1) * STUDENTS_PAGE_MAX;
@@ -115,8 +115,8 @@ describe('picking one person out of a long list', () => {
     fireEvent.change(screen.getByTestId('pick-search'), { target: { value: 'chaudhary' } });
 
     const shown = screen.getAllByRole('option').map((o) => o.textContent);
-    expect(shown).toContain('Kashish Chaudhary — 11th-B · 1506');
-    expect(shown).not.toContain('Akshay Chahal — 10th-A · 1503');
+    expect(shown).toContain('Kashish Chaudhary - 11th-B · 1506');
+    expect(shown).not.toContain('Akshay Chahal - 10th-A · 1503');
   });
 
   it('searches the hint too, so a class or admission number finds the child', () => {
@@ -125,7 +125,7 @@ describe('picking one person out of a long list', () => {
     fireEvent.change(screen.getByTestId('pick-search'), { target: { value: '1503' } });
 
     const shown = screen.getAllByRole('option').map((o) => o.textContent);
-    expect(shown).toContain('Akshay Chahal — 10th-A · 1503');
+    expect(shown).toContain('Akshay Chahal - 10th-A · 1503');
     expect(shown).toHaveLength(2);  // the match plus "Select…"
   });
 

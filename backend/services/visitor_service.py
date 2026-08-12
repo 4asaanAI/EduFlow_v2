@@ -1,4 +1,4 @@
-"""Visitor-log domain service — single shared write path (AD7).
+"""Visitor-log domain service - single shared write path (AD7).
 
 Both the REST routes (`POST /api/ops/visitors`, `PATCH .../checkout`,
 `DELETE /api/ops/visitors/{id}`) and the AI tools call these functions:
@@ -115,7 +115,7 @@ async def delete_visitor(db, actor_ctx: ActorContext, params: dict) -> dict:
     if not existing:
         raise VisitorNotFoundError(visitor_id)
     await db.visitor_log.delete_one(scoped_query({"id": visitor_id}, branch_id=actor_ctx.branch_id))
-    # F.10: actor-tagged deletion audit — who deleted what, when.
+    # F.10: actor-tagged deletion audit - who deleted what, when.
     await write_audit_doc(
         db,
         {

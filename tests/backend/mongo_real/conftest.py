@@ -10,7 +10,7 @@ How a replica set is obtained, in priority order:
      (CI sets this; locally: ``mongod --replSet rs0`` + ``rs.initiate()``).
   2. ``testcontainers`` (if installed) starts an ephemeral single-node replica set.
 
-If neither is available the whole tier is **skipped** (never failed) — the default
+If neither is available the whole tier is **skipped** (never failed) - the default
 suite never runs these (pytest.ini deselects ``-m "not mongo_real"``), and a developer
 running ``pytest -m mongo_real`` without a replica set gets a clear skip, not red.
 """
@@ -47,7 +47,7 @@ def mongo_real_url():
     T10/NEW-06: this is deliberately a SYNC, module-scoped fixture. Motor clients
     bind to the asyncio loop they are created on, so a module-scoped *client* fixture
     is created on the module loop and then handed to function-scoped tests running on
-    their own loop — which raises "attached to a different loop" before a single
+    their own loop - which raises "attached to a different loop" before a single
     assertion runs. That is exactly what happened the first time this tier was ever
     executed (2026-08-04). Container lifecycle is not loop-bound, so it can stay
     module-scoped here while the client is created per test below.
@@ -55,7 +55,7 @@ def mongo_real_url():
     url = _real_mongo_url()
     if url is None:
         pytest.skip(
-            "No real Mongo replica set available — set MONGO_TEST_URL or install "
+            "No real Mongo replica set available - set MONGO_TEST_URL or install "
             "testcontainers (this tier is nightly/AI-path-only by design)."
         )
 

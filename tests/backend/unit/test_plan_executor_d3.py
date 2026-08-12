@@ -1,4 +1,4 @@
-"""D.3 — single-step atomic executor + length-1 plan path (FakeDb tier).
+"""D.3 - single-step atomic executor + length-1 plan path (FakeDb tier).
 
 Proves the executor's control flow on FakeDb: a length-1 plan runs its step, a
 failing step propagates (so the txn would abort), and the idempotent-replay path

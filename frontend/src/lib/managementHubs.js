@@ -18,7 +18,7 @@ export const MANAGEMENT_HUBS = [
       // The Directory already listed everyone; it now carries the full information
       // and the search, and opening a row still leads to the same profile screens for
       // editing. `student-database` and `staff-tracker` remain reachable by deep link
-      // (the Directory's own rows point at them) and stay in the permission lists —
+      // (the Directory's own rows point at them) and stay in the permission lists -
       // only the duplicate front doors are gone.
       ['student-database', 'School Directory', 'Every student, guardian and staff member in one place', 'both'],
       ['data-import', 'Data Import', 'Update records from a sheet, or add new students', 'both'],
@@ -70,6 +70,7 @@ export const MANAGEMENT_HUBS = [
       ['staff-attendance-tracker', 'Staff Attendance', 'Presence and late patterns', 'owner'],
       ['staff-performance', 'Staff Performance', 'Performance overview and trends', 'both'],
       ['staff-leave-manager', 'Staff Leave', 'Review and decide leave requests', 'both'],
+      ['attendance-alerts', 'Attendance Alerts', 'Threshold alerts and messages', 'both'],
     ],
   },
   {
@@ -94,17 +95,22 @@ export const MANAGEMENT_HUBS = [
     ],
   },
   {
-    id: 'governance-ai-hub', name: 'Reports, AI & Governance', subtitle: 'Reports, EduFlow, audit and settings', color: 'var(--color-text-secondary)',
+    id: 'governance-ai-hub', name: 'Reports, AI & Governance', subtitle: 'Reports, Flo, audit and settings', color: 'var(--color-text-secondary)',
     items: [
       ['custom-report-builder', 'Custom Reports', 'Build operational reports', 'owner'],
       ['board-report', 'Board Report', 'Trust and management reporting', 'owner'],
       ['automated-report', 'Automated Reports', 'Scheduled report delivery', 'principal'],
-      ['ai-health-report', 'AI Health', 'EduFlow reliability and usage summary', 'owner'],
-      ['what-ive-learned', "What EduFlow Has Learned", 'Review memories and routines', 'both'],
-      ['conversation-trace', 'Conversation Trace', 'Inspect whether EduFlow replied', 'owner'],
+      ['ai-health-report', 'AI Health', 'Flo reliability and usage summary', 'owner'],
+      ['what-ive-learned', "What Flo Has Learned", 'Review memories and routines', 'both'],
+      ['conversation-trace', 'Conversation Trace', 'Inspect whether Flo replied', 'owner'],
       ['audit-log', 'Audit Log', 'Who changed what and when', 'both'],
       ['incident-tracker', 'Incidents & Visitors', 'Safety and visitor records', 'both'],
       ['query-section', 'Query & Support', 'Requests, issues and resolutions', 'both'],
+      // R2-7, 2026-08-11: this screen was granted to the management head and appeared in
+      // no group at all, so the only people who could open it were the profiles that
+      // navigate by the flat sidebar list. A granted screen nobody can find is the same
+      // defect as a button that refuses when pressed, only quieter.
+      ['tech-issues', 'Tech Issues', 'Raise and track IT problems', 'both'],
       ['school-settings', 'School Settings', 'Identity and profile settings', 'owner'],
       ['custom-form-builder', 'Form Builder', 'Build school forms and surveys', 'both'],
     ],
@@ -116,10 +122,12 @@ export const MANAGEMENT_HUB_IDS = MANAGEMENT_HUBS.map(hub => hub.id);
 export function hubsForUser(user) {
   if (user?.role === 'owner') return MANAGEMENT_HUBS;
   if (user?.role === 'admin' && user?.sub_category === 'principal') return MANAGEMENT_HUBS;
-  if (user?.role === 'admin' && user?.sub_category === 'accountant') {
-    return MANAGEMENT_HUBS.filter(hub => ['school-database-hub', 'finance-commercial-hub'].includes(hub.id));
-  }
-  if (user?.role === 'admin' && user?.sub_category === 'management') {
+  // R2-1/R2-5: every profile below leadership asks the same question of the same
+  // grant table. The accountant head used to have his two hubs hardcoded here - a
+  // second copy of the answer, sitting inside the module written to stop there being
+  // a second copy - so when decision 2 gave him attendance, vendors and transport,
+  // his menu would silently have stayed at two hubs.
+  if (user?.role === 'admin') {
     return MANAGEMENT_HUBS.filter(hub => canUseTool(user, hub.id));
   }
   return [];
@@ -134,7 +142,7 @@ export function hubsForUser(user) {
  * thirteen tagged `principal`.
  *
  * The list is deliberately ONE entry long. Most of those thirteen are not
- * duplicates of anything — Timetable, Academic Structure, marking attendance,
+ * duplicates of anything - Timetable, Academic Structure, marking attendance,
  * Transport, Parent Messages, Student Transfer exist only in the principal's set,
  * and hiding them would take real screens away from the owner to answer a
  * complaint about one. Principal Daily is different: it is the principal's own

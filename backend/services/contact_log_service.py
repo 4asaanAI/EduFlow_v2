@@ -1,4 +1,4 @@
-"""Fee contact-log service — the single shared write path for logging a fee
+"""Fee contact-log service - the single shared write path for logging a fee
 contact event (AI Layer Hardening, AD7 / Epic A, Story A.5).
 
 Both `POST /api/fees/contact-log` (REST) and the AI `log_contact_event` tool call
@@ -6,7 +6,7 @@ Both `POST /api/fees/contact-log` (REST) and the AI `log_contact_event` tool cal
 transaction (by id, or the student's latest) stays in the AI adapter; the service
 writes an identical `fee_contact_logs` record + `contact_log` audit given a
 resolved `fee_transaction_id` (canonical = REST: audit entity_type `fee_transaction`,
-action `contact_log` — the AI tool previously wrote `fee_transactions`/`log_contact_event`).
+action `contact_log` - the AI tool previously wrote `fee_transactions`/`log_contact_event`).
 
 Services raise domain exceptions, never `HTTPException`.
 """

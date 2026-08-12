@@ -14,7 +14,7 @@ const TRACKED_SOURCE_TYPES = new Set([
 export function getToolForNotification(notif, userRole) {
   const src = notif.source_record_type || '';
 
-  // Trackable types have a timeline in the detail modal — keep them there
+  // Trackable types have a timeline in the detail modal - keep them there
   if (src && TRACKED_SOURCE_TYPES.has(src)) return null;
 
   // Explicit navigable source types

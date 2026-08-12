@@ -1,4 +1,4 @@
-"""E.5 — a multi-step plan built via `plan_from_steps` commits all-or-nothing.
+"""E.5 - a multi-step plan built via `plan_from_steps` commits all-or-nothing.
 
 Proves the Epic E multi-step builder feeds the SAME atomic executor path as the
 length-1 plan: every WRITE step commits together, or a later failure rolls them
@@ -62,7 +62,7 @@ async def test_multistep_plan_rolls_back_on_later_failure(mongo_real_db, mongo_r
         )
         with pytest.raises(RuntimeError):
             await plan_executor.run(plan, db=mongo_real_db)
-        # step_one's write rolled back with step_two's — nothing committed.
+        # step_one's write rolled back with step_two's - nothing committed.
         assert await mongo_real_db.plan_writes.count_documents({}) == 0
         assert await mongo_real_db.ai_write_idempotency.count_documents({}) == 0
     finally:

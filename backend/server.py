@@ -85,7 +85,7 @@ app = FastAPI(
     redoc_url=None,
 )
 
-# ─── CORS — explicit origins only, no wildcard ──────────────────────────────
+# ─── CORS - explicit origins only, no wildcard ──────────────────────────────
 
 cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000")
 allowed_origins = [o.strip() for o in cors_origins.split(",") if o.strip()]
@@ -98,7 +98,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Request-ID", "Idempotency-Key", "X-SSE-Session-ID"],
 )
 
-# Starlette middleware is LIFO — registered last = executes first.
+# Starlette middleware is LIFO - registered last = executes first.
 # SchoolContextMiddleware must run after CORS (registered before) so CORS preflight
 # is handled before school injection.
 from middleware.school_context import SchoolContextMiddleware
@@ -312,7 +312,7 @@ async def startup():
     _validate_sse_worker_config()  # R14.1: refuse multi-worker without shared broker
 
     # R9.1 (C2): fail loud on missing Azure config outside development, the same
-    # way SCHOOL_ID does — a silently-unconfigured AI client was the incident.
+    # way SCHOOL_ID does - a silently-unconfigured AI client was the incident.
     from ai.llm_client import validate_ai_config
     validate_ai_config()
 
@@ -325,14 +325,14 @@ async def startup():
                 "This env var bypasses the DPDP parental consent gate and is development-only."
             )
         else:
-            logger.warning("SKIP_CONSENT_CHECK enabled — DPDP consent gate bypassed (dev mode only)")
+            logger.warning("SKIP_CONSENT_CHECK enabled - DPDP consent gate bypassed (dev mode only)")
 
     await connect_db()
     app.state.sse_keepalive_task = asyncio.create_task(sse_keepalive_loop())
 
     # R6.4 (XM10): the memory vector index is in-process and empty after a redeploy.
     # Rebuild it from the durable Mongo memories so recall isn't silently degraded.
-    # No-op (and cheap) when the vector path is disabled — the common default.
+    # No-op (and cheap) when the vector path is disabled - the common default.
     try:
         from services.memory.vector import rebuild_index_from_mongo
 
@@ -340,7 +340,7 @@ async def startup():
     except Exception:
         logger.warning("memory vector rebuild on startup failed", exc_info=True)
 
-    # LayaaStat health heartbeat — only when the integration is configured AND the
+    # LayaaStat health heartbeat - only when the integration is configured AND the
     # heartbeat interval is non-zero. Dormant (no task) otherwise.
     from services import layaastat
 
@@ -393,7 +393,7 @@ async def _check_db() -> str:
 
 async def _check_ai() -> str:
     endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
-    # R9.1 (C2 AC3): the readiness check must also verify the KEY is present —
+    # R9.1 (C2 AC3): the readiness check must also verify the KEY is present -
     # a configured endpoint with no key still can't call the model.
     from ai.llm_client import get_azure_key
     if not endpoint or not get_azure_key():

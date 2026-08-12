@@ -1,4 +1,4 @@
-"""Incident / complaint / facility-request / tech-request service — the single
+"""Incident / complaint / facility-request / tech-request service - the single
 shared write path for the runtime-collection ("dynamic-collection") tools
 (AI Layer Hardening, AD7 / Epic C).
 
@@ -86,7 +86,7 @@ async def resolve_record_type(
 
     Returns ``(record_type, doc)``. Raises ``IncidentNotFoundError`` if no
     collection holds the id, or ``IncidentAmbiguousError`` if more than one does
-    (record ids are UUID4, so a collision is a hard refusal — never a blind scan
+    (record ids are UUID4, so a collision is a hard refusal - never a blind scan
     at write time).
     """
     candidates = [t for t in RECORD_TYPES if include_tech or t != "tech_requests"]
@@ -102,7 +102,7 @@ async def resolve_record_type(
     if len(matches) > 1:
         collisions = ", ".join(rt for rt, _ in matches)
         raise IncidentAmbiguousError(
-            f"Record id {record_id} is ambiguous — it exists in: {collisions}. "
+            f"Record id {record_id} is ambiguous - it exists in: {collisions}. "
             "Specify which record type to act on."
         )
     return matches[0]
@@ -318,7 +318,7 @@ async def confirm_resolution(
     if params.get("confirmation_note"):
         await _append_note(db, "facility_requests", request_id, actor_ctx, params["confirmation_note"], branch_id=bid, session=session)
     # Canonical audit action = "confirm_resolution" (the AI tool's name; the legacy REST
-    # route wrote "facility_request_close" but no consumer depends on it — parity test pins this).
+    # route wrote "facility_request_close" but no consumer depends on it - parity test pins this).
     await _audit(db, "confirm_resolution", "facility_requests", request_id, actor_ctx, {"status": "closed"}, params.get("confirmation_note"))
     await create_notification(
         db,
@@ -333,7 +333,7 @@ async def confirm_resolution(
 
 
 async def create_incident(db, actor_ctx: ActorContext, params: dict, *, session=None, fan_out_fn=None) -> dict:
-    """Create an incident (shared write path — REST POST /api/ops/incidents + AI
+    """Create an incident (shared write path - REST POST /api/ops/incidents + AI
     `create_incident`). P9.8 semantics preserved: any authenticated role may log;
     high severity auto-assigns to principal and fans out a notification.
 
@@ -393,7 +393,7 @@ async def create_incident(db, actor_ctx: ActorContext, params: dict, *, session=
 async def delete_incident(db, actor_ctx: ActorContext, params: dict, *, session=None) -> dict:
     """Delete an incident record.
 
-    Owner instruction 2026-08-07 — an incident logged in error (wrong child, duplicate
+    Owner instruction 2026-08-07 - an incident logged in error (wrong child, duplicate
     entry, a test row) could be closed but never removed, so it stayed in the school's
     safeguarding record for good.
 

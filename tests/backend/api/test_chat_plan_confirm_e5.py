@@ -1,4 +1,4 @@
-"""Epic E.5 — plan-then-confirm-once execution end-to-end (FakeDb tier).
+"""Epic E.5 - plan-then-confirm-once execution end-to-end (FakeDb tier).
 
 Drives the real `/api/chat/confirm` dispatch path with a multi-step plan token:
 all steps execute through the one atomic executor, the result lists every step,

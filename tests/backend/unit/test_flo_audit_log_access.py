@@ -4,7 +4,7 @@ from __future__ import annotations
 
 Owner request 10 (2026-08-06) cut the action log down to the owner and the principal.
 That was applied to `routes/audit.py`, to the menu in `Sidebar.js` and to the per-tool
-allow-list in `toolPermissions.js` — but NOT to Flo, and the drift ran in BOTH
+allow-list in `toolPermissions.js` - but NOT to Flo, and the drift ran in BOTH
 directions, which is why it survived a review:
 
   - An `it_tech` admin who had lost the screen could still ask Flo for the log, and

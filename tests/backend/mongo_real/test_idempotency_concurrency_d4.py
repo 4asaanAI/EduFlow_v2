@@ -1,4 +1,4 @@
-"""D.4 — two concurrent confirms of the same plan produce exactly ONE effect.
+"""D.4 - two concurrent confirms of the same plan produce exactly ONE effect.
 
 The unique index on `ai_write_idempotency.idempotency_key` makes one of two racing
 confirm transactions win; the loser hits DuplicateKey and aborts, so the write

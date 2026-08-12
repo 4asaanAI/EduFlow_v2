@@ -1,4 +1,4 @@
-"""R11.2 + R11.3 — native Azure function calling and true token streaming.
+"""R11.2 + R11.3 - native Azure function calling and true token streaming.
 
 R11.2: the model returns structured `tool_calls` (never JSON-in-text); the chat
 tool-loop dispatches them; only authorized tools are advertised so invented tool
@@ -151,7 +151,7 @@ def test_invented_tool_name_is_narrated_not_silent(client, fake_db, monkeypatch)
 
 
 def test_build_llm_tools_only_advertises_authorized(monkeypatch):
-    """R11.2: a student is never advertised a management/write tool — the model
+    """R11.2: a student is never advertised a management/write tool - the model
     cannot invoke what it is not given (invented/unauthorized names impossible)."""
     owner = {"role": "owner"}
     student = {"role": "student"}
@@ -267,7 +267,7 @@ async def test_second_call_is_off_by_default_and_answer_still_arrives(client, fa
     """NEW-12/T8: with the switch at its default, a turn makes NO second model call.
 
     The saving is the whole point of the task, so this asserts the absence of the
-    call — not just that it is cheaper. The answer must still reach the user and
+    call - not just that it is cheaper. The answer must still reach the user and
     still be persisted; only the word-by-word effect goes away.
     """
     assert chat.AI_STREAM_SECOND_CALL is False, "the default must stay off"

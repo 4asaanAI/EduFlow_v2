@@ -1,4 +1,4 @@
-"""Epic R9 — Guardrails, Config & Adjacent Surfaces (C2, M8, M9, M10, X8).
+"""Epic R9 - Guardrails, Config & Adjacent Surfaces (C2, M8, M9, M10, X8).
 
 R9.5 (image_gen / X9) is covered by test_image_gen_persistence.py.
 """
@@ -107,7 +107,7 @@ def test_zip_member_size_guard_uses_declared_size():
     from routes.chat_upload import _extract_zip
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        # 6 MB uncompressed (> 5 MB member cap) but compresses to a few KB — the
+        # 6 MB uncompressed (> 5 MB member cap) but compresses to a few KB - the
         # classic zip-bomb shape. The guard must reject on the DECLARED size.
         zf.writestr("big.txt", b"\0" * (6 * 1024 * 1024))
         zf.writestr("ok.txt", b"hello from inside the zip")

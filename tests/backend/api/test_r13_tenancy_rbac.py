@@ -1,5 +1,5 @@
 """
-R13 — Tenancy & RBAC Fail-Closed
+R13 - Tenancy & RBAC Fail-Closed
 Tests for: ScopedCollection method gap, file-serve least-exposure, export RBAC,
 login lockout tenant-aware, operations branch-scope, staff deactivation revokes sessions,
 bulk SMS ownership/scoping, bulk import branch tag + atomic writes, regex escape.
@@ -39,7 +39,7 @@ def _plain_admin():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# R13.1 — ScopedCollection method gap
+# R13.1 - ScopedCollection method gap
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_scoped_collection_find_one_and_update_injects_school_id():
@@ -51,7 +51,7 @@ def test_scoped_collection_find_one_and_update_injects_school_id():
     # loop) instead of get_event_loop(). This test passed alone but failed in a
     # full suite (D-03): leftover docs from an earlier test could shadow "Target",
     # and get_event_loop() returned a loop an earlier async test had closed. Both
-    # are order-dependence, removed here — the test now owns everything it touches.
+    # are order-dependence, removed here - the test now owns everything it touches.
     other_doc = {"id": "s-other", "schoolId": "school-B", "name": "Other"}
     own_doc = {"id": "s-own", "schoolId": "school-A", "name": "Target"}
     col = ScopedCollection(FakeCollection([other_doc, own_doc]), "school-A")
@@ -74,7 +74,7 @@ def test_scoped_collection_distinct_scopes_to_school():
     import asyncio
     from database import ScopedCollection
     from tests.backend.conftest import FakeCollection
-    # Private collection + asyncio.run for order-independence (D-03) — a leftover
+    # Private collection + asyncio.run for order-independence (D-03) - a leftover
     # school-A doc with status "inactive" from an earlier test used to break the
     # final assertion in a full run.
     col = ScopedCollection(FakeCollection([
@@ -101,7 +101,7 @@ def test_scoped_collection_bulk_write_raises_not_implemented(fake_db):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# R13.2 — File-serve least-exposure
+# R13.2 - File-serve least-exposure
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_serve_file_unauthenticated_returns_401(client):
@@ -136,7 +136,7 @@ def test_serve_file_principal_can_access_other_users_file(client, fake_db):
         "uploaded_by": "other-user",
         "schoolId": "aaryans-joya",
     })
-    # The S3 presigned URL will fail since S3 is not configured — we just check auth
+    # The S3 presigned URL will fail since S3 is not configured - we just check auth
     resp = client.get("/api/uploads/serve/class_report.pdf", headers=_principal())
     # Should not be 403 (may be 307 redirect or 409 if s3_key not set properly)
     assert resp.status_code != 403
@@ -158,7 +158,7 @@ def test_list_uploads_accountant_sees_only_own(client, fake_db):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# R13.3 — Export RBAC + scoping
+# R13.3 - Export RBAC + scoping
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_export_students_unauthenticated_returns_401(client):
@@ -225,11 +225,11 @@ def test_export_results_teacher_returns_200(client):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# R13.4 — Login lockout tenant-aware
+# R13.4 - Login lockout tenant-aware
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_login_lockout_key_includes_school(client, fake_db):
-    """Failed attempts lock only the same (username, school) pair — not cross-tenant."""
+    """Failed attempts lock only the same (username, school) pair - not cross-tenant."""
     # Seed a lockout for school-A
     fake_db.login_attempts.docs.append({
         "key": "login:baduser:school-A",
@@ -254,7 +254,7 @@ def test_login_lockout_same_school_is_blocked(client, fake_db):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# R13.5 — Operations lists branch-scoped
+# R13.5 - Operations lists branch-scoped
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_leave_requests_branch_a_principal_cannot_see_branch_b(client, fake_db):
@@ -290,7 +290,7 @@ def test_approval_requests_branch_a_principal_cannot_see_branch_b(client, fake_d
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# R13.6 — Regex injection escape
+# R13.6 - Regex injection escape
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_audit_search_with_regex_metachar_does_not_500(client):
@@ -327,7 +327,7 @@ def test_attendance_export_invalid_month_returns_400(client):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# R13.7 — Staff deactivation revokes sessions via canonical helper
+# R13.7 - Staff deactivation revokes sessions via canonical helper
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_staff_deactivation_unauthenticated_returns_401(client):
@@ -341,7 +341,7 @@ def test_staff_deactivation_wrong_role_returns_403(client):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# R13.8 — Bulk SMS ownership + scoping + daily cap
+# R13.8 - Bulk SMS ownership + scoping + daily cap
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_send_parent_message_unauthenticated_returns_401(client):
@@ -359,7 +359,7 @@ def test_send_parent_message_cross_branch_filtered(client, fake_db, monkeypatch)
         "name": "Ravi",
     })
     monkeypatch.setattr(sms_module, "get_db", lambda: fake_db)
-    # Branch-A principal sends to branch-B student ID — should be filtered out
+    # Branch-A principal sends to branch-B student ID - should be filtered out
     resp = client.post(
         "/api/sms/send-parent-message",
         headers=_principal("branch-a"),
@@ -413,7 +413,7 @@ def test_get_sms_logs_branch_scoped(client, fake_db, monkeypatch):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# R13.9 — Bulk import branch tag
+# R13.9 - Bulk import branch tag
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_import_validate_unauthenticated_returns_401(client):

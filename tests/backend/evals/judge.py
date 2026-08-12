@@ -1,16 +1,16 @@
-"""R11.1 — LLM-judge harness for the golden eval corpus.
+"""R11.1 - LLM-judge harness for the golden eval corpus.
 
 Two concerns, deliberately separated so the *logic* is testable without credentials:
 
 - Pure functions (no network): `parse_judge_scores`, `aggregate`, `regression_check`.
-  These are unit-tested in CI with a fake judge — the scoring/threshold maths can
+  These are unit-tested in CI with a fake judge - the scoring/threshold maths can
   never silently break.
 - Async orchestration (`run_conversation`, `judge_conversation`, `run_eval`): take
   the assistant + judge chat callables as parameters so the real run wires them to
   Azure (`LLMClient().chat`) while tests inject deterministic fakes.
 
 The credentialed run lives in `test_eval_llm_judge.py` behind the `llm_eval`
-marker (deselected by default, like `mongo_real`), so it never runs — or skips —
+marker (deselected by default, like `mongo_real`), so it never runs - or skips -
 in the standard credential-less suite.
 """
 
@@ -107,7 +107,7 @@ def parse_judge_scores(text: str) -> dict:
 def aggregate(results: list) -> dict:
     """Mean per dimension + an `overall` mean across all dimensions.
 
-    Results carrying an `error` (the assistant/judge turn failed) contribute 0.0 —
+    Results carrying an `error` (the assistant/judge turn failed) contribute 0.0 -
     a broken turn is a quality failure, not an excused skip."""
     if not results:
         return {dim: 0.0 for dim in DIMENSIONS} | {"overall": 0.0, "n": 0}
@@ -135,7 +135,7 @@ def regression_check(current: dict, baseline: Optional[dict], threshold: float =
     if not baseline:
         if problems:
             return False, problems
-        return True, ["no baseline recorded yet — this run establishes it"]
+        return True, ["no baseline recorded yet - this run establishes it"]
     for key in (*DIMENSIONS, "overall"):
         base = baseline.get(key)
         cur = current.get(key)

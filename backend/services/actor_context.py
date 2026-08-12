@@ -6,7 +6,7 @@ write function may consume. It is synthesized identically by the REST adapter
 so an AI write and a UI write reach the service with the same authority context.
 
 Hard rule: a service NEVER reads `Request`/`Depends`. If a service needs more than
-this contract carries, EXTEND this dataclass — do not reach back into FastAPI.
+this contract carries, EXTEND this dataclass - do not reach back into FastAPI.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ class ActorContext:
     branch_id: Optional[str]
     actor_name: str = ""
     # Injectable clock for deterministic tests. Per project-context.md, never bind
-    # `datetime.now` as a default value — resolve via `(now_fn or _now)()` at call time.
+    # `datetime.now` as a default value - resolve via `(now_fn or _now)()` at call time.
     now_fn: Optional[Callable[[], datetime]] = None
 
     def now(self) -> datetime:
@@ -64,8 +64,8 @@ def actor_ctx_from_user(
 ) -> ActorContext:
     """Build the contract identically for both adapters.
 
-    REST adapter: `actor_ctx_from_user(user)` — branch_id comes from the JWT dict.
-    AI adapter:   `actor_ctx_from_user(user, branch_id=_branch_id(user, scope))` —
+    REST adapter: `actor_ctx_from_user(user)` - branch_id comes from the JWT dict.
+    AI adapter:   `actor_ctx_from_user(user, branch_id=_branch_id(user, scope))` -
                   branch_id is resolved from the chat scope first.
     """
     user = user or {}

@@ -6,7 +6,7 @@ WHY THIS IS NEEDED
 When the parent photographs were copied into the school's own bucket, the key was
 written onto the STUDENT record (`mother_photo_s3_key`, `father_photo_s3_key`,
 `guardian_photo_s3_key`) because the `guardians` collection had no photo field at the
-time. The guardian rows later got a `photo_url` — but it still points at the previous
+time. The guardian rows later got a `photo_url` - but it still points at the previous
 vendor's public CDN, and they carry no key.
 
 That matters now that photographs are served as signed links from our own bucket
@@ -94,7 +94,7 @@ async def main(apply: bool) -> int:
         print(f"  no matching key on the child's record : {no_key}")
 
         if not apply:
-            print("\nDRY RUN — nothing written. Re-run with --apply to write.")
+            print("\nDRY RUN - nothing written. Re-run with --apply to write.")
             return 0
 
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")

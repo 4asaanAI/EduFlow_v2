@@ -1,10 +1,10 @@
-"""Inspection Remediation BLOCK 2 — T6 (NEW-05) and T7 (NEW-04).
+"""Inspection Remediation BLOCK 2 - T6 (NEW-05) and T7 (NEW-04).
 
 T6: a read that hits its row cap must SAY SO. Before this block, the AI student
 search answered for 500 of 1,802 students in silence, and a house with more than
 500 members reported the wrong member count.
 
-T7: the same search issued one `db.classes.find_one` per returned student — up to
+T7: the same search issued one `db.classes.find_one` per returned student - up to
 501 round trips for a single question. The counting collection below is the
 regression guard: it fails if anyone reintroduces a per-row lookup.
 """
@@ -56,7 +56,7 @@ def _student(sid, name, cls="c1", house=None):
            "is_active": True, "status": "active", "roll_number": sid}
     if house:
         # 2026-08-06: this fixture used to set `house_id`, which NO student record
-        # actually has — the student side of the house link is `house`, holding the
+        # actually has - the student side of the house link is `house`, holding the
         # house NAME ("Atulya"), written by student_service and rendered by
         # StudentDatabase.js. The fixture matching the code's mistake is why the
         # "house has no members" bug survived: both sides agreed on a field that does
@@ -73,7 +73,7 @@ CLASS_C1 = {"id": "c1", "schoolId": SCHOOL, "name": "5", "section": "A"}
 OWNER = {"id": "own1", "role": "owner"}
 
 
-# ── T6 / NEW-05 — truncation is never silent ──────────────────────────────────
+# ── T6 / NEW-05 - truncation is never silent ──────────────────────────────────
 
 async def test_student_search_over_the_cap_reports_the_true_total(monkeypatch):
     import ai.tool_functions_v2 as v2
@@ -88,7 +88,7 @@ async def test_student_search_over_the_cap_reports_the_true_total(monkeypatch):
     assert res["meta"]["truncated"] is True
     assert res["meta"]["total"] == 1802
     assert res["meta"]["showing_first"] == v2.ROW_CAP
-    # The message is what Flo relays to the person asking — it must carry both numbers.
+    # The message is what Flo relays to the person asking - it must carry both numbers.
     assert "500" in res["message"] and "1802" in res["message"]
 
 
@@ -146,7 +146,7 @@ async def test_house_captain_past_the_page_is_still_found(monkeypatch):
     assert "Late Roll Captain" in names
 
 
-# ── T7 / NEW-04 — no per-row database lookups ─────────────────────────────────
+# ── T7 / NEW-04 - no per-row database lookups ─────────────────────────────────
 
 async def test_student_search_does_one_class_read_not_one_per_student(monkeypatch):
     import ai.tool_functions_v2 as v2

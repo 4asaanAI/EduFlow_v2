@@ -3,7 +3,7 @@
 Three invariants enforced:
   1. Write-ahead row exists before tool execution (state="pending").
   2. ``success`` is False when the tool result is missing the success key
-     (previous behavior defaulted to True — silent successful writes).
+     (previous behavior defaulted to True - silent successful writes).
   3. Audit row gets written on both success AND failure paths (no silent gaps).
 """
 
@@ -115,7 +115,7 @@ async def test_finalize_marks_failure_when_result_missing_success_key():
         tool_name="x", params={}, user_id="u", session_id="s",
         confirmed_at=None, db=db,
     )
-    # Tool returns {"data": [...]} with no success key — must record failure.
+    # Tool returns {"data": [...]} with no success key - must record failure.
     await audit_ai_dispatch_finalize(audit_id=audit_id, result={"data": []}, db=db)
     assert db.ai_dispatch_audit_log.docs[0]["status"] == "failure"
     assert db.ai_dispatch_audit_log.docs[0]["success"] is False

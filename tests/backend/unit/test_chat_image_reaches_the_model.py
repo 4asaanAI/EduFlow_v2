@@ -7,7 +7,7 @@ work, and this file guards the second one.
 The chat pipeline saves the user's turn to the database as PLAIN TEXT (Phase 1) and then
 rebuilds the whole request from those stored rows (Phase 5). The image is therefore gone
 by the time the request is assembled, and every path that calls the model has to put it
-back. The two tool-calling paths did. The ordinary no-tool path did not — so a photo sent
+back. The two tool-calling paths did. The ordinary no-tool path did not - so a photo sent
 with a plain question, which is the commonest way anyone sends one, was precisely the case
 where the model received the words and never the picture.
 
@@ -23,7 +23,7 @@ IMG = "data:image/jpeg;base64,QUJD"
 
 
 def _history():
-    """History as Phase 5 rebuilds it — text only, current turn last."""
+    """History as Phase 5 rebuilds it - text only, current turn last."""
     return [
         {"role": "user", "content": "hello"},
         {"role": "assistant", "content": "Hello! How can I help?"},
@@ -37,7 +37,7 @@ def test_the_picture_is_attached_to_the_current_turn():
     last = out[-1]
     assert last["role"] == "user"
     assert isinstance(last["content"], list), (
-        "a turn carrying an image must be multimodal content, not a plain string — "
+        "a turn carrying an image must be multimodal content, not a plain string - "
         "a string is exactly how the image got silently dropped"
     )
     urls = [p["image_url"]["url"] for p in last["content"] if p["type"] == "image_url"]

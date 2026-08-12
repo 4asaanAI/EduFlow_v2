@@ -1,5 +1,5 @@
 /**
- * Story 33: Audit Log UI — Owner/Principal view of all system changes
+ * Story 33: Audit Log UI - Owner/Principal view of all system changes
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { useUser } from '../../contexts/UserContext';
@@ -63,10 +63,10 @@ function AuditRow({ entry, isDark }) {
           {entry.action?.replace(/_/g, ' ').slice(0, 18)}
         </span>
         <span style={{ flex: 1, fontSize: 'var(--text-sm)', color: text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {entry.collection || entry.entity_type || '—'} · {entry.entity_id?.slice(0, 8) || '—'}
+          {entry.collection || entry.entity_type || '-'} · {entry.entity_id?.slice(0, 8) || '-'}
         </span>
         <span style={{ fontSize: 'var(--text-sm)', color: muted, minWidth: 100, textAlign: 'right' }}>
-          {entry.changed_by_name || entry.changed_by?.slice(0, 8) || '—'}
+          {entry.changed_by_name || entry.changed_by?.slice(0, 8) || '-'}
           {entry.changed_by_role && <span style={{ marginLeft: 4, opacity: 0.6 }}>({entry.changed_by_role})</span>}
         </span>
       </div>
@@ -210,7 +210,7 @@ export default function AuditLog() {
           {/* Column headers */}
           <div style={{ display: 'flex', padding: '0 0 6px', gap: 10, borderBottom: `2px solid ${border}`, marginBottom: 4 }}>
             <span style={{ width: 20 }} />
-            {/* Column headings share one size too — --text-xs, one step below
+            {/* Column headings share one size too - --text-xs, one step below
                 the rows they label, matching the shared table elsewhere. */}
             <span style={{ width: 140, flexShrink: 0, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '0.04em', color: muted }}>TIMESTAMP</span>
             <span style={{ minWidth: 90, flexShrink: 0, fontSize: 'var(--text-xs)', fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '0.04em', color: muted }}>ACTION</span>

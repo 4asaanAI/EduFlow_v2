@@ -1,4 +1,4 @@
-"""Subject CRUD service tests — Academic Structure section (classes + subjects).
+"""Subject CRUD service tests - Academic Structure section (classes + subjects).
 
 Covers the new `create_subject` / `update_subject` / `delete_subject` service
 functions: validation, class-existence FK, teacher linking, no-op short-circuit,

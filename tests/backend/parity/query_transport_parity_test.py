@@ -1,4 +1,4 @@
-"""Wave-2 dual-entrypoint parity — query tickets, transport, announcement moderation.
+"""Wave-2 dual-entrypoint parity - query tickets, transport, announcement moderation.
 
 Covers:
   create/resolve/reopen/assign/delete_query_ticket → services/query_ticket_service.py
@@ -136,7 +136,7 @@ async def test_assign_and_delete_ticket_parity(client, fake_db):
 
 # ─── Transport ───────────────────────────────────────────────────────────────
 
-_ROUTE = {"route_name": "Zone A — Joya Market", "start_point": "School",
+_ROUTE = {"route_name": "Zone A - Joya Market", "start_point": "School",
           "end_point": "Joya Market", "driver_name": "Ramesh", "fare": 800}
 
 

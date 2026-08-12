@@ -1,11 +1,11 @@
 /**
- * R11.5 — Conversation Trace Viewer (Owner-only support/diagnostics).
+ * R11.5 - Conversation Trace Viewer (Owner-only support/diagnostics).
  *
  * Lets the school owner answer one question: "Did Flo reply to this
  * conversation, and if not, why?" Paste a conversation id, load its per-turn
  * trace, and see for each turn the outcome (answered / fallback / error /
  * unavailable), the tools it used, the finish reason, token usage, and any
- * error type. This is a read-only diagnostics surface — it never changes data.
+ * error type. This is a read-only diagnostics surface - it never changes data.
  */
 import React, { useState, useCallback } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -75,7 +75,7 @@ function TraceTurn({ turn, index, isDark }) {
   const border = isDark ? '#2e2e2e' : '#e5e5e5';
   const card = isDark ? '#1e1e1e' : '#fff';
   const meta = outcomeMeta(turn.outcome);
-  const when = turn.created_at ? String(turn.created_at).slice(0, 19).replace('T', ' ') : '—';
+  const when = turn.created_at ? String(turn.created_at).slice(0, 19).replace('T', ' ') : '-';
   const tools = Array.isArray(turn.tools) ? turn.tools : [];
 
   return (
@@ -158,7 +158,7 @@ export default function ConversationTrace() {
   return (
     <ToolPage
       title="Conversation Trace"
-      subtitle="Support & diagnostics: check whether EduFlow replied to a conversation, and if not, why."
+      subtitle="Support & diagnostics: check whether Flo replied to a conversation, and if not, why."
       loading={loading}
     >
       {/* One-line explanation */}
@@ -214,7 +214,7 @@ export default function ConversationTrace() {
           <MessageSquare size={30} color={muted} />
           <div style={{ fontSize: 14, fontWeight: 600, color: text }}>No conversation loaded</div>
           <div style={{ fontSize: 13, maxWidth: 380 }}>
-            Enter a conversation id above and press “Load trace” to see every turn and whether EduFlow replied.
+            Enter a conversation id above and press “Load trace” to see every turn and whether Flo replied.
           </div>
         </div>
       ) : turns.length === 0 ? (

@@ -4,8 +4,8 @@ A school operator can disable ALL AI writes instantly during the pilot. The flag
 lives in `db.system_flags` keyed `ai_writes_enabled`; the executor path checks it
 before committing any write. Reads are never gated.
 
-A short-TTL in-process cache (≤60s) bounds how stale a flag read can be — the AC
-requires "rejects writes within ≤60s" of the operator flipping it — while keeping
+A short-TTL in-process cache (≤60s) bounds how stale a flag read can be - the AC
+requires "rejects writes within ≤60s" of the operator flipping it - while keeping
 the steady-state hot path free of a per-confirm Mongo round-trip. Flipping the
 flag OFF takes effect on the next cache expiry (≤`CACHE_TTL_SECONDS`).
 
@@ -33,7 +33,7 @@ def _monotonic() -> float:
 
 
 def reset_cache() -> None:
-    """Drop the cached flag — used by tests and by an explicit operator override."""
+    """Drop the cached flag - used by tests and by an explicit operator override."""
     global _cache
     _cache = (None, 0.0)
 
@@ -42,7 +42,7 @@ async def ai_writes_enabled(db, *, force_fresh: bool = False) -> bool:
     """Return whether AI writes are currently enabled (default: enabled).
 
     Fail-OPEN: if the flag doc is absent we treat writes as enabled (the kill
-    switch is opt-in — a school that never set it should not be blocked). A Mongo
+    switch is opt-in - a school that never set it should not be blocked). A Mongo
     error also fails open but is logged loudly; the kill switch is a safety brake,
     not an availability dependency, and a stuck-closed brake would be its own
     incident.
@@ -51,8 +51,8 @@ async def ai_writes_enabled(db, *, force_fresh: bool = False) -> bool:
     deployment a worker whose cache predates an operator disabling the switch
     would keep accepting writes until its own TTL expires. The actual WRITE path
     (the confirm/executor gate) passes ``force_fresh=True`` to bypass the cache
-    and read the flag directly from Mongo — the authoritative source shared by
-    all workers — so a disable takes effect on the very next confirmed write
+    and read the flag directly from Mongo - the authoritative source shared by
+    all workers - so a disable takes effect on the very next confirmed write
     everywhere. The cache still serves any non-critical read. See
     docs/deployment-runbook.md §8.
     """
@@ -69,7 +69,7 @@ async def ai_writes_enabled(db, *, force_fresh: bool = False) -> bool:
         if doc is not None and doc.get("enabled") is False:
             enabled = False
     except Exception:
-        logger.warning("ai_writes_enabled flag read failed — failing open", exc_info=True)
+        logger.warning("ai_writes_enabled flag read failed - failing open", exc_info=True)
         enabled = True
 
     _cache = (enabled, now + CACHE_TTL_SECONDS)

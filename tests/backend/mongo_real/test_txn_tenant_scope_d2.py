@@ -1,4 +1,4 @@
-"""D.2 — a write performed INSIDE a real transaction still injects `schoolId`.
+"""D.2 - a write performed INSIDE a real transaction still injects `schoolId`.
 
 Proves there is no tenant-leaking raw write path inside the executor's transaction:
 `ScopedCollection` forwards `session=` while injecting the tenant filter, so a

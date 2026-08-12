@@ -1,4 +1,4 @@
-"""Substitution service — the single shared write path for assigning a teacher
+"""Substitution service - the single shared write path for assigning a teacher
 substitution (AI Layer Hardening, AD7 / Epic A, Story A.6).
 
 Both `POST /api/academics/substitutions` (REST) and the AI `initiate_substitution`
@@ -8,12 +8,12 @@ slot via `period_id`) and passes the canonical resolved fields; the service writ
 identical substitution record.
 
 **Parity decision (case-by-case):**
-- `status="assigned"` is written for both (the AI tool previously omitted it — a defect).
+- `status="assigned"` is written for both (the AI tool previously omitted it - a defect).
 - Upsert-dedup on `(date, absent_teacher_id, class_id, period_number)` for both (the AI tool
   previously plain-inserted, allowing duplicate substitutions).
 - Audit action canonicalized to `assign` (the AI tool wrote `initiate_substitution`).
 - The substitute teacher is notified for both (the REST route previously sent no
-  notification — additive so "notification fan-out matches"; the AI already notified).
+  notification - additive so "notification fan-out matches"; the AI already notified).
 - The AI tool's extra `period_id` field is dropped (REST never stored it).
 
 Services raise domain exceptions, never `HTTPException`.

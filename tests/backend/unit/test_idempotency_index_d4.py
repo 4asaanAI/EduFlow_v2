@@ -1,4 +1,4 @@
-"""D.4 — idempotency key derivation, unique-index guard, and REST-key parity.
+"""D.4 - idempotency key derivation, unique-index guard, and REST-key parity.
 
 Concurrency (two confirms → one effect) is proven on the mongo_real tier
 (`test_idempotency_concurrency_d4.py`); FakeDb cannot race a unique index.

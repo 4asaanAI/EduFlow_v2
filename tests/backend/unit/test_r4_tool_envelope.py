@@ -1,8 +1,8 @@
-"""Epic R4 — One Tool Envelope + Denied ≠ Empty (behavior tier).
+"""Epic R4 - One Tool Envelope + Denied ≠ Empty (behavior tier).
 
 Covers the reliability guarantees behind the envelope migration: recall_history no
 longer drops the fees/enquiries sections (C1/C3), permission failures are `denied`
-(not empty success — M2), write not-found is `success: False` (L1), phones are
+(not empty success - M2), write not-found is `success: False` (L1), phones are
 masked at source (H5/AC2/AC3), and get_leave_requests carries the leave id (L3).
 """
 
@@ -55,7 +55,7 @@ async def test_recall_history_includes_fees_and_enquiries(monkeypatch):
     )
     assert result["success"] is True
     sections = result["data"]["sections"]
-    # The C3 bug dropped these because v1 tools lacked success/data — now present.
+    # The C3 bug dropped these because v1 tools lacked success/data - now present.
     assert "fees" in sections and sections["fees"], "fees section missing (C3 regression)"
     assert "enquiries" in sections and sections["enquiries"], "enquiries section missing (C3 regression)"
 

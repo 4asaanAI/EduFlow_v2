@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Ordering for school classes — the server-side twin of ``lib/classOrder.js``.
+"""Ordering for school classes - the server-side twin of ``lib/classOrder.js``.
 
 Classes are stored in insertion order, which is effectively random
 ("11th-A, 1st-A, 2nd-C, 2nd-E, 3rd-A, ... LKG-A, NUR-D"). Sorting the

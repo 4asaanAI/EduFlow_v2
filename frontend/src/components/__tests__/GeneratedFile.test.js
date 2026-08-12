@@ -1,5 +1,5 @@
 /**
- * UI Sweep Epic 10, Story 10.3 — a file Flo made, as something you can tap.
+ * UI Sweep Epic 10, Story 10.3 - a file Flo made, as something you can tap.
  *
  * D-37: the chat message now carries only a short opaque `file_id`. The download
  * button exchanges it for a fresh, short-lived link server-side when tapped, so the
@@ -13,14 +13,14 @@ jest.mock('../../contexts/ThemeContext', () => ({ useTheme: () => ({ isDark: tru
 jest.mock('../../lib/api', () => {
   // D-60: the stub is derived from the REAL module's export list rather than hand-written.
   // A hand-written list names a handful of helpers while `lib/api` exports over a hundred,
-  // and a factory mock does NOT fall through to the real module — so the first time this
+  // and a factory mock does NOT fall through to the real module - so the first time this
   // screen calls a helper nobody thought to name, it gets `undefined` and React reports an
   // error that points nowhere near the cause. That is exactly how D-48/T12 cost an hour.
   const actual = jest.requireActual('../../lib/api');
   const stub = {};
   Object.keys(actual).forEach((key) => {
     // PLAIN functions, deliberately NOT jest.fn(). CRA's jest preset sets `resetMocks: true`,
-    // which wipes any implementation supplied in a module factory before every test — a
+    // which wipes any implementation supplied in a module factory before every test - a
     // jest.fn() default would quietly become a do-nothing that returns undefined.
     stub[key] = typeof actual[key] === 'function'
       ? async () => ({ success: true, data: [] })
@@ -143,13 +143,13 @@ test('a block with missing details still renders without throwing', () => {
 /*
  * Reading and correcting a document (owner request, 2026-08-07).
  *
- * Until this, a document Flo made could only be downloaded — one wrong sentence meant
+ * Until this, a document Flo made could only be downloaded - one wrong sentence meant
  * asking Flo again. The panel is the pattern the Question Paper Creator already uses,
  * lifted into `ui/DocumentEditor` rather than copied, so a fix to the sanitising or
  * the PDF export cannot land in one of them and miss the other.
  *
  * NOTHING IS SAVED BACK. That is Abhimanyu's decision of 2026-08-07, so the panel has
- * no save button, and it SAYS so — an edit panel with no save reads as broken unless
+ * no save button, and it SAYS so - an edit panel with no save reads as broken unless
  * it explains itself.
  */
 test('the file card offers a way to read and correct the document', () => {

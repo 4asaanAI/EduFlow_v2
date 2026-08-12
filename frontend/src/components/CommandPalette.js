@@ -11,7 +11,7 @@ import { canUseTool } from '../lib/toolPermissions';
 
 const ALL_TOOLS = [
   { id: 'school-pulse',           name: 'School Pulse',          subtitle: "Today's overview",         icon: Activity,      roles: ['owner'] },
-  // Epic 7 — Owner + Principal only. ⌘K filters by role, not sub_category, so it
+  // Epic 7 - Owner + Principal only. ⌘K filters by role, not sub_category, so it
   // is listed for 'owner' alone here (a non-principal admin must never reach it);
   // the Principal gets it from the sidebar, which does gate on sub_category.
   { id: 'student-database',       name: 'School Directory',      subtitle: 'Students, staff & strength', icon: Users,       roles: ['owner','admin'] },
@@ -98,7 +98,7 @@ const ALL_TOOLS = [
   { id: 'ptm-summary-viewer',  name: 'PTM Summary',       subtitle: 'Teacher notes',             icon: MessageSquare,  roles: ['student'] },
 ];
 
-// Exported for tests — see the note in Sidebar.js; ⌘K is the third menu that has to
+// Exported for tests - see the note in Sidebar.js; ⌘K is the third menu that has to
 // agree with the server about the document-issuing tools (D-49).
 export { ALL_TOOLS };
 

@@ -1,9 +1,9 @@
 /**
- * All Chats — Epic 6, Story 6.5. Owner item 16.
+ * All Chats - Epic 6, Story 6.5. Owner item 16.
  *
  * The sidebar showed whatever the server returned, and the server returned the
  * newest fifty with no way to ask for more. The fifty-first-oldest conversation
- * was unreachable by any route in the product — not by scrolling, not by
+ * was unreachable by any route in the product - not by scrolling, not by
  * searching, not by URL. For someone who uses the assistant daily that is a few
  * weeks of history quietly falling off the end.
  *
@@ -17,7 +17,7 @@
  *    forty pages of search results would let one tick and one typed number
  *    destroy an entire history. Clearing 300 chats costs ten rounds, which is
  *    the right price for something that cannot be undone.
- * 3. Search matches chat NAMES, not message text — and the empty state says so.
+ * 3. Search matches chat NAMES, not message text - and the empty state says so.
  *    Searching message bodies would need a text index over every message in the
  *    school and turn this into full-text search across children's data.
  */
@@ -40,7 +40,7 @@ import { BULK_SAFE_PAGE_SIZES, useTablePageSize } from '../../hooks/useTablePref
  * The reader can never assemble a selection the server would refuse, because
  * selection covers the visible page only and the largest page size on offer is
  * 30 (PAGE_SIZES in useTablePrefs). This is asserted in the tests rather than
- * enforced again here — a second guard that can never fire is a guard nobody
+ * enforced again here - a second guard that can never fire is a guard nobody
  * maintains. If either number ever moves, that test is what notices.
  */
 export const MAX_BULK_DELETE = 100;
@@ -54,7 +54,7 @@ const SORTS = [
 /**
  * What a chat is called on screen.
  *
- * "New conversation", exactly as the sidebar renders it — NOT "not recorded",
+ * "New conversation", exactly as the sidebar renders it - NOT "not recorded",
  * which would imply a field somebody failed to fill in rather than a chat that
  * never got a name. `.trim()` because a title of one space is not a title.
  */
@@ -74,7 +74,7 @@ function formatWhen(iso) {
  *
  * The Owner asked for a typed confirmation. It takes the COUNT rather than the
  * English word DELETE: the people running this school work in English and Hindi,
- * and a gate that is really a spelling test adds friction without adding safety —
+ * and a gate that is really a spelling test adds friction without adding safety -
  * whereas typing the number forces the one thing the gate exists for, which is
  * looking at how many you are about to destroy.
  */
@@ -139,7 +139,7 @@ function ConfirmBulkDelete({ count, keptCount, onCancel, onConfirm, busy }) {
               <strong style={{ color: 'var(--color-warning)' }}>
                 {keptCount} of {count === 1 ? 'these' : 'them'} {keptCount === 1 ? 'is' : 'are'} pinned or starred
               </strong>
-              {' '}— chats you chose to keep.
+              {' '}- chats you chose to keep.
             </>
           )}
         </p>
@@ -193,7 +193,7 @@ export default function AllChats() {
   const [selected, setSelected] = useState(() => new Set());
   const [confirming, setConfirming] = useState(false);
   // When set, the confirmation is standing in front of ONE chat rather than the
-  // current selection. Same dialog, same typed gate — see handleSingleDelete.
+  // current selection. Same dialog, same typed gate - see handleSingleDelete.
   const [singleTarget, setSingleTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState('');
@@ -203,7 +203,7 @@ export default function AllChats() {
   // note on MAX_BULK_DELETE above.
   const [pageSize, setPageSize] = useTablePageSize('chats', BULK_SAFE_PAGE_SIZES);
 
-  // Anything that changes WHICH rows are on screen clears the selection —
+  // Anything that changes WHICH rows are on screen clears the selection -
   // otherwise a tick made on page 1 would be carried into a confirmation whose
   // count the reader is reading off page 4.
   const resetSelection = useCallback(() => setSelected(new Set()), []);
@@ -238,7 +238,7 @@ export default function AllChats() {
 
   const openChat = useCallback((conv) => {
     // Layout listens for this and clears the active tool. Landing back in the
-    // chat is the point of the page — a row that highlights and goes nowhere
+    // chat is the point of the page - a row that highlights and goes nowhere
     // would fail FR81.
     window.dispatchEvent(new CustomEvent('open-conversation', { detail: conv.id }));
   }, []);
@@ -280,7 +280,7 @@ export default function AllChats() {
 
   /**
    * Deleting the last rows on the last page leaves the reader on a page that no
-   * longer exists — which renders as "No chats yet" while they still have three
+   * longer exists - which renders as "No chats yet" while they still have three
    * hundred. Step back rather than show them an empty page and a wrong message.
    */
   const stepBackIfPageEmptied = useCallback((removedCount) => {
@@ -309,7 +309,7 @@ export default function AllChats() {
       setNotice(
         removed === ids.length
           ? `${removed} chat${removed === 1 ? '' : 's'} deleted.`
-          : `${removed} of ${ids.length} deleted — the rest were already gone.`,
+          : `${removed} of ${ids.length} deleted - the rest were already gone.`,
       );
       afterMutation(ids);
       stepBackIfPageEmptied(removed);
@@ -323,7 +323,7 @@ export default function AllChats() {
    * Single delete goes through the SAME confirmation as bulk.
    *
    * The sidebar deletes a chat on one click with no confirmation at all. Copying
-   * that here — beside a bulk action guarded by a typed count — would mean the
+   * that here - beside a bulk action guarded by a typed count - would mean the
    * careful gate is the one you get for many and the unguarded click is the one
    * you get for the chat you are looking at.
    */
@@ -519,7 +519,7 @@ export default function AllChats() {
         />
       ) : rows.length === 0 ? (
         // Three empty states. "Nothing matched your search" is the common one and
-        // the one a bare "nothing here" would make look like data loss — on a page
+        // the one a bare "nothing here" would make look like data loss - on a page
         // whose whole promise is that nothing gets lost.
         search ? (
           <EmptyState
@@ -527,7 +527,7 @@ export default function AllChats() {
             icon={Search}
             data-testid="all-chats-no-matches"
             title={`No chat named like "${search}"`}
-            message="This searches chat names, not what was said inside them — so a word you remember typing to EduFlow will not find it here. Try the name the chat was given, or clear the search."
+            message="This searches chat names, not what was said inside them - so a word you remember typing to Flo will not find it here. Try the name the chat was given, or clear the search."
             action={<Button variant="secondary" onClick={() => setSearchInput('')}>Clear search</Button>}
           />
         ) : (
@@ -536,20 +536,20 @@ export default function AllChats() {
             icon={MessageCircle}
             data-testid="all-chats-empty"
             title="No chats yet"
-            message="Every conversation you have with EduFlow is kept here, however old."
+            message="Every conversation you have with Flo is kept here, however old."
           />
         )
       ) : (
         <DataTable
           tableId="chats"
-          caption="Your conversations with EduFlow"
+          caption="Your conversations with Flo"
           columns={columns}
           rows={rows}
           rowKey={(c) => c.id}
           sort={sort === 'title' ? 'title' : 'recent'}
           sortDirection={sort === 'oldest' ? 'ascending' : 'descending'}
           // Clicking "Last used" from a title sort lands on most-recent first,
-          // not on oldest — arriving at a column should show you its obvious
+          // not on oldest - arriving at a column should show you its obvious
           // order, and only a second click reverses it.
           onSortChange={(key) => changeSort(
             key === 'title' ? 'title' : (sort === 'recent' ? 'oldest' : 'recent'),

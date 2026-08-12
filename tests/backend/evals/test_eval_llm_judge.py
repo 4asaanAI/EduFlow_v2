@@ -1,4 +1,4 @@
-"""R11.1 — the credentialed LLM-judge quality gate (AC2).
+"""R11.1 - the credentialed LLM-judge quality gate (AC2).
 
 Runs the WHOLE golden corpus through the real prompt pipeline and a real LLM judge,
 then blocks if any dimension dropped more than the threshold below the recorded
@@ -32,7 +32,7 @@ def _credentials_present() -> bool:
 
 async def test_golden_corpus_quality_no_regression():
     if not _credentials_present():
-        pytest.skip("Azure OpenAI credentials absent — run this tier in credentialed CI only.")
+        pytest.skip("Azure OpenAI credentials absent - run this tier in credentialed CI only.")
 
     client = LLMClient()
 

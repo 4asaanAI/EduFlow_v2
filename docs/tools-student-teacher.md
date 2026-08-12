@@ -1,4 +1,4 @@
-# EduFlow — Student & Teacher Tools Reference
+# EduFlow - Student & Teacher Tools Reference
 
 > **Last updated:** 2026-06-13  
 > **Scope:** All structured panel tools and AI-chat tools available to the `student` and `teacher` roles.  
@@ -9,7 +9,7 @@
 ## Table of Contents
 
 1. [How Tools Are Accessed](#how-tools-are-accessed)
-2. [Student Tools — Panel UI](#student-tools--panel-ui)
+2. [Student Tools - Panel UI](#student-tools--panel-ui)
    - [AI Tutor](#1-ai-tutor)
    - [Doubt Solver](#2-doubt-solver)
    - [Homework & Assignments](#3-homework--assignments)
@@ -22,8 +22,8 @@
    - [PTM Summary](#10-ptm-summary)
    - [Forms](#11-forms)
    - [Raise Maintenance Request](#12-raise-maintenance-request-student)
-3. [Student Tools — AI Chat](#student-tools--ai-chat)
-4. [Teacher Tools — Panel UI](#teacher-tools--panel-ui)
+3. [Student Tools - AI Chat](#student-tools--ai-chat)
+4. [Teacher Tools - Panel UI](#teacher-tools--panel-ui)
    - [Attendance (Class)](#1-attendance-class)
    - [Assignments](#2-assignments)
    - [Question Papers](#3-question-papers)
@@ -38,7 +38,7 @@
    - [Curriculum Tracker](#12-curriculum-tracker)
    - [Forms](#13-forms-teacher)
    - [Raise Maintenance Request](#14-raise-maintenance-request-teacher)
-5. [Teacher Tools — AI Chat](#teacher-tools--ai-chat)
+5. [Teacher Tools - AI Chat](#teacher-tools--ai-chat)
 6. [Role vs. Tool Access Matrix](#role-vs-tool-access-matrix)
 7. [Shared Tool Details](#shared-tool-details)
 
@@ -49,8 +49,8 @@
 ### Panel Tools
 All panel tools open as full-page views inside the EduFlow SPA at `/?tool=<tool-id>`.
 
-**Student** — 12 tools, mapped in `frontend/src/components/ToolDashboard.js:TOOL_SETS.student`  
-**Teacher** — 14 tools, mapped in `frontend/src/components/ToolDashboard.js:TOOL_SETS.teacher`
+**Student** - 12 tools, mapped in `frontend/src/components/ToolDashboard.js:TOOL_SETS.student`  
+**Teacher** - 14 tools, mapped in `frontend/src/components/ToolDashboard.js:TOOL_SETS.teacher`
 
 Tool components load lazily through `frontend/src/components/Layout.js:loadTool()`. The routing precedence is: `OWNERS → ADMINS → TEACHERS → STUDENTS`. Tools that appear in both the teacher list and the admin list (e.g., `report-card-builder`) load the **AdminTools** version because that array is checked first.
 
@@ -59,7 +59,7 @@ The AI assistant (chat route `POST /api/chat/conversations/:id/messages`) invoke
 
 ---
 
-## Student Tools — Panel UI
+## Student Tools - Panel UI
 
 ### 1. AI Tutor
 **Tool ID:** `ai-tutor`  
@@ -93,7 +93,7 @@ The tutor is explicitly prompted to follow NCERT/CBSE curriculum and will hint r
 **Component:** `frontend/src/components/tools/StudentTools.js:DoubtSolver`
 
 #### What it does
-A one-shot question answering tool. The student types a doubt, clicks "Solve My Doubt", and gets an AI answer displayed inline below the input. Unlike the AI Tutor, this is stateless — each click creates a brand-new conversation.
+A one-shot question answering tool. The student types a doubt, clicks "Solve My Doubt", and gets an AI answer displayed inline below the input. Unlike the AI Tutor, this is stateless - each click creates a brand-new conversation.
 
 #### How it works
 1. Click "Solve My Doubt" → creates a new conversation via `POST /api/chat/conversations`.  
@@ -121,7 +121,7 @@ Shows the student all assignments their class has been given. Assignments are re
 Stats header shows total, overdue, and upcoming counts.
 
 #### How it works
-- `GET /api/academics/assignments` — the backend scopes the query to the student's enrolled class (`backend/routes/academics.py:list_assignments`, line 65–68). No class_id filter is needed from the frontend because the backend reads the student record and injects it.
+- `GET /api/academics/assignments` - the backend scopes the query to the student's enrolled class (`backend/routes/academics.py:list_assignments`, line 65–68). No class_id filter is needed from the frontend because the backend reads the student record and injects it.
 
 #### Impacted areas
 | Layer | Detail |
@@ -204,7 +204,7 @@ Score feedback: `≥80%` → Excellent, `≥60%` → Good effort, `<60%` → Kee
 1. Creates a new conversation `POST /api/chat/conversations` with title "Practice Test".  
 2. Sends a structured prompt requesting exactly 5 MCQs in a fixed format.  
 3. Parses the streamed response client-side with regex block-splitting.  
-4. No server-side storage of questions or answers — entirely ephemeral.
+4. No server-side storage of questions or answers - entirely ephemeral.
 
 #### Impacted areas
 | Layer | Detail |
@@ -226,8 +226,8 @@ Score feedback: `≥80%` → Excellent, `≥60%` → Good effort, `<60%` → Kee
 A persistent weekly study schedule. The student fills in a text field for each weekday (Monday–Saturday) with what they plan to study (e.g. "Maths Chapter 5, Physics revision"). Clicking "Save My Plan" persists it to the backend. The plan is reloaded on next visit.
 
 #### How it works
-- Load: `GET /api/ops/study-plan` — returns the student's saved plan.
-- Save: `POST /api/ops/study-plan` — upserts the plan document.
+- Load: `GET /api/ops/study-plan` - returns the student's saved plan.
+- Save: `POST /api/ops/study-plan` - upserts the plan document.
 - The backend stores the plan keyed by `user_id` in the operations collection.
 
 #### Impacted areas
@@ -278,7 +278,7 @@ Shows the student their personal fee payment history and financial summary. Disp
 - A table of all fee transactions: fee type, amount, due date, paid/pending/overdue badge
 
 #### How it works
-- `GET /api/fees/my` — the backend scopes the query to the logged-in student's `student_id`. Returns both `data` (transaction list) and `summary` (aggregated totals).
+- `GET /api/fees/my` - the backend scopes the query to the logged-in student's `student_id`. Returns both `data` (transaction list) and `summary` (aggregated totals).
 
 #### Impacted areas
 | Layer | Detail |
@@ -299,7 +299,7 @@ Shows the student their personal fee payment history and financial summary. Disp
 Allows the student to read the notes their teacher recorded about them in parent-teacher meetings. Each note card shows the PTM note text and the date it was recorded. Read-only.
 
 #### How it works
-- `GET /api/academics/ptm-notes` — the backend scopes results to the calling user's student_id (for students), returning only notes where `student_id` matches.
+- `GET /api/academics/ptm-notes` - the backend scopes results to the calling user's student_id (for students), returning only notes where `student_id` matches.
 
 #### Impacted areas
 | Layer | Detail |
@@ -320,7 +320,7 @@ Allows the student to read the notes their teacher recorded about them in parent
 Displays all active survey/school forms that are relevant to the student's role (`audience === 'all'` or `audience === 'students'`). The student selects a form, fills in its fields (text, number, email, date, textarea, select, radio types), and submits. A success confirmation is shown after submission.
 
 #### How it works
-- Load: `GET /api/settings/forms` — returns published forms.
+- Load: `GET /api/settings/forms` - returns published forms.
 - Filter client-side: only shows forms where `audience` matches `'all'`, `'students'`, or `'parents'`.
 - Submit: `POST /api/settings/forms/:id/responses` with `{ answers: { fieldLabel: value } }`.
 
@@ -343,13 +343,13 @@ Displays all active survey/school forms that are relevant to the student's role 
 Lets the student (and teacher) report a facility or tech issue. The user chooses:
 - **Request type:** Facility (plumbing, electrical, civil, cleaning, security, carpentry, painting, pest control, HVAC, fire safety, landscaping) or Tech (hardware, software, network, printer, projector)
 - **Description** and **Location**
-- **Priority** (low/medium/high/urgent — facility only)
+- **Priority** (low/medium/high/urgent - facility only)
 - Optionally attach photos (facility only)
 
 After submission, the appropriate team is notified. The tool also shows the user's own open and resolved requests in a separate section.
 
 #### How it works
-- Load: `GET /api/issues/facility?limit=20` + `GET /api/issues/tech?limit=20` — filtered server-side to the requesting user's submissions.
+- Load: `GET /api/issues/facility?limit=20` + `GET /api/issues/tech?limit=20` - filtered server-side to the requesting user's submissions.
 - Create facility: `POST /api/issues/facility`
 - Create tech: `POST /api/issues/tech`
 
@@ -365,7 +365,7 @@ After submission, the appropriate team is notified. The tool also shows the user
 
 ---
 
-## Student Tools — AI Chat
+## Student Tools - AI Chat
 
 The AI assistant available to students in the chat sidebar has access to these backend tools:
 
@@ -384,7 +384,7 @@ The AI assistant available to students in the chat sidebar has access to these b
 
 ---
 
-## Teacher Tools — Panel UI
+## Teacher Tools - Panel UI
 
 ### 1. Attendance (Class)
 **Tool ID:** `class-attendance-marker`  
@@ -430,7 +430,7 @@ The assignment list shows all assignments the teacher has created, with class na
 When a teacher creates an assignment, it immediately becomes visible to all students in that class via the [Homework Viewer](#3-homework--assignments) tool.
 
 #### How it works
-- List: `GET /api/academics/assignments` — backend filters to `teacher_id: user.id` for teachers.
+- List: `GET /api/academics/assignments` - backend filters to `teacher_id: user.id` for teachers.
 - Create: `POST /api/academics/assignments`
 - Edit: `PATCH /api/academics/assignments/:id`
 - Delete: `DELETE /api/academics/assignments/:id`
@@ -455,18 +455,18 @@ When a teacher creates an assignment, it immediately becomes visible to all stud
 #### What it does
 AI-assisted question paper generation with a full in-browser editor and multi-format export. The teacher:
 1. Fills a form: subject, paper title, chapters (comma-separated), total marks, difficulty mix (sliders for Easy/Medium/Hard %).
-2. Clicks "Generate with AI" — the backend generates the paper content using Azure OpenAI.
+2. Clicks "Generate with AI" - the backend generates the paper content using Azure OpenAI.
 3. The generated paper opens in a rich-text editor with a formatting toolbar (Bold, Underline, Bullet List, H2/H3/P, Undo/Redo).
 4. The teacher can edit the paper, then save changes or export as:
-   - **PDF** (via html2pdf.js — creates a temporary visible overlay, renders to A4)
+   - **PDF** (via html2pdf.js - creates a temporary visible overlay, renders to A4)
    - **Word** (`.doc` using mhtml MIME type)
    - **HTML** (standalone HTML file)
 
 Previously saved papers are listed and can be re-opened for editing.
 
 #### How it works
-- Generate: `POST /api/academics/question-papers/generate` — calls Azure OpenAI with a structured prompt, stores the generated content.
-- List: `GET /api/academics/question-papers` — filtered to `teacher_id`.
+- Generate: `POST /api/academics/question-papers/generate` - calls Azure OpenAI with a structured prompt, stores the generated content.
+- List: `GET /api/academics/question-papers` - filtered to `teacher_id`.
 - Get detail: `GET /api/academics/question-papers/:id`
 - Save edits: `PATCH /api/academics/question-papers/:id` with `{ title, generated_content }`.
 - Delete: `DELETE /api/academics/question-papers/:id`
@@ -494,7 +494,7 @@ Previously saved papers are listed and can be re-opened for editing.
 #### What it does
 Allows viewing of exam results per exam for report card purposes. The teacher selects an exam from a dropdown, and the table shows all results for that exam: student name, subject name, marks obtained, max marks, and grade badge.
 
-This is currently a **read-only view** — marks entry/bulk import happens through the admin-level results bulk route.
+This is currently a **read-only view** - marks entry/bulk import happens through the admin-level results bulk route.
 
 #### How it works
 - Load exams: `GET /api/academics/exams`.
@@ -550,7 +550,7 @@ Lets the teacher apply for their own leave and view their personal leave history
 Leave history table shows all past applications with type, dates, status badge (pending/approved/rejected/cancelled), and reason snippet.
 
 #### How it works
-- Load history: `GET /api/staff/leaves/my` — returns only the calling teacher's leave records.
+- Load history: `GET /api/staff/leaves/my` - returns only the calling teacher's leave records.
 - Submit: `POST /api/ops/leaves` with `{ leave_type, start_date, end_date, reason }`.
 - Approval is handled by the owner/principal via `PATCH /api/staff/leaves/:id` (not available to teachers).
 
@@ -582,8 +582,8 @@ Full CRUD for weekly lesson plans. The teacher creates a lesson plan entry speci
 The list view shows all plans with chapter, subject, class, and week date. Plans can be edited or deleted.
 
 #### How it works
-- List: `GET /api/academics/lesson-plans` — backend filters to the calling teacher's `staff_id` / `user_id`.
-- Create: `POST /api/academics/lesson-plans` — body wraps `content` into `{ description, topics: [], objectives: [] }`.
+- List: `GET /api/academics/lesson-plans` - backend filters to the calling teacher's `staff_id` / `user_id`.
+- Create: `POST /api/academics/lesson-plans` - body wraps `content` into `{ description, topics: [], objectives: [] }`.
 - Edit: `PATCH /api/academics/lesson-plans/:id`.
 - Delete: `DELETE /api/academics/lesson-plans/:id`.
 - A separate review endpoint exists: `PATCH /api/academics/lesson-plans/:id/review` (used by principals).
@@ -608,8 +608,8 @@ The list view shows all plans with chapter, subject, class, and week date. Plans
 Full CRUD for practice/revision worksheets. The teacher specifies:
 - **Subject**
 - **Type:** practice / revision / homework
-- **Topic** (chapter name or topic — required)
-- **Content / Questions** (free-text — the actual worksheet questions or instructions)
+- **Topic** (chapter name or topic - required)
+- **Content / Questions** (free-text - the actual worksheet questions or instructions)
 
 Worksheets are stored per-teacher and displayed in a table with topic, subject, type, and creation date.
 
@@ -660,12 +660,12 @@ Analytics dashboard scoped to a single class. The teacher picks a class from a d
 **Component:** `frontend/src/components/tools/TeacherTools.js:SubstitutionViewer`
 
 #### What it does
-Shows the teacher their substitution assignments — periods they have been assigned to cover for an absent colleague. Displays: date, period number, original teacher name, class, and subject.
+Shows the teacher their substitution assignments - periods they have been assigned to cover for an absent colleague. Displays: date, period number, original teacher name, class, and subject.
 
 If there are no substitution assignments, a "No substitution assignments for today" message is shown.
 
 #### How it works
-- `GET /api/academics/substitutions?user_id=<userId>` — returns substitution entries where `substitute_teacher_id` matches the calling user's staff record.
+- `GET /api/academics/substitutions?user_id=<userId>` - returns substitution entries where `substitute_teacher_id` matches the calling user's staff record.
 
 #### Impacted areas
 | Layer | Detail |
@@ -689,7 +689,7 @@ Full CRUD for parent-teacher meeting notes. The teacher selects a class, then pi
 Notes written here become visible to the corresponding student in their [PTM Summary](#10-ptm-summary) tool.
 
 #### How it works
-- List: `GET /api/academics/ptm-notes` — backend scopes to `teacher_id` for teachers.
+- List: `GET /api/academics/ptm-notes` - backend scopes to `teacher_id` for teachers.
 - Create: `POST /api/academics/ptm-notes` with `{ student_id, notes }`.
 - Edit: `PATCH /api/academics/ptm-notes/:id`.
 - Delete: `DELETE /api/academics/ptm-notes/:id`.
@@ -760,7 +760,7 @@ Same component as the [student version](#12-raise-maintenance-request-student). 
 
 ---
 
-## Teacher Tools — AI Chat
+## Teacher Tools - AI Chat
 
 The AI assistant available to teachers in the chat sidebar has access to these backend tools:
 
@@ -796,56 +796,56 @@ The AI assistant available to teachers in the chat sidebar has access to these b
 
 | Tool ID | Student | Teacher |
 |---------|---------|---------|
-| `ai-tutor` | ✅ | — |
-| `doubt-solver` | ✅ | — |
-| `homework-viewer` | ✅ | — |
-| `attendance-self-check` | ✅ | — |
-| `result-viewer` | ✅ | — |
-| `practice-test` | ✅ | — |
-| `study-planner` | ✅ | — |
-| `career-guidance` | ✅ | — |
-| `fee-status-viewer` | ✅ | — |
-| `ptm-summary-viewer` | ✅ | — |
+| `ai-tutor` | ✅ | - |
+| `doubt-solver` | ✅ | - |
+| `homework-viewer` | ✅ | - |
+| `attendance-self-check` | ✅ | - |
+| `result-viewer` | ✅ | - |
+| `practice-test` | ✅ | - |
+| `study-planner` | ✅ | - |
+| `career-guidance` | ✅ | - |
+| `fee-status-viewer` | ✅ | - |
+| `ptm-summary-viewer` | ✅ | - |
 | `form-submissions` | ✅ | ✅ |
 | `raise-maintenance` | ✅ | ✅ |
-| `class-attendance-marker` | — | ✅ |
-| `assignment-generator` | — | ✅ |
-| `question-paper-creator` | — | ✅ |
-| `report-card-builder` | — | ✅ (AdminTools component) |
-| `student-performance-viewer` | — | ✅ (AdminTools component) |
-| `leave-application` | — | ✅ |
-| `lesson-plan-generator` | — | ✅ |
-| `worksheet-creator` | — | ✅ |
-| `class-performance-analytics` | — | ✅ |
-| `substitution-viewer` | — | ✅ |
-| `ptm-notes` | — | ✅ |
-| `curriculum-tracker` | — | ✅ |
+| `class-attendance-marker` | - | ✅ |
+| `assignment-generator` | - | ✅ |
+| `question-paper-creator` | - | ✅ |
+| `report-card-builder` | - | ✅ (AdminTools component) |
+| `student-performance-viewer` | - | ✅ (AdminTools component) |
+| `leave-application` | - | ✅ |
+| `lesson-plan-generator` | - | ✅ |
+| `worksheet-creator` | - | ✅ |
+| `class-performance-analytics` | - | ✅ |
+| `substitution-viewer` | - | ✅ |
+| `ptm-notes` | - | ✅ |
+| `curriculum-tracker` | - | ✅ |
 
 ### AI Chat Tool Registry
 
 | AI Tool | Student | Teacher | Owner | Admin |
 |---------|---------|---------|-------|-------|
-| `get_my_attendance` | ✅ | — | — | — |
-| `get_my_fees` | ✅ | — | — | — |
-| `get_my_results` | ✅ | — | — | — |
+| `get_my_attendance` | ✅ | - | - | - |
+| `get_my_fees` | ✅ | - | - | - |
+| `get_my_results` | ✅ | - | - | - |
 | `get_student_profile` | ✅ | ✅ | ✅ | ✅ |
 | `get_house_standings` | ✅ | ✅ | ✅ | ✅ |
 | `get_house_details` | ✅ | ✅ | ✅ | ✅ |
 | `get_student_council` | ✅ | ✅ | ✅ | ✅ |
 | `get_library_status` | ✅ | ✅ | ✅ | ✅ |
-| `get_attendance_overview` | — | ✅ | ✅ | ✅ |
-| `search_students` | — | ✅ | ✅ | ✅ |
-| `get_student_database` | — | ✅ | ✅ | ✅ |
-| `get_class_list` | — | ✅ | ✅ | ✅ |
-| `get_today_class_attendance` | — | ✅ | ✅ | ✅ |
-| `get_class_wise_attendance` | — | ✅ | ✅ | ✅ |
-| `get_my_class_students` | — | ✅ | — | — |
-| `award_house_points` | — | ✅ | ✅ | ✅ |
-| `get_timetable` | — | ✅ | ✅ | ✅ |
-| `get_exam_results_summary` | — | ✅ | ✅ | ✅ |
-| `draft_parent_message` | — | ✅ | ✅ | ✅ |
-| `create_announcement` | — | ✅ | ✅ | ✅ |
-| `get_upcoming_events` | — | ✅ | ✅ | ✅ |
+| `get_attendance_overview` | - | ✅ | ✅ | ✅ |
+| `search_students` | - | ✅ | ✅ | ✅ |
+| `get_student_database` | - | ✅ | ✅ | ✅ |
+| `get_class_list` | - | ✅ | ✅ | ✅ |
+| `get_today_class_attendance` | - | ✅ | ✅ | ✅ |
+| `get_class_wise_attendance` | - | ✅ | ✅ | ✅ |
+| `get_my_class_students` | - | ✅ | - | - |
+| `award_house_points` | - | ✅ | ✅ | ✅ |
+| `get_timetable` | - | ✅ | ✅ | ✅ |
+| `get_exam_results_summary` | - | ✅ | ✅ | ✅ |
+| `draft_parent_message` | - | ✅ | ✅ | ✅ |
+| `create_announcement` | - | ✅ | ✅ | ✅ |
+| `get_upcoming_events` | - | ✅ | ✅ | ✅ |
 
 ---
 
@@ -856,8 +856,8 @@ The AI assistant available to teachers in the chat sidebar has access to these b
 
 The `FormSubmissions` component is defined in `StudentTools.js` and re-exported from `TeacherTools.js` (`export { FormSubmissions } from './StudentTools'`). The audience filter is purely client-side. Both roles go through the same backend endpoints:
 
-- `GET /api/settings/forms` — list active forms
-- `POST /api/settings/forms/:id/responses` — submit a response
+- `GET /api/settings/forms` - list active forms
+- `POST /api/settings/forms/:id/responses` - submit a response
 
 Field types supported: `text`, `number`, `email`, `date`, `textarea`, `select`, `radio`.
 

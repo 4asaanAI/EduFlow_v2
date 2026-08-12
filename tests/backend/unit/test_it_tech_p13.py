@@ -118,7 +118,7 @@ def test_token_usage_admin_returns_users_over_80_pct(client, fake_db):
         assert body.get("success") is True
         meta = body.get("meta", {})
         assert "users_over_80_pct" in meta
-        # u1 has 45000/50000 = 90% — should appear; u2 has 20% — should not
+        # u1 has 45000/50000 = 90% - should appear; u2 has 20% - should not
         over_80_ids = [r["user_id"] for r in meta["users_over_80_pct"]]
         assert "u1" in over_80_ids
         assert "u2" not in over_80_ids

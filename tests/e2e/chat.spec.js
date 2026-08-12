@@ -1,5 +1,5 @@
 /**
- * E2E Tests: Chat Interface — EduFlow
+ * E2E Tests: Chat Interface - EduFlow
  *
  * Tests the core chat functionality: sending messages, receiving AI responses,
  * and verifying the SSE streaming behavior.
@@ -49,7 +49,7 @@ test.describe('Chat Interface', () => {
     await chatPage.sendMessage('How many students are enrolled?');
 
     // Then: thinking indicator appears briefly
-    // (This is a timing-sensitive test — we just verify the UI flow)
+    // (This is a timing-sensitive test - we just verify the UI flow)
     // The indicator may appear/disappear quickly, so we accept either state
     const indicatorVisible = await chatPage.thinkingIndicator.isVisible().catch(() => false);
     // The test verifies the flow completes, not just the indicator state
@@ -61,7 +61,7 @@ test.describe('Chat Interface', () => {
     await chatPage.sendMessage('List all students in Class 5');
 
     // Then: send button should be disabled during processing
-    // (If the app implements this — adjust if the button stays enabled)
+    // (If the app implements this - adjust if the button stays enabled)
     await chatPage.waitForResponse({ timeout: 30_000 });
     await expect(chatPage.sendButton).toBeDisabled();
   });

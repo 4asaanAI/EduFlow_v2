@@ -1,4 +1,4 @@
-"""Story C.1 — characterization test for explicit record-type resolution.
+"""Story C.1 - characterization test for explicit record-type resolution.
 
 Pins the behavior of `services.incident_service.resolve_record_type`: the legacy
 `_find_mutable_record` precedence (incidents → complaints → facility_requests →

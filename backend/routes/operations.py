@@ -2,7 +2,12 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, Request, HTTPException
 from database import get_db
-from middleware.auth import get_current_user, require_owner_or_principal, require_role
+from middleware.auth import (
+    get_current_user,
+    require_owner_or_admin_subcategories,
+    require_owner_or_principal,
+    require_role,
+)
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
 from services.actor_context import actor_ctx_from_user
@@ -62,6 +67,7 @@ from services.visitor_service import (
 )
 from services.certificate_service import (
     create_certificate as svc_create_certificate,
+    create_id_card_request as svc_create_id_card_request,
     approve_certificate as svc_approve_certificate,
     reject_certificate as svc_reject_certificate,
     delete_certificate as svc_delete_certificate,
@@ -127,7 +133,7 @@ def _announcement_target_roles(body: dict, audience_type: str | None = None) -> 
 
 
 # Announcement moderation gate moved to services.announcement_service.decide_announcement_status
-# (Story A.4) — the single source of truth shared by this route and the AI create_announcement tool.
+# (Story A.4) - the single source of truth shared by this route and the AI create_announcement tool.
 
 
 def _audit_doc(action: str, entity_type: str, entity_id: str, user: dict, changes: dict, reason: str = None):
@@ -189,7 +195,7 @@ async def create_leave_request(request: Request, user: dict = Depends(get_curren
         raise HTTPException(403, "Cannot submit leave on behalf of another user")
     if not body.get("date_range") or not body.get("leave_type") or not body.get("reason"):
         raise HTTPException(400, "date_range, leave_type, and reason are required")
-    staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+    staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})  # branch-scope: intentional - scoped to one named person's own record, not to a branch
     if not staff:
         raise HTTPException(404, "Staff profile not found")
     leave = {
@@ -233,7 +239,7 @@ async def decide_leave_request(leave_id: str, request: Request, user: dict = Dep
     body = await request.json()
     if body.get("status") not in ("approved", "rejected") or not body.get("reason"):
         raise HTTPException(400, "status approved/rejected and reason are required")
-    leave = await db.leave_requests.find_one(scoped_filter({"id": leave_id}, get_school_id()), {"_id": 0})  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+    leave = await db.leave_requests.find_one(scoped_filter({"id": leave_id}, get_school_id()), {"_id": 0})  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     if not leave:
         raise HTTPException(404, "Leave request not found")
     update = {
@@ -242,10 +248,10 @@ async def decide_leave_request(leave_id: str, request: Request, user: dict = Dep
         "decided_by": user["id"],
         "decided_at": datetime.now().isoformat(),
     }
-    await db.leave_requests.update_one(scoped_filter({"id": leave_id}, get_school_id()), {"$set": update})  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+    await db.leave_requests.update_one(scoped_filter({"id": leave_id}, get_school_id()), {"$set": update})  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     if body["status"] == "approved":
         await db.staff_availability.update_one(
-            scoped_filter({"staff_id": leave["staff_id"], "leave_request_id": leave_id}, get_school_id()),  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+            scoped_filter({"staff_id": leave["staff_id"], "leave_request_id": leave_id}, get_school_id()),  # branch-scope: intentional - scoped to one named person's own record, not to a branch
             {"$set": {
                 "staff_id": leave["staff_id"],
                 "leave_request_id": leave_id,
@@ -266,7 +272,7 @@ async def decide_leave_request(leave_id: str, request: Request, user: dict = Dep
         source_id=leave_id,
         source_type="leave_request",
     )
-    updated = await db.leave_requests.find_one(scoped_filter({"id": leave_id}, get_school_id()), {"_id": 0})  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+    updated = await db.leave_requests.find_one(scoped_filter({"id": leave_id}, get_school_id()), {"_id": 0})  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     return {"success": True, "data": updated}
 
 
@@ -296,7 +302,7 @@ async def create_approval_request(request: Request, user: dict = Depends(require
     await db.approval_requests.insert_one(record)
     await _write_audit(db, "approval_submit", "approval_request", record["id"], user, {"created": {k: v for k, v in record.items() if k != "_id"}})
     # Notify by role: find actual user IDs rather than sending to literal role strings
-    owner_users = await db.users.find(scoped_filter({"role": "owner"}, get_school_id()), {"_id": 0, "id": 1}).to_list(5)  # branch-scope: intentional — every owner in the school is notified, whichever branch they sit in
+    owner_users = await db.users.find(scoped_filter({"role": "owner"}, get_school_id()), {"_id": 0, "id": 1}).to_list(5)  # branch-scope: intentional - every owner in the school is notified, whichever branch they sit in
     await fan_out_notifications(
         db,
         [ou["id"] for ou in owner_users],
@@ -307,7 +313,7 @@ async def create_approval_request(request: Request, user: dict = Depends(require
         source_type="approval_request",
     )
     if body["routing"] == "owner_and_principal":
-        principal_users = await db.users.find(scoped_filter({"role": "admin", "sub_category": "principal"}, get_school_id()), {"_id": 0, "id": 1}).to_list(5)  # branch-scope: intentional — every principal in the school is notified, whichever branch they sit in
+        principal_users = await db.users.find(scoped_filter({"role": "admin", "sub_category": "principal"}, get_school_id()), {"_id": 0, "id": 1}).to_list(5)  # branch-scope: intentional - every principal in the school is notified, whichever branch they sit in
         await fan_out_notifications(
             db,
             [pu["id"] for pu in principal_users],
@@ -342,7 +348,7 @@ async def decide_approval_request(approval_id: str, request: Request, user: dict
     db = get_db()
     body = await request.json()
     # auth: routing-dependent authorization is enforced inside the service
-    # (owner decides any; principal only owner_and_principal) — record-level gate.
+    # (owner decides any; principal only owner_and_principal) - record-level gate.
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
     params = {"approval_id": approval_id, "status": body.get("status"), "reason": body.get("reason")}
     try:
@@ -400,7 +406,7 @@ async def list_certs(request: Request, student_id: str = None, user: dict = Depe
 
 @router.post("/certificates")
 async def create_cert(request: Request, user: dict = Depends(require_role("admin", "owner"))):
-    # AD7 shared write path — same service as the AI `create_certificate` tool.
+    # AD7 shared write path - same service as the AI `create_certificate` tool.
     db = get_db()
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user)
@@ -411,9 +417,41 @@ async def create_cert(request: Request, user: dict = Depends(require_role("admin
     return {"success": True, "data": result["certificate"]}
 
 
+@router.post("/certificates/id-card-request")
+async def create_id_card_request(
+    request: Request,
+    # The same desks that can reach the ID Card Generator screen and the print route:
+    # the owner, the principal, the admin office and (from 2026-08-11) the accountant
+    # head. Deliberately NOT `require_role("admin", "owner")`, which is every admin
+    # sub_category in the school and would hand a write route to the five dormant
+    # profiles that today have none.
+    user: dict = Depends(
+        require_owner_or_admin_subcategories("principal", "management", "accountant")
+    ),
+):
+    """Ask for a batch of student ID cards to be approved before printing.
+
+    R2-9 / decision 6, 2026-08-10. One request covers the whole batch and joins the same
+    approval list as certificates, so the school has one place to look and the principal
+    is not handed forty rows for one class.
+
+    The owner and the principal get an already-approved request back, which keeps the
+    screen's flow identical for everybody and means the print route has one rule to
+    apply rather than two.
+    """
+    db = get_db()
+    body = await request.json()
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        result = await svc_create_id_card_request(db, actor_ctx, body)
+    except CertificateValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "data": result["certificate"]}
+
+
 @router.patch("/certificates/{cert_id}/approve")
 async def approve_cert(cert_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
-    # AD7 shared write path — same service as the AI `approve_certificate` tool.
+    # AD7 shared write path - same service as the AI `approve_certificate` tool.
     db = get_db()
     actor_ctx = actor_ctx_from_user(user)
     try:
@@ -429,7 +467,7 @@ async def approve_cert(cert_id: str, request: Request, user: dict = Depends(requ
 
 @router.patch("/certificates/{cert_id}/reject")
 async def reject_cert(cert_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
-    # AD7 shared write path — same service as the AI `reject_certificate` tool.
+    # AD7 shared write path - same service as the AI `reject_certificate` tool.
     db = get_db()
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user)
@@ -448,7 +486,7 @@ async def reject_cert(cert_id: str, request: Request, user: dict = Depends(requi
 async def delete_cert(cert_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
     """Delete a certificate raised in error. Refused once it has been issued.
 
-    Owner instruction 2026-08-07 — parity reference for the AI `delete_certificate`
+    Owner instruction 2026-08-07 - parity reference for the AI `delete_certificate`
     tool, which calls the same service.
     """
     db = get_db()
@@ -503,7 +541,7 @@ async def list_expenses(request: Request, user: dict = Depends(_require_owner_or
 
 @router.post("/expenses")
 async def create_expense(request: Request, user: dict = Depends(_require_owner_or_accountant)):
-    # AD7 shared write path — same service as the AI `create_expense` tool.
+    # AD7 shared write path - same service as the AI `create_expense` tool.
     db = get_db()
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user)
@@ -542,7 +580,7 @@ async def list_incidents(request: Request, status: str = None, q: str = None, pa
 @router.post("/incidents")
 async def create_incident(request: Request, user: dict = Depends(get_current_user)):
     # P9.8: Any authenticated user (teacher, admin, owner) may log incidents.
-    # AD7 shared write path — same service as the AI `create_incident` tool.
+    # AD7 shared write path - same service as the AI `create_incident` tool.
     db = get_db()
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user)
@@ -567,7 +605,7 @@ async def get_incident(incident_id: str, request: Request, user: dict = Depends(
 
 @router.post("/incidents/{incident_id}/thread")
 async def add_incident_thread(incident_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
-    # Story C.2: delegate to services.incident_service — the SAME write path as the AI
+    # Story C.2: delegate to services.incident_service - the SAME write path as the AI
     # `add_thread_entry` tool (push entry + canonical 'add_thread_entry' audit).
     db = get_db()
     body = await request.json()
@@ -587,7 +625,7 @@ async def add_incident_thread(incident_id: str, request: Request, user: dict = D
 
 @router.patch("/incidents/{incident_id}/assign")
 async def assign_incident(incident_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
-    # Story C.2: delegate to services.incident_service — the SAME write path as the AI
+    # Story C.2: delegate to services.incident_service - the SAME write path as the AI
     # `assign_followup` tool (assignment fields + optional note + audit + assignee notify).
     db = get_db()
     body = await request.json()
@@ -614,7 +652,7 @@ async def assign_incident(incident_id: str, request: Request, user: dict = Depen
 async def update_incident(incident_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
     """P9.8: Principal/owner can update status and add resolution note.
 
-    Story C.3: delegate to services.incident_service.update_incident_status — the SAME
+    Story C.3: delegate to services.incident_service.update_incident_status - the SAME
     write path as the AI `update_incident_status` tool (status transition + audit)."""
     db = get_db()
     body = await request.json()
@@ -639,7 +677,7 @@ async def update_incident(incident_id: str, request: Request, user: dict = Depen
 async def delete_incident(incident_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
     """Delete an incident logged in error. Refused once it has been resolved.
 
-    Owner instruction 2026-08-07 — parity reference for the AI `delete_incident` tool,
+    Owner instruction 2026-08-07 - parity reference for the AI `delete_incident` tool,
     which calls the same service.
     """
     db = get_db()
@@ -668,7 +706,7 @@ async def list_visitors(request: Request, user: dict = Depends(require_role("own
 
 @router.post("/visitors")
 async def log_visitor(request: Request, user: dict = Depends(require_role("owner", "admin"))):
-    # AD7 shared write path — same service as the AI `log_visitor` tool.
+    # AD7 shared write path - same service as the AI `log_visitor` tool.
     _require_frontdesk(user)
     db = get_db()
     body = await request.json()
@@ -691,7 +729,7 @@ async def log_visitor(request: Request, user: dict = Depends(require_role("owner
 
 @router.patch("/visitors/{visitor_id}/checkout")
 async def checkout_visitor(visitor_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
-    # AD7 shared write path — same service as the AI `checkout_visitor` tool.
+    # AD7 shared write path - same service as the AI `checkout_visitor` tool.
     _require_frontdesk(user)
     db = get_db()
     actor_ctx = actor_ctx_from_user(user)
@@ -726,7 +764,7 @@ async def list_assets(request: Request, user: dict = Depends(require_role("owner
 
 @router.post("/assets")
 async def create_asset(request: Request, user: dict = Depends(require_role("admin", "owner"))):
-    # AD7 shared write path — same service as the AI `create_asset` tool.
+    # AD7 shared write path - same service as the AI `create_asset` tool.
     db = get_db()
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user)
@@ -739,7 +777,7 @@ async def create_asset(request: Request, user: dict = Depends(require_role("admi
 
 @router.patch("/assets/{asset_id}")
 async def update_asset(asset_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
-    # AD7 shared write path — same service as the AI `update_asset` tool.
+    # AD7 shared write path - same service as the AI `update_asset` tool.
     db = get_db()
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user)
@@ -779,7 +817,7 @@ async def list_transport(request: Request, user: dict = Depends(require_role("ow
 @router.post("/transport")
 @transport_router.post("")
 async def create_route(request: Request, user: dict = Depends(require_role("admin", "owner"))):
-    # AD7 shared write path — same service as the AI `create_transport_route` tool.
+    # AD7 shared write path - same service as the AI `create_transport_route` tool.
     db = get_db()
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user)
@@ -810,7 +848,7 @@ async def get_transport_roster(request: Request, zone_id: str = None, user: dict
 @router.post("/transport/vehicles")
 @transport_router.post("/vehicles")
 async def create_vehicle(request: Request, user: dict = Depends(require_role("admin", "owner"))):
-    # AD7 shared write path — same service as the AI `add_transport_vehicle` tool.
+    # AD7 shared write path - same service as the AI `add_transport_vehicle` tool.
     db = get_db()
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user)
@@ -849,7 +887,7 @@ async def create_zone(request: Request, user: dict = Depends(require_role("admin
 @router.patch("/transport/{route_id}")
 @transport_router.patch("/{route_id}")
 async def update_route(route_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
-    # AD7 shared write path — same service as the AI `update_transport_route` tool.
+    # AD7 shared write path - same service as the AI `update_transport_route` tool.
     db = get_db()
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user)
@@ -865,7 +903,7 @@ async def update_route(route_id: str, request: Request, user: dict = Depends(req
 @router.delete("/transport/{route_id}")
 @transport_router.delete("/{route_id}")
 async def delete_route(route_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
-    # AD7 shared write path — same service as the AI `delete_transport_route` tool.
+    # AD7 shared write path - same service as the AI `delete_transport_route` tool.
     # Now blocked while active students are assigned (K-review safety rule).
     db = get_db()
     actor_ctx = actor_ctx_from_user(user)
@@ -902,7 +940,7 @@ async def set_student_coordinates(
     request: Request,
     user: dict = Depends(require_role("owner", "admin")),
 ):
-    """Store backend-only lat/lng on a student — never returned in list responses."""
+    """Store backend-only lat/lng on a student - never returned in list responses."""
     db = get_db()
     bid = user.get("branch_id")
     body = await request.json()
@@ -1088,7 +1126,7 @@ async def save_study_plan(request: Request, user: dict = Depends(get_current_use
     body = await request.json()
     from datetime import datetime as dt
     await db.study_plans.update_one(
-        scoped_filter({"user_id": user["id"]}, get_school_id()),  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+        scoped_filter({"user_id": user["id"]}, get_school_id()),  # branch-scope: intentional - scoped to one named person's own record, not to a branch
         {"$set": {**body, "user_id": user["id"], "updated_at": dt.now().isoformat()}},
         upsert=True
     )
@@ -1097,7 +1135,7 @@ async def save_study_plan(request: Request, user: dict = Depends(get_current_use
 
 @router.patch("/expenses/{expense_id}")
 async def update_expense(expense_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
-    # AD7 shared write path — same service as the AI `update_expense` tool.
+    # AD7 shared write path - same service as the AI `update_expense` tool.
     _require_accounting(user)
     db = get_db()
     body = await request.json()
@@ -1113,7 +1151,7 @@ async def update_expense(expense_id: str, request: Request, user: dict = Depends
 
 @router.delete("/expenses/{expense_id}")
 async def delete_expense(expense_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
-    # AD7 shared write path — same service as the AI `delete_expense` tool.
+    # AD7 shared write path - same service as the AI `delete_expense` tool.
     _require_accounting(user)
     db = get_db()
     actor_ctx = actor_ctx_from_user(user)
@@ -1128,7 +1166,7 @@ async def delete_expense(expense_id: str, request: Request, user: dict = Depends
 
 @router.delete("/assets/{asset_id}")
 async def delete_asset(asset_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
-    # AD7 shared write path — same service as the AI `delete_asset` tool.
+    # AD7 shared write path - same service as the AI `delete_asset` tool.
     db = get_db()
     actor_ctx = actor_ctx_from_user(user)
     try:
@@ -1142,7 +1180,7 @@ async def delete_asset(asset_id: str, request: Request, user: dict = Depends(req
 
 @router.delete("/announcements/{ann_id}")
 async def delete_announcement(ann_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
-    # AD7 shared write path — same service as the AI `delete_announcement` tool.
+    # AD7 shared write path - same service as the AI `delete_announcement` tool.
     db = get_db()
     actor_ctx = actor_ctx_from_user(user)
     try:
@@ -1156,7 +1194,7 @@ async def delete_announcement(ann_id: str, request: Request, user: dict = Depend
 
 @router.delete("/visitors/{visitor_id}")
 async def delete_visitor(visitor_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
-    # AD7 shared write path — same service as the AI `delete_visitor` tool.
+    # AD7 shared write path - same service as the AI `delete_visitor` tool.
     _require_frontdesk(user)
     db = get_db()
     actor_ctx = actor_ctx_from_user(user)
@@ -1203,7 +1241,7 @@ async def list_announcements(request: Request, page: int = 1, limit: int = 20, u
             "is_draft": {"$ne": True},
             "$and": [audience_clause, status_clause],
         }
-    query = scoped_filter(query, get_school_id())  # branch-scope: intentional — announcements are published to the whole school; audience is decided by the audience_clause above, not by branch
+    query = scoped_filter(query, get_school_id())  # branch-scope: intentional - announcements are published to the whole school; audience is decided by the audience_clause above, not by branch
     total = await db.announcements.count_documents(query)
     announcements = await db.announcements.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     return {"success": True, "data": announcements, "meta": {"page": page, "limit": limit, "total": total}}
@@ -1217,7 +1255,7 @@ async def create_announcement(request: Request, user: dict = Depends(require_rol
     audience_type = body.get("audience_type") or ("role" if has_explicit_roles else "all")
     target_roles = _announcement_target_roles(body, audience_type)
 
-    # Moderation gate centralized in services.announcement_service (Story A.4) — the
+    # Moderation gate centralized in services.announcement_service (Story A.4) - the
     # same decision the AI create_announcement tool uses. EC-9.1 (owner/principal
     # broadcast directly) + Story 7-47 (teacher/student/all/class held for approval).
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
@@ -1266,7 +1304,7 @@ _DEFAULT_COMPLAINT_DEPARTMENT = "principal"
 
 
 def _mask_phone(phone: str | None) -> str | None:
-    """Mask all but the last 4 digits (DPDP — only the owner sees full numbers)."""
+    """Mask all but the last 4 digits (DPDP - only the owner sees full numbers)."""
     if not phone:
         return phone
     if len(phone) <= 4:
@@ -1276,7 +1314,7 @@ def _mask_phone(phone: str | None) -> str | None:
 
 @router.post("/complaints")
 async def create_complaint(request: Request, user: dict = Depends(require_role("admin", "owner"))):
-    """Front-desk complaint intake — routes by category, captures on-behalf-of caller."""
+    """Front-desk complaint intake - routes by category, captures on-behalf-of caller."""
     db = get_db()
     body = await request.json()
     category = (body.get("category") or "general").strip().lower()
@@ -1302,8 +1340,8 @@ async def create_complaint(request: Request, user: dict = Depends(require_role("
 async def list_complaints(request: Request, user: dict = Depends(require_role("admin", "owner"))):
     """List complaints; masks caller phone numbers for everyone except the owner (DPDP)."""
     db = get_db()
-    # branch-scope: intentional — complaints are triaged school-wide by the front desk
-    rows = await db.complaints.find(scoped_filter({}, get_school_id()), {"_id": 0}).to_list(500)  # branch-scope: intentional — see the note directly above this line
+    # branch-scope: intentional - complaints are triaged school-wide by the front desk
+    rows = await db.complaints.find(scoped_filter({}, get_school_id()), {"_id": 0}).to_list(500)  # branch-scope: intentional - see the note directly above this line
     if user.get("role") != "owner":
         for row in rows:
             if row.get("on_behalf_of_phone"):
@@ -1316,7 +1354,7 @@ async def list_pending_announcements(request: Request, user: dict = Depends(requ
     """Story 7-47: principal-only list of announcements awaiting approval."""
     db = get_db()
     rows = (
-        await db.announcements.find(scoped_filter({"status": "pending_approval"}, get_school_id()), {"_id": 0})  # branch-scope: intentional — the principal's approval queue covers every announcement awaiting approval in the school
+        await db.announcements.find(scoped_filter({"status": "pending_approval"}, get_school_id()), {"_id": 0})  # branch-scope: intentional - the principal's approval queue covers every announcement awaiting approval in the school
         .sort("created_at", -1)
         .to_list(200)
     )
@@ -1325,7 +1363,7 @@ async def list_pending_announcements(request: Request, user: dict = Depends(requ
 
 @router.patch("/announcements/{ann_id}/approve")
 async def approve_announcement(ann_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
-    """Story 7-47 — AD7 shared write path, same service as the AI `decide_announcement` tool."""
+    """Story 7-47 - AD7 shared write path, same service as the AI `decide_announcement` tool."""
     db = get_db()
     actor_ctx = actor_ctx_from_user(user)
     try:
@@ -1341,7 +1379,7 @@ async def approve_announcement(ann_id: str, request: Request, user: dict = Depen
 
 @router.patch("/announcements/{ann_id}/reject")
 async def reject_announcement(ann_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
-    """Story 7-47 — AD7 shared write path, same service as the AI `decide_announcement` tool."""
+    """Story 7-47 - AD7 shared write path, same service as the AI `decide_announcement` tool."""
     db = get_db()
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user)
@@ -1372,7 +1410,7 @@ async def list_enquiries(request: Request, status: str = None, user: dict = Depe
 
 @router.post("/enquiries")
 async def create_enquiry(request: Request, user: dict = Depends(require_role("owner", "admin"))):
-    # AD7 shared write path — same service as the AI `create_enquiry` tool.
+    # AD7 shared write path - same service as the AI `create_enquiry` tool.
     db = get_db()
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user)
@@ -1385,7 +1423,7 @@ async def create_enquiry(request: Request, user: dict = Depends(require_role("ow
 
 @router.patch("/enquiries/{enquiry_id}")
 async def update_enquiry(enquiry_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
-    # AD7 shared write path — same service as the AI `update_enquiry_status` tool.
+    # AD7 shared write path - same service as the AI `update_enquiry_status` tool.
     db = get_db()
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user)
@@ -1422,7 +1460,7 @@ async def list_overdue_visitors(request: Request, stale_hours: int = None, hours
 async def apply_leave(request: Request, user: dict = Depends(get_current_user)):
     db = get_db()
     body = await request.json()
-    staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()))  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+    staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()))  # branch-scope: intentional - scoped to one named person's own record, not to a branch
     if not staff:
         # Create a minimal staff record for this teacher if not found
         from datetime import datetime as dt
@@ -1456,7 +1494,7 @@ async def apply_leave(request: Request, user: dict = Depends(get_current_user)):
 @router.get("/study-plan")
 async def get_study_plan(request: Request, user: dict = Depends(get_current_user)):
     db = get_db()
-    plan = await db.study_plans.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+    plan = await db.study_plans.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})  # branch-scope: intentional - scoped to one named person's own record, not to a branch
     if not plan:
         return {"success": True, "data": {"monday": "", "tuesday": "", "wednesday": "", "thursday": "", "friday": "", "saturday": ""}}
     return {"success": True, "data": plan}

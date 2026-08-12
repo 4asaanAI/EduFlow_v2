@@ -242,7 +242,7 @@ export default function SettingsModal({ onClose }) {
           )}
           {schoolInfo.phone && <Row label="Phone" control={<span style={{ fontSize: 12, color: muted, fontWeight: 500 }}>{schoolInfo.phone}</span>} styles={styles} />}
           {schoolInfo.email && <Row label="Email" control={<span style={{ fontSize: 12, color: muted, fontWeight: 500 }}>{schoolInfo.email}</span>} styles={styles} />}
-          <Row label="Academic Year" control={<span style={{ fontSize: 12, color: muted, fontWeight: 500 }}>{schoolInfo.academicYear || '—'}</span>} noBorder styles={styles} />
+          <Row label="Academic Year" control={<span style={{ fontSize: 12, color: muted, fontWeight: 500 }}>{schoolInfo.academicYear || '-'}</span>} noBorder styles={styles} />
         </Section>
 
         {saved && (

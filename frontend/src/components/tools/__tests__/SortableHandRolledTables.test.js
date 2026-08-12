@@ -1,5 +1,5 @@
 /**
- * D-24 — the tables that could not move onto `DataTable` still sort, and sort the same way.
+ * D-24 - the tables that could not move onto `DataTable` still sort, and sort the same way.
  *
  * The owner asked on 2026-07-22 for column sorting on EVERY table. Most screens got it by
  * moving onto the shared `DataTable`. A handful genuinely could not: a certificate row can
@@ -7,7 +7,7 @@
  * input per subject per student, the fee tables carry their own mobile styling. Those keep
  * their own markup and take their sorting from `useColumnSort` + `SortableHeaderRow`.
  *
- * The risk that makes this test worth having is NOT "sorting is missing" — that is visible.
+ * The risk that makes this test worth having is NOT "sorting is missing" - that is visible.
  * It is that the second implementation drifts: no `aria-sort`, a `<div>` instead of a
  * `<button>`, a comparator that puts "₹9,000" above "₹1,20,000". Those are invisible until
  * someone using a keyboard or a screen reader hits them.
@@ -23,7 +23,7 @@ function Harness({ rows }) {
   const accessors = React.useMemo(() => [
     (r) => r.name,
     (r) => r.amount,
-    null, // an actions column — must NOT offer sorting
+    null, // an actions column - must NOT offer sorting
   ], []);
   const sort = useColumnSort(rows, accessors);
   return (
@@ -39,7 +39,7 @@ function Harness({ rows }) {
       </thead>
       <tbody>
         {sort.items.map((r) => (
-          <tr key={r.name}><td>{r.name}</td><td>{r.amount}</td><td>—</td></tr>
+          <tr key={r.name}><td>{r.name}</td><td>{r.amount}</td><td>-</td></tr>
         ))}
       </tbody>
     </table>

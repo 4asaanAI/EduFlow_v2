@@ -71,7 +71,7 @@ export default function SchoolSettings() {
         setAcademicYear(ayRes.data.name || ayRes.data.year || '');
       }
     } catch {
-      setError('Network error — please try again');
+      setError('Network error - please try again');
     } finally {
       setLoading(false);
     }
@@ -124,7 +124,7 @@ export default function SchoolSettings() {
         setError(res.detail || 'Failed to save settings');
       }
     } catch {
-      setError('Network error — please try again');
+      setError('Network error - please try again');
     } finally {
       setSaving(false);
     }
@@ -135,14 +135,14 @@ export default function SchoolSettings() {
   );
 
   return (
-    <ToolPage title="School Settings" subtitle="School identity & profile — visible to all roles" onRefresh={load} loading={loading} actions={actions}>
+    <ToolPage title="School Settings" subtitle="School identity & profile - visible to all roles" onRefresh={load} loading={loading} actions={actions}>
       {error && <ErrorCard message={error} onRetry={load} />}
       {saved && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', marginBottom: 16,
           background: 'color-mix(in srgb, var(--color-success, #22c55e) 10%, transparent)',
           border: '1px solid color-mix(in srgb, var(--color-success, #22c55e) 35%, transparent)',
           borderRadius: 10, color: 'var(--color-success, #22c55e)', fontSize: 13, fontWeight: 600 }}>
-          <CheckCircle size={15} /> Settings saved — changes are live across the platform.
+          <CheckCircle size={15} /> Settings saved - changes are live across the platform.
         </div>
       )}
 
@@ -178,7 +178,7 @@ export default function SchoolSettings() {
             <FormField label="Attendance Threshold (%)" type="number" value={form.attendance_threshold} onChange={set('attendance_threshold')} placeholder="75" />
           </Section>
 
-          <Section title="What EduFlow Knows About Your School">
+          <Section title="What Flo Knows About Your School">
             <FormField label="Grading System" value={ai.grading_system} onChange={setAiField('grading_system')} placeholder="CGPA (10 point scale)" />
             <FormField label="Fee Structure" value={ai.fee_structure} onChange={setAiField('fee_structure')} placeholder="Monthly tuition + quarterly exam fee" />
             <FormField label="Class Naming" value={ai.class_naming} onChange={setAiField('class_naming')} placeholder="Class 9, 10, 11, 12" />
@@ -187,7 +187,7 @@ export default function SchoolSettings() {
         </>
       )}
 
-      {/* Academic Year — separate save, always visible */}
+      {/* Academic Year - separate save, always visible */}
       <div style={{
         background: 'var(--color-surface)', border: '1px solid var(--color-border)',
         borderRadius: 14, padding: '18px 20px', marginBottom: 16,
@@ -213,7 +213,7 @@ export default function SchoolSettings() {
         </div>
         {ayError && <div style={{ fontSize: 12, color: '#f87171', marginTop: 6 }}>{ayError}</div>}
         <div style={{ fontSize: 11, color: 'var(--color-text-secondary, #888)', marginTop: 8 }}>
-          Updates everywhere — header bar, profile, and settings About section.
+          Updates everywhere - header bar, profile, and settings About section.
         </div>
       </div>
     </ToolPage>

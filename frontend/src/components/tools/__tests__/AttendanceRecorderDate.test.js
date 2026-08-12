@@ -2,14 +2,14 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AttendanceRecorder } from '../AdminTools';
 
 /**
- * Inspection Remediation BLOCK 3 — regression guard for the defect found while
+ * Inspection Remediation BLOCK 3 - regression guard for the defect found while
  * clearing the hook-dependency warnings (T11 / NEW-09).
  *
  * The Attendance Recorder asked the server for the register with `currentUser` in
  * the slot where the date belongs, so every request carried `?date=[object Object]`.
  * The server found no rows for that literal string, so the screen showed every child
- * as "not marked" whatever had actually been recorded — on today's date as much as
- * any other — and picking a different date changed nothing.
+ * as "not marked" whatever had actually been recorded - on today's date as much as
+ * any other - and picking a different date changed nothing.
  *
  * These two tests fail on the old call and pass on the fixed one.
  */

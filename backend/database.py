@@ -61,7 +61,7 @@ class ScopedCollection:
     # AI Layer Hardening D.2: every op forwards arbitrary *args/**kwargs (notably
     # `session=`) through to the underlying Motor collection AFTER injecting the
     # tenant filter/`schoolId`. So a write performed inside the plan executor's
-    # transaction still gets `schoolId` scoping — there is no tenant-leaking
+    # transaction still gets `schoolId` scoping - there is no tenant-leaking
     # "raw" write path inside a txn (the executor never uses get_raw_db()).
     def __init__(self, collection, school_id: str):
         self._collection = collection
@@ -135,7 +135,7 @@ class ScopedCollection:
 
     def bulk_write(self, requests, *args, **kwargs):
         raise NotImplementedError(
-            "ScopedCollection.bulk_write is not supported — use insert_many / update_many / "
+            "ScopedCollection.bulk_write is not supported - use insert_many / update_many / "
             "delete_many to keep schoolId scoping. If bulk_write is truly needed, use get_raw_db() "
             "and inject schoolId into every request manually."
         )
@@ -217,19 +217,19 @@ class TransactionUnavailableError(RuntimeError):
     Rather than silently falling back to a non-transactional `_NoopSession`
     (which loses atomicity, idempotency rollback, and honest dry-run), the
     executor refuses to run confirmed writes. The confirm endpoint maps this to a
-    visible 503 — nothing is applied and the user can retry."""
+    visible 503 - nothing is applied and the user can retry."""
 
 
 class _NoopTransaction:
     """No-op async-context transaction for environments without a replica set
-    (FakeDb test tier, single-node dev Mongo). Asserts nothing about atomicity —
+    (FakeDb test tier, single-node dev Mongo). Asserts nothing about atomicity -
     real all-or-nothing is verified only on the @pytest.mark.mongo_real tier."""
 
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        # Never swallow the exception — the executor relies on it propagating so it
+        # Never swallow the exception - the executor relies on it propagating so it
         # can run saga compensation / report failure exactly as with a real abort.
         return False
 
@@ -266,15 +266,15 @@ class _NoopSession:
 async def get_txn_session():
     """Return a client session for a multi-document transaction (AD4 / Story D.2).
 
-    On a real replica set this is ``_client.start_session()`` — a genuine session
+    On a real replica set this is ``_client.start_session()`` - a genuine session
     whose `session=` is forwarded through `ScopedCollection` so tenant scoping is
     preserved inside the transaction. When no replica-set client is configured
     (FakeDb test tier / single-node dev), returns a `_NoopSession` so the executor
     has ONE code path and never branches on environment. Never use `get_raw_db()`
-    inside a transaction — that would bypass `schoolId` injection.
+    inside a transaction - that would bypass `schoolId` injection.
     """
     if _client is None:
-        # No Mongo client at all — the FakeDb test tier / single-node dev with no
+        # No Mongo client at all - the FakeDb test tier / single-node dev with no
         # configured client. This is never the case in staging/production (connect_db
         # always sets `_client`), so a no-op session here is the legitimate test path.
         return _NoopSession()
@@ -338,7 +338,7 @@ async def _create_indexes():
     await db.platform_message_presence.create_index(
         [("schoolId", 1), ("branch_id", 1), ("user_id", 1)], unique=True
     )
-    # R11.5: conversation trace viewer — per-turn diagnostic rows keyed by conversation
+    # R11.5: conversation trace viewer - per-turn diagnostic rows keyed by conversation
     await db.ai_turn_traces.create_index([("conversation_id", 1), ("created_at", 1)])
     await db.assignments.create_index("class_id")
     # R15.5 (P-L8): unique (schoolId, name) backs the idempotent house seed so a
@@ -377,7 +377,7 @@ async def _create_indexes():
     await db.idempotency_keys.create_index("expires_at", expireAfterSeconds=0)
     # AI Layer Hardening D.4 (AD6): per-step idempotency for confirmed AI plan
     # execution. Key = f"{plan_token}:{step_idx}". The UNIQUE index is what makes
-    # two concurrent confirms of the same plan produce exactly one effect — the
+    # two concurrent confirms of the same plan produce exactly one effect - the
     # loser's in-transaction claim insert hits DuplicateKey and aborts.
     await db.ai_write_idempotency.create_index("idempotency_key", unique=True)
     # Epic G (AI self-learning): per-owner memory + skills indexes. Scoped by
@@ -387,13 +387,13 @@ async def _create_indexes():
     await db.ai_memories.create_index([("schoolId", 1), ("student_refs", 1)])
     try:
         # Retention (G.7): a Date `expire_at` field set RETENTION_DAYS ahead is the
-        # TTL anchor (TTL needs a real BSON Date — our other timestamps are ISO
+        # TTL anchor (TTL needs a real BSON Date - our other timestamps are ISO
         # strings). expireAfterSeconds=0 → Mongo deletes once `expire_at` passes.
         await db.ai_memories.create_index("expire_at", expireAfterSeconds=0)
     except Exception:
         logger.warning("ai_memories TTL index creation failed", exc_info=True)
     await db.ai_skills.create_index([("schoolId", 1), ("user_id", 1), ("updated_at_ts", -1)])
-    # R10.2: AI feedback (Helpful/Improve) — per-user history + pending-correction lookups.
+    # R10.2: AI feedback (Helpful/Improve) - per-user history + pending-correction lookups.
     await db.ai_feedback.create_index([("schoolId", 1), ("user_id", 1), ("created_at", -1)])
     await db.ai_feedback.create_index([("schoolId", 1), ("status", 1)])
     await db.notifications.create_index(
@@ -416,19 +416,19 @@ async def _create_indexes():
     await db.sms_logs.create_index("created_at", expireAfterSeconds=7776000)
     # D-36: the notifications (user_id, read, created_at) index used to be declared a
     # second time here, identically to line ~371. Mongo treated the repeat as a no-op,
-    # so the cost was only confusion — a reader could not tell whether two different
+    # so the cost was only confusion - a reader could not tell whether two different
     # indexes were intended. Removed; the single declaration above is the live one.
     # NOTE: removing a line from this function does NOT drop anything from a database
     # that already has it. Nothing was ever created twice, so nothing needs dropping
     # and no migration is required.
-    # Part 10: Payroll disbursement unique index (EC-10.4 — prevents concurrent double-disbursement)
+    # Part 10: Payroll disbursement unique index (EC-10.4 - prevents concurrent double-disbursement)
     try:
         await db.salary_disbursements.create_index(
             [("schoolId", 1), ("staff_id", 1), ("month", 1)], unique=True
         )
     except Exception:
         pass  # Index may already exist
-    # Part 13: Branch code unique index — prevents concurrent branch creation race condition (EC-13.2)
+    # Part 13: Branch code unique index - prevents concurrent branch creation race condition (EC-13.2)
     try:
         await db.branches.create_index(
             [("schoolId", 1), ("branch_code", 1)], unique=True
@@ -446,7 +446,7 @@ async def _create_indexes():
         )
     except Exception:
         pass
-    # Story 7-44: School onboarding — unique index on school_id slug
+    # Story 7-44: School onboarding - unique index on school_id slug
     try:
         await db.schools.create_index("school_id", unique=True)
     except Exception:
@@ -509,7 +509,7 @@ async def _create_indexes():
         [("schoolId", 1), ("branch_id", 1), ("entity_id", 1), ("kind", 1), ("year", 1)], unique=True
     )
     await db.crm_activities.create_index([("enquiry_id", 1), ("occurred_at", -1)])
-    # tenant-scope: intentional — `contact_hash` is a SHA-256 of
+    # tenant-scope: intentional - `contact_hash` is a SHA-256 of
     # "{schoolId}:{branch_id}:{kind}:{value}" (see commercial_service._reserve_crm_contacts),
     # so the digest already carries the tenant and two schools sharing a parent's phone
     # cannot collide. Verified 2026-08-05 (audit A-1); a compound prefix here would be

@@ -1,4 +1,4 @@
-"""R11.1 — deterministic structural eval (runs in the standard CI suite).
+"""R11.1 - deterministic structural eval (runs in the standard CI suite).
 
 This tier needs NO LLM and NO credentials: it proves the golden corpus is
 *coherent with the current system* and that the real prompt builder produces a
@@ -15,7 +15,7 @@ from tests.backend.evals.corpus import (
     load_corpus, advertised_tools, VALID_OUTCOMES, TOOL_USING_OUTCOMES,
 )
 
-# All assertions here are pure/synchronous — no asyncio marker needed.
+# All assertions here are pure/synchronous - no asyncio marker needed.
 
 CORPUS = load_corpus()
 
@@ -80,7 +80,7 @@ def test_expected_tools_are_coherent_with_the_advertised_toolset():
             if not c.expected_tool:
                 problems.append((c.id, "denial should name the tool the user is (wrongly) asking for"))
             elif c.expected_tool in adv:
-                problems.append((c.id, f"denial expected_tool {c.expected_tool!r} IS advertised — not a real denial"))
+                problems.append((c.id, f"denial expected_tool {c.expected_tool!r} IS advertised - not a real denial"))
         else:  # disambiguation | chat
             if c.expected_tool is not None:
                 problems.append((c.id, f"{c.expected_outcome} should not name an expected_tool"))

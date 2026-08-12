@@ -704,7 +704,7 @@ export function MaintenanceSchedule() {
           rows={entries.map(e => [
             <span style={{ color: text, fontSize: 12, fontWeight: 600 }}>{e.title}</span>,
             <span style={{ color: muted, fontSize: 11 }}>{e.scheduled_date}</span>,
-            <span style={{ color: muted, fontSize: 11 }}>{e.assigned_to || '—'}</span>,
+            <span style={{ color: muted, fontSize: 11 }}>{e.assigned_to || '-'}</span>,
             e.overdue ? <Badge label="Overdue" color="var(--tool-hex-f87171)" /> : <span style={{ color: muted, fontSize: 11 }}>On track</span>,
             <select value={e.status} onChange={ev => handleStatusChange(e.id, ev.target.value)}
               className="maintenance-status-select"
@@ -808,9 +808,9 @@ export function VendorLog() {
           headers={['Name', 'Contact', 'Phone', 'GST', 'Rating', 'Action']}
           rows={vendors.map(v => [
             <span style={{ color: text, fontSize: 12, fontWeight: 600 }}>{v.name}</span>,
-            <span style={{ color: muted, fontSize: 11 }}>{v.contact_person || '—'}</span>,
-            <span style={{ color: muted, fontSize: 11 }}>{v.phone || '—'}</span>,
-            <span style={{ color: muted, fontSize: 11 }}>{v.gst_number || '—'}</span>,
+            <span style={{ color: muted, fontSize: 11 }}>{v.contact_person || '-'}</span>,
+            <span style={{ color: muted, fontSize: 11 }}>{v.phone || '-'}</span>,
+            <span style={{ color: muted, fontSize: 11 }}>{v.gst_number || '-'}</span>,
             <span style={{ color: muted, fontSize: 11 }}>{Number(v.rating || 0).toFixed(1)}</span>,
             <ActionBtn label={v.is_active ? 'Deactivate' : 'Activate'} variant="secondary" onClick={() => toggleActive(v)} />,
           ])}
@@ -1051,7 +1051,7 @@ export function AllIssuesView() {
             <Badge label={i.issue_type || i.type} color={i.issue_type === 'facility' ? 'var(--tool-hex-fb923c)' : 'var(--tool-hex-818cf8)'} />,
             <span style={{ color: text, fontSize: 12 }}>{i.description?.slice(0, 60)}{i.description?.length > 60 ? '…' : ''}</span>,
             i.category,
-            i.location || '—',
+            i.location || '-',
             <StatusBadge status={i.status} />,
             i.created_at?.slice(0, 10),
           ])}

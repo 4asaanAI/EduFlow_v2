@@ -1,14 +1,14 @@
-"""Stories C.2 / C.3 — dual-entrypoint parity for the incident/complaint tools.
+"""Stories C.2 / C.3 - dual-entrypoint parity for the incident/complaint tools.
 
 Same seed + same actor (owner) through the REST route and the AI tool → the resolved
 collection doc + audit row + notification fan-out are byte-identical except a volatile
 allowlist (ids / timestamps).
 
 Covered:
-  C.2  assign  — PATCH /api/ops/incidents/{id}/assign       vs  tool_assign_followup
-  C.2  thread  — POST  /api/ops/incidents/{id}/thread       vs  tool_add_thread_entry
-  C.3  status  — PATCH /api/ops/incidents/{id}              vs  tool_update_incident_status
-  C.3  confirm — POST  /api/issues/facility/{id}/confirm-resolution vs tool_confirm_resolution
+  C.2  assign  - PATCH /api/ops/incidents/{id}/assign       vs  tool_assign_followup
+  C.2  thread  - POST  /api/ops/incidents/{id}/thread       vs  tool_add_thread_entry
+  C.3  status  - PATCH /api/ops/incidents/{id}              vs  tool_update_incident_status
+  C.3  confirm - POST  /api/issues/facility/{id}/confirm-resolution vs tool_confirm_resolution
 """
 
 from __future__ import annotations

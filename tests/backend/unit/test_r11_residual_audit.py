@@ -1,4 +1,4 @@
-"""R11.6 — residual audit sweep, in-run fixes.
+"""R11.6 - residual audit sweep, in-run fixes.
 
 Covers the two small/safe hardenings applied from the sweep:
   * idempotency replay re-asserts schoolId (defence-in-depth against a key-hash
@@ -6,7 +6,7 @@ Covers the two small/safe hardenings applied from the sweep:
   * ai_metrics strips a wider set of PII-synonym keys so a stray `student`/
     `guardian_phone` can never be persisted into a metric row (DPDP).
 The larger findings (rate-limiter ScopedCollection gap, actor_context naive
-clock) are logged as deferred new-story items — they change production behaviour
+clock) are logged as deferred new-story items - they change production behaviour
 and need real-Mongo verification, so they are not fixed here.
 """
 from __future__ import annotations

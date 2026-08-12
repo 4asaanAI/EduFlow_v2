@@ -29,7 +29,7 @@ CURRENT EPIC: {EPIC_ID} — {EPIC_NAME}
 
 STEP 1 — Reload context (read in this order):
 - _bmad-output/EPIC-EXECUTION-PROTOCOL.md   ← this process + the fixed prompt format (follow EXACTLY)
-- AI-LAYER-HARDENING-HANDOFF.md             ← initiative overview
+- _bmad-output/outdated/AI-LAYER-HARDENING-HANDOFF.md             ← initiative overview
 - _bmad-output/planning-artifacts/epics-ai-layer-hardening.md      ← find Epic {EPIC_ID} + its stories
 - _bmad-output/planning-artifacts/architecture-ai-layer-hardening.md  ← ADs + 8 patterns
 - _bmad-output/planning-artifacts/prd-ai-layer-hardening.md        ← FRs/NFRs

@@ -1,4 +1,4 @@
-"""Part 4 Story 4.1: /api/health/ready — school_id_configured field tests."""
+"""Part 4 Story 4.1: /api/health/ready - school_id_configured field tests."""
 
 from __future__ import annotations
 

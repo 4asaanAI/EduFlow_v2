@@ -130,7 +130,7 @@ def test_elision_marker_survives_after_trim():
 
 def test_no_elision_marker_when_nothing_omitted():
     """When all messages fit in the window, omitted=0, so no elision marker is inserted."""
-    # 5 short messages — well under CHAR_BUDGET
+    # 5 short messages - well under CHAR_BUDGET
     messages = [_msg("user" if i % 2 == 0 else "assistant", "Short.") for i in range(5)]
     trimmed = _trim_history(list(messages))
 

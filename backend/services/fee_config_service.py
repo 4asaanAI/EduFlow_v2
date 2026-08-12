@@ -1,4 +1,4 @@
-"""Fee-configuration domain service — the single shared write path for fee
+"""Fee-configuration domain service - the single shared write path for fee
 structures and discount types (AI Layer Hardening, AD7 / Epic K, Story K.1).
 
 Both the REST routes (`POST/PATCH /api/fees/structures`,
@@ -13,7 +13,7 @@ REST behavior exactly (so existing `test_fees*` stay green). The AC additionally
 requires fee-structure create/update to be *audited*; that audit row is added to
 BOTH entrypoints (it flows through the same service), so parity still holds.
 Role/authority gating stays in the route `Depends(...)` and chat `_is_tool_authorized`
-(P2) — never in the service.
+(P2) - never in the service.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ class FeeConfigConflictError(Exception):
 # REST whitelist in routes/fees.py:update_discount_type).
 DISCOUNT_TYPE_UPDATABLE_FIELDS = {"name", "is_active", "reason_note"}
 
-# Keys that must never be overwritten by a caller-supplied update body — guards
+# Keys that must never be overwritten by a caller-supplied update body - guards
 # the fee-structure $set against tenant/identity escape.
 _IMMUTABLE_KEYS = {"_id", "id", "schoolId"}
 
@@ -111,7 +111,7 @@ async def create_fee_structure(db, actor_ctx: ActorContext, params: dict, *, ses
         "version": 1,
         "status": params.get("status", "active"),
         "created_by": actor_ctx.user_id,
-        # REST used datetime.now(timezone.utc).isoformat() — mirror it.
+        # REST used datetime.now(timezone.utc).isoformat() - mirror it.
         "created_at": actor_ctx.now_utc().isoformat(),
     }
     doc = add_school_id(structure, school_id)
@@ -129,7 +129,7 @@ async def create_fee_structure(db, actor_ctx: ActorContext, params: dict, *, ses
 async def update_fee_structure(db, actor_ctx: ActorContext, params: dict, *, session=None) -> dict:
     """Update a fee structure.
 
-    params: ``{structure_id, **fields}`` — any field except immutable identity keys.
+    params: ``{structure_id, **fields}`` - any field except immutable identity keys.
     returns: ``{"structure_id": <id>}``  (REST returned only ``{"success": True}``)
     raises: ``FeeConfigNotFoundError`` when the structure is not in scope.
     """
@@ -245,7 +245,7 @@ async def update_discount_type(db, actor_ctx: ActorContext, params: dict, *, ses
 
 
 async def delete_discount_type(db, actor_ctx: ActorContext, params: dict, *, session=None) -> dict:
-    """Hard-delete a discount type (destructive — routed through F.10 two-step
+    """Hard-delete a discount type (destructive - routed through F.10 two-step
     confirm + actor-tagged deletion audit at the dispatch layer).
 
     params: ``{discount_type_id}``
@@ -277,7 +277,7 @@ async def delete_discount_type(db, actor_ctx: ActorContext, params: dict, *, ses
 async def delete_fee_structure(db, actor_ctx: ActorContext, params: dict, *, session=None) -> dict:
     """Delete a fee structure. Blocked once money has been charged against it.
 
-    Owner instruction 2026-08-07 — Flo could create and edit a fee structure but never
+    Owner instruction 2026-08-07 - Flo could create and edit a fee structure but never
     remove one, so a structure entered by mistake stayed on the list for good.
 
     Once charges exist, the structure is the record of what each family was asked to
@@ -302,7 +302,7 @@ async def delete_fee_structure(db, actor_ctx: ActorContext, params: dict, *, ses
     )
     if charged:
         raise FeeConfigConflictError(
-            f"Cannot delete a fee structure with {charged} charge(s) already raised against it — "
+            f"Cannot delete a fee structure with {charged} charge(s) already raised against it - "
             "set its status to inactive instead"
         )
 

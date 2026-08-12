@@ -8,7 +8,7 @@
 
 ## What is the "Admin" role?
 
-In EduFlow, **Admin** is not a single person — it is a family of six specialist roles. Each admin logs in with the same "Admin" account type, but the platform shows them only the tools that are relevant to their job.
+In EduFlow, **Admin** is not a single person - it is a family of six specialist roles. Each admin logs in with the same "Admin" account type, but the platform shows them only the tools that are relevant to their job.
 
 Think of it like this: a school office has many departments. The accounts person doesn't need to manage bus routes, and the transport head doesn't need to print fee receipts. EduFlow reflects that reality.
 
@@ -28,9 +28,9 @@ The six Admin sub-roles are:
 ## How to Use This Guide
 
 Each section below covers one sub-role. You will find:
-- **What this person does** — a plain-English description of their job
-- **Their tools** — every tool they can see in EduFlow, with a full explanation of what it does
-- **How it connects** — which other sub-roles they interact with
+- **What this person does** - a plain-English description of their job
+- **Their tools** - every tool they can see in EduFlow, with a full explanation of what it does
+- **How it connects** - which other sub-roles they interact with
 
 ---
 
@@ -40,7 +40,7 @@ Each section below covers one sub-role. You will find:
 
 ### Who is the Principal?
 
-The Principal is the most powerful admin. They oversee the entire school — academics, staff, discipline, communication, and facilities. They are the second-in-command after the Owner.
+The Principal is the most powerful admin. They oversee the entire school - academics, staff, discipline, communication, and facilities. They are the second-in-command after the Owner.
 
 ### Tools Available to the Principal
 
@@ -76,7 +76,7 @@ Mark daily attendance for students. Select the class and date, then mark each st
 ---
 
 #### Attendance Overview
-A visual report showing attendance trends over the past 3 months — across the entire school or for a specific class. Charts show overall attendance percentage month by month.
+A visual report showing attendance trends over the past 3 months - across the entire school or for a specific class. Charts show overall attendance percentage month by month.
 
 Use this to spot patterns: Is Class 7 consistently lower? Are Mondays worse than other days? This helps you take action before it becomes a serious problem.
 
@@ -94,9 +94,9 @@ When you update the timetable here, teachers automatically see the change in the
 
 #### Certificates
 Generate official school certificates for students:
-- **Transfer Certificate (TC)** — Issued when a student leaves the school
-- **Bonafide Certificate** — Confirms a student is currently enrolled
-- **Character Certificate** — Official statement of student conduct
+- **Transfer Certificate (TC)** - Issued when a student leaves the school
+- **Bonafide Certificate** - Confirms a student is currently enrolled
+- **Character Certificate** - Official statement of student conduct
 
 Select the student, choose the certificate type, and the system generates a formatted PDF ready for printing or email.
 
@@ -114,7 +114,7 @@ Examples: exam schedule, holiday announcement, fee reminder, event notice.
 ---
 
 #### Parent Messages
-Send a personal message directly to the parent of a specific student. This is different from Circulars — it is one-to-one, not broadcast.
+Send a personal message directly to the parent of a specific student. This is different from Circulars - it is one-to-one, not broadcast.
 
 Use this for: absence follow-up, disciplinary communication, special requests.
 
@@ -168,8 +168,8 @@ After your decision, the staff member is notified automatically.
 
 #### Incidents & Visitors
 A log with two purposes:
-1. **Student incidents** — Record disciplinary events: fights, misconduct, repeated rule violations. Each entry has the student name, date, description, and action taken.
-2. **Visitor entries** — Log who visited the school, when, and for what purpose.
+1. **Student incidents** - Record disciplinary events: fights, misconduct, repeated rule violations. Each entry has the student name, date, description, and action taken.
+2. **Visitor entries** - Log who visited the school, when, and for what purpose.
 
 This provides a paper trail for disciplinary decisions and school security.
 
@@ -181,7 +181,7 @@ The platform watches for exceptions and flags them here automatically. Examples:
 - A student absent for more than 5 consecutive days
 - A fee account with large outstanding dues
 
-You don't need to check reports manually — the system comes to you when something needs attention.
+You don't need to check reports manually - the system comes to you when something needs attention.
 
 ---
 
@@ -197,9 +197,9 @@ View and manage student transport:
 
 #### School Activities
 Track extracurricular life of the school:
-- **House points** — Record points for each school house (academic, sports, cultural)
-- **Sports & competitions** — Log results and achievements
-- **Awards and recognitions** — Record certificates and titles won
+- **House points** - Record points for each school house (academic, sports, cultural)
+- **Sports & competitions** - Log results and achievements
+- **Awards and recognitions** - Record certificates and titles won
 
 This feeds into end-of-year awards and report cards.
 
@@ -228,7 +228,7 @@ Raise a new maintenance request yourself. If you spot a broken chair, a leaking 
 ---
 
 #### Audit Log
-A complete record of every action taken on the platform by every user. Who added a student, who approved a leave, who edited a fee record — everything is recorded with the user name, timestamp, and details.
+A complete record of every action taken on the platform by every user. Who added a student, who approved a leave, who edited a fee record - everything is recorded with the user name, timestamp, and details.
 
 Use this to investigate a dispute, verify an action was taken, or check accountability.
 
@@ -263,9 +263,9 @@ A read-only view of all students, used for looking up which student a payment be
 
 #### Fee Tracker
 The Accountant's main workspace. This tool lets you:
-- **Record a payment** — Select the student, enter the amount, choose the payment mode (cash / online / cheque), and save. A receipt is generated automatically.
-- **View payment history** — See all transactions filtered by class, payment status, or date range.
-- **Class-wise summary** — See how much has been collected vs. how much is outstanding for each class.
+- **Record a payment** - Select the student, enter the amount, choose the payment mode (cash / online / cheque), and save. A receipt is generated automatically.
+- **View payment history** - See all transactions filtered by class, payment status, or date range.
+- **Class-wise summary** - See how much has been collected vs. how much is outstanding for each class.
 
 ---
 
@@ -274,7 +274,7 @@ A list of students who have not paid fees on time. For each defaulter, you can:
 - See the outstanding amount and how overdue it is
 - Send an SMS or WhatsApp reminder to the parent directly from this screen
 
-This saves you from making individual phone calls — the platform handles the reminders.
+This saves you from making individual phone calls - the platform handles the reminders.
 
 ---
 
@@ -287,7 +287,7 @@ Generate and download PDF receipts for any fee transaction. You can:
 ---
 
 #### Form Builder
-Create financial data collection forms — for example, a bank details form for parents who want to switch to online payment.
+Create financial data collection forms - for example, a bank details form for parents who want to switch to online payment.
 
 ---
 
@@ -309,7 +309,7 @@ Submit a support ticket if you encounter a technical issue.
 
 ### Who is the Receptionist?
 
-The Receptionist is the school's front desk. They manage the first impression — handling enquiries, processing admissions, managing visitors, and taking care of paperwork for students joining or leaving.
+The Receptionist is the school's front desk. They manage the first impression - handling enquiries, processing admissions, managing visitors, and taking care of paperwork for students joining or leaving.
 
 ### Tools Available to the Receptionist
 
@@ -338,7 +338,7 @@ This gives a clear picture of how many students are close to joining and which o
 ---
 
 #### Parent Messages
-Send a message to a specific parent — for example, to ask them to bring a document, confirm an admission appointment, or share joining instructions.
+Send a message to a specific parent - for example, to ask them to bring a document, confirm an admission appointment, or share joining instructions.
 
 ---
 
@@ -356,7 +356,7 @@ Generate the official school ID card for a student. Select the student, review t
 ---
 
 #### Asset Tracker
-Keep an inventory of school assets — furniture, equipment, books, uniforms. Log new items, track their condition, and note if something has been issued or returned.
+Keep an inventory of school assets - furniture, equipment, books, uniforms. Log new items, track their condition, and note if something has been issued or returned.
 
 ---
 
@@ -399,7 +399,7 @@ Submit a support ticket if you encounter an issue.
 
 ### Who is the Transport Head?
 
-The Transport Head manages all school transport — buses, routes, and which students travel by school bus. They make sure pickups and drop-offs run smoothly and efficiently.
+The Transport Head manages all school transport - buses, routes, and which students travel by school bus. They make sure pickups and drop-offs run smoothly and efficiently.
 
 ### Tools Available to the Transport Head
 
@@ -412,10 +412,10 @@ View the full student list to identify which students are enrolled in transport 
 
 #### Transport Manager
 The main workspace for managing school transport:
-- **Routes** — Create and name routes (e.g., "Route A – Civil Lines"), set stop sequence, and assign a bus
-- **Buses** — Log each bus with registration number, driver name, and capacity
-- **Student assignments** — Assign each transport student to a route and stop
-- **View roster** — See all students on each route with their pickup points
+- **Routes** - Create and name routes (e.g., "Route A – Civil Lines"), set stop sequence, and assign a bus
+- **Buses** - Log each bus with registration number, driver name, and capacity
+- **Student assignments** - Assign each transport student to a route and stop
+- **View roster** - See all students on each route with their pickup points
 
 ---
 
@@ -438,7 +438,7 @@ Track bus fleet details and equipment:
 ---
 
 #### Form Builder
-Create transport request forms — for example, a form for parents to apply for the school bus service.
+Create transport request forms - for example, a form for parents to apply for the school bus service.
 
 ---
 
@@ -460,14 +460,14 @@ Submit a support ticket if you encounter an issue.
 
 ### Who is the Maintenance team?
 
-The Maintenance sub-role handles school upkeep — plumbing, electrical, cleaning, furniture repairs, and all physical facility work. They receive tasks from the school and manage their completion.
+The Maintenance sub-role handles school upkeep - plumbing, electrical, cleaning, furniture repairs, and all physical facility work. They receive tasks from the school and manage their completion.
 
 ### Tools Available to Maintenance
 
 ---
 
 #### Maintenance Schedule
-A calendar of preventive maintenance tasks — things that need to happen regularly regardless of whether something has broken:
+A calendar of preventive maintenance tasks - things that need to happen regularly regardless of whether something has broken:
 - Monthly fire extinguisher checks
 - Quarterly generator servicing
 - Annual painting and deep cleaning
@@ -503,7 +503,7 @@ Submit a support ticket if you encounter a platform issue.
 
 ### Who is the IT / Tech admin?
 
-The IT admin handles technology support for the school — computers, printers, internet, projectors, and other tech equipment.
+The IT admin handles technology support for the school - computers, printers, internet, projectors, and other tech equipment.
 
 ### Tools Available to IT / Tech
 
@@ -516,7 +516,7 @@ An IT help desk tracker. Anyone in the school can raise a tech support request, 
 - Add notes on what you found and what you did
 - Mark it as resolved once fixed
 
-This creates a history of every tech issue in the school — useful for tracking recurring problems or demonstrating work done.
+This creates a history of every tech issue in the school - useful for tracking recurring problems or demonstrating work done.
 
 ---
 
@@ -526,7 +526,7 @@ Raise a maintenance (non-tech) request. For example, if a server room has a leak
 ---
 
 #### Form Builder
-Create forms for tech-related requests — for example, a "Request a new device" form or a "Report a software issue" form.
+Create forms for tech-related requests - for example, a "Request a new device" form or a "Report a software issue" form.
 
 ---
 
@@ -584,15 +584,15 @@ Some actions require a specific sub-role to approve:
 
 | Information | Accountant | Receptionist | Transport Head | Maintenance | IT / Tech | Principal |
 |-------------|:----------:|:------------:|:--------------:|:-----------:|:---------:|:---------:|
-| Student profiles | View | View | View | — | — | Full |
-| Fee records | Full | — | — | — | — | View (defaulters only) |
-| Attendance | — | — | — | — | — | Full |
-| Staff records | — | — | — | — | — | View |
-| Leave approvals | — | — | — | — | — | Full |
-| Maintenance queue | — | Raise only | — | Full | Raise only | Full |
-| Transport routes | — | — | Full | — | — | View |
-| Audit log | — | — | — | — | — | Full |
-| Visitor log | — | Full | — | — | — | View |
+| Student profiles | View | View | View | - | - | Full |
+| Fee records | Full | - | - | - | - | View (defaulters only) |
+| Attendance | - | - | - | - | - | Full |
+| Staff records | - | - | - | - | - | View |
+| Leave approvals | - | - | - | - | - | Full |
+| Maintenance queue | - | Raise only | - | Full | Raise only | Full |
+| Transport routes | - | - | Full | - | - | View |
+| Audit log | - | - | - | - | - | Full |
+| Visitor log | - | Full | - | - | - | View |
 
 ---
 
@@ -641,7 +641,7 @@ Some actions require a specific sub-role to approve:
 
 ## Tips for New Admins
 
-**You will only see tools relevant to your sub-role.** Don't worry if you see fewer menu items than someone else — that's by design.
+**You will only see tools relevant to your sub-role.** Don't worry if you see fewer menu items than someone else - that's by design.
 
 **The AI Chat is your shortcut.** Instead of navigating to a tool, you can type naturally in the chat panel:
 - "How many students are absent today?" (Principal)
@@ -651,7 +651,7 @@ Some actions require a specific sub-role to approve:
 
 The AI will ask for confirmation before making any changes, so you won't accidentally record something wrong.
 
-**Everything is logged.** Every action you take is recorded in the Audit Log. If you make a mistake, contact the Principal or Owner — they can look up exactly what happened and arrange a correction.
+**Everything is logged.** Every action you take is recorded in the Audit Log. If you make a mistake, contact the Principal or Owner - they can look up exactly what happened and arrange a correction.
 
 **You cannot see data from other schools.** EduFlow is used by multiple schools, but your account is locked to your school's data only.
 

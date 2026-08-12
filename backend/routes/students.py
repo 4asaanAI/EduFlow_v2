@@ -24,6 +24,7 @@ from services.student_service import (
     ClassValidationError,
     StudentConflictError,
     StudentNotFoundError,
+    StudentAuthorizationError,
     StudentValidationError,
 )
 from services.s3_storage import (
@@ -50,7 +51,7 @@ READ_ROLES = {"owner", "admin", "teacher"}
 # never select a field the caller was not offered.
 #
 # Every key here must correspond to a column the shared DataTable presents as
-# sortable, and vice versa — a heading that offers to sort and then does
+# sortable, and vice versa - a heading that offers to sort and then does
 # nothing is worse than one that does not offer.
 SORT_FIELDS = {
     "created_at": ("created_at", -1),
@@ -58,12 +59,12 @@ SORT_FIELDS = {
     "admission_number": ("admission_number", 1),
     "dob": ("dob", 1),
     "gender": ("gender", 1),
-    # "class" is handled separately — see _class_ordered_page(). It cannot be a
+    # "class" is handled separately - see _class_ordered_page(). It cannot be a
     # plain field sort because class_id is a random UUID.
     "class": ("class_id", 1),
 }
 # NOTE: the student updatable-field whitelist now lives ONLY in
-# services/student_service.py (UPDATABLE_FIELDS) — the single shared write path.
+# services/student_service.py (UPDATABLE_FIELDS) - the single shared write path.
 # Do not reintroduce a route-local copy (it would silently drift from the service).
 
 GUARDIAN_UPDATABLE_FIELDS = {
@@ -97,7 +98,7 @@ def _serialize(model) -> dict:
 
 
 def _student_query(extra: dict | None = None) -> dict:
-    return scoped_filter(extra or {}, get_school_id())  # branch-scope: intentional — this file's school-scope helper; it scopes to the school only, and callers pass branch_id through scoped_query where a query is branch-sensitive
+    return scoped_filter(extra or {}, get_school_id())  # branch-scope: intentional - this file's school-scope helper; it scopes to the school only, and callers pass branch_id through scoped_query where a query is branch-sensitive
 
 
 def _role_can_manage(user: dict) -> bool:
@@ -105,14 +106,14 @@ def _role_can_manage(user: dict) -> bool:
 
 
 async def _add_class_and_guardians(db, student: dict, include_guardians: bool = False) -> dict:
-    cls = await db.classes.find_one(scoped_filter({"id": student.get("class_id")}, get_school_id()), {"_id": 0})  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+    cls = await db.classes.find_one(scoped_filter({"id": student.get("class_id")}, get_school_id()), {"_id": 0})  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     student["class_info"] = cls
     if include_guardians:
         guardians = await db.guardians.find(
-            scoped_filter({"student_id": student["id"]}, get_school_id()),  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+            scoped_filter({"student_id": student["id"]}, get_school_id()),  # branch-scope: intentional - scoped to one named person's own record, not to a branch
             {"_id": 0},
         ).to_list(10)
-        # A guardian's photograph is served the same way as everyone else's — signed,
+        # A guardian's photograph is served the same way as everyone else's - signed,
         # from our own bucket. Guardian rows carry no S3 key of their own, but the copy
         # of the same image on the child's record does, so the parent fields are
         # resolved on the student below and the guardian falls back to no photo rather
@@ -148,7 +149,7 @@ def classify_gender(value) -> str:
     """Which strength bucket a stored `gender` belongs in.
 
     The single definition of the rule the Mongo aggregation below implements. It is
-    a plain function so the rule can be tested exhaustively — the in-memory test
+    a plain function so the rule can be tested exhaustively - the in-memory test
     double cannot evaluate `$cond`/`$toLower`/`$trim`, so a test asserting the
     aggregation's numbers through the fake would be measuring the fake, not this.
 
@@ -168,14 +169,14 @@ def classify_gender(value) -> str:
 
 @router.get("/strength")
 async def class_strength_stats(request: Request):
-    """Aggregated gender-count stats per class — used by the Class Strength tab."""
+    """Aggregated gender-count stats per class - used by the Class Strength tab."""
     db = get_db()
     user = get_user(request)
     if user["role"] not in READ_ROLES:
         raise HTTPException(403, "Forbidden")
     school_id = get_school_id()
     pipeline = [
-        {"$match": scoped_filter({"is_active": True}, school_id)},  # branch-scope: intentional — Class Strength is a whole-school roll-up; it is grouped by class below, and a class belongs to exactly one branch
+        {"$match": scoped_filter({"is_active": True}, school_id)},  # branch-scope: intentional - Class Strength is a whole-school roll-up; it is grouped by class below, and a class belongs to exactly one branch
         {"$lookup": {"from": "classes", "localField": "class_id", "foreignField": "id", "as": "_cls"}},
         {"$unwind": {"path": "$_cls", "preserveNullAndEmptyArrays": True}},
         {"$group": {
@@ -185,7 +186,7 @@ async def class_strength_stats(request: Request):
             "boys": {"$sum": {"$cond": [{"$in": [{"$toLower": {"$ifNull": ["$gender", ""]}}, ["male", "boy", "m"]]}, 1, 0]}},
             "girls": {"$sum": {"$cond": [{"$in": [{"$toLower": {"$ifNull": ["$gender", ""]}}, ["female", "girl", "f"]]}, 1, 0]}},
             # UI Sweep Epic 4 / Story 4.2. "Other" used to be everything that was not
-            # male or female — which lumped a student recorded as another gender in
+            # male or female - which lumped a student recorded as another gender in
             # with a student whose gender was NEVER CAPTURED. Gender is empty for all
             # 1,802 students, so the screen showed "Boys 0, Girls 0, Other = everyone"
             # and the owner rightly asked why two columns held the same number.
@@ -277,7 +278,7 @@ async def list_students(
         raise HTTPException(403, "Forbidden")
     # Owner OR principal (owner request 10, 2026-08-06). This list is how the NSO and
     # TC-issued records are found in order to be restored or permanently removed, and
-    # restoring is an owner-or-principal action — a principal who cannot see the list
+    # restoring is an owner-or-principal action - a principal who cannot see the list
     # cannot use the button they are allowed to press. Everyone else still sees only
     # students on the roll.
     _may_see_inactive = user["role"] == "owner" or (
@@ -325,7 +326,7 @@ async def list_students(
 
     # Part 14 + 15: Teacher should only see students in their assigned classes.
     # Assignments come from the Academic Structure (classes.class_teacher_id +
-    # subjects.teacher_id) — the single source of truth that the admin edits.
+    # subjects.teacher_id) - the single source of truth that the admin edits.
     if user.get("role") == "teacher":
         scope = await compute_teacher_scope(db, user, get_school_id())
         teacher_class_ids = scope["all_class_ids"]
@@ -351,7 +352,7 @@ async def list_students(
         # that list. Owner item 5, applied to the student listing rather than
         # only to dropdowns.
         all_classes = await db.classes.find(
-            scoped_filter({}, get_school_id()),  # branch-scope: intentional — class order is school-wide
+            scoped_filter({}, get_school_id()),  # branch-scope: intentional - class order is school-wide
             {"_id": 0, "id": 1, "name": 1, "section": 1},
         ).to_list(500)
         ranked_ids = ordered_class_ids(all_classes)
@@ -375,12 +376,12 @@ async def list_students(
         ).skip(skip).limit(per_page).to_list(per_page)
 
     class_ids = list({s.get("class_id") for s in students if s.get("class_id")})
-    classes = await db.classes.find(scoped_filter({"id": {"$in": class_ids}}, get_school_id()), {"_id": 0}).to_list(len(class_ids)) if class_ids else []  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+    classes = await db.classes.find(scoped_filter({"id": {"$in": class_ids}}, get_school_id()), {"_id": 0}).to_list(len(class_ids)) if class_ids else []  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     class_map = {c["id"]: {"name": c.get("name"), "section": c.get("section")} for c in classes}
 
     student_ids = [s["id"] for s in students if s.get("id")]
     primary_guardians = await db.guardians.find(
-        scoped_filter({"student_id": {"$in": student_ids}, "is_primary": True}, get_school_id()),  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+        scoped_filter({"student_id": {"$in": student_ids}, "is_primary": True}, get_school_id()),  # branch-scope: intentional - scoped to one named person's own record, not to a branch
         {"_id": 0, "student_id": 1, "phone": 1},
     ).to_list(len(student_ids)) if student_ids else []
     guardian_phone_map = {g["student_id"]: g.get("phone") for g in primary_guardians}
@@ -407,7 +408,7 @@ async def create_student(body: StudentCreate, request: Request):
     user = get_user(request)
     if not _role_can_manage(user):
         raise HTTPException(403, "Forbidden")
-    # Thin adapter over services.student_service.create_student — the SAME write
+    # Thin adapter over services.student_service.create_student - the SAME write
     # path as the AI `create_student` tool (Story J.1 / AD7).
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
     try:
@@ -418,7 +419,11 @@ async def create_student(body: StudentCreate, request: Request):
         raise HTTPException(409, str(e))
     except (ClassValidationError, StudentValidationError) as e:
         raise HTTPException(400, str(e))
-    return {"success": True, "data": result["student"]}
+    # The joining charges the school raises on a new admission, and the reason if none
+    # were raised. Reported rather than left silent: whoever admits the child is the
+    # person who would otherwise have to remember to raise them by hand.
+    return {"success": True, "data": result["student"],
+            "joining_charges": result.get("joining_charges")}
 
 
 @router.get("/me")
@@ -467,7 +472,7 @@ async def update_my_guardian(guardian_id: str, request: Request, user: dict = De
     if not student:
         raise HTTPException(404, "Student record not found")
     guardian = await db.guardians.find_one(
-        scoped_filter({"id": guardian_id, "student_id": student["id"]}, get_school_id()), {"_id": 0}  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+        scoped_filter({"id": guardian_id, "student_id": student["id"]}, get_school_id()), {"_id": 0}  # branch-scope: intentional - scoped to one named person's own record, not to a branch
     )
     if not guardian:
         raise HTTPException(404, "Guardian not found")
@@ -477,7 +482,7 @@ async def update_my_guardian(guardian_id: str, request: Request, user: dict = De
         raise HTTPException(400, "No updatable guardian fields provided")
     update["updated_at"] = datetime.now().isoformat()
     await db.guardians.update_one(
-        scoped_filter({"id": guardian_id}, get_school_id()), {"$set": update}  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+        scoped_filter({"id": guardian_id}, get_school_id()), {"$set": update}  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     )
     await _audit(
         db,
@@ -487,7 +492,7 @@ async def update_my_guardian(guardian_id: str, request: Request, user: dict = De
         changes={k: {"previous": guardian.get(k), "new": v} for k, v in update.items() if k != "updated_at"},
     )
     updated = await db.guardians.find_one(
-        scoped_filter({"id": guardian_id}, get_school_id()), {"_id": 0}  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+        scoped_filter({"id": guardian_id}, get_school_id()), {"_id": 0}  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     )
     return {"success": True, "data": updated}
 
@@ -525,14 +530,14 @@ async def list_my_consents(request: Request, user: dict = Depends(require_role("
     student = await db.students.find_one(_student_query({"user_id": user["id"]}), {"_id": 0})
     if not student:
         return {"success": True, "data": []}
-    consents = await db.dpdp_consents.find(scoped_filter({"student_id": student["id"]}, get_school_id()), {"_id": 0}).sort("recorded_at", -1).to_list(50)  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+    consents = await db.dpdp_consents.find(scoped_filter({"student_id": student["id"]}, get_school_id()), {"_id": 0}).sort("recorded_at", -1).to_list(50)  # branch-scope: intentional - scoped to one named person's own record, not to a branch
     return {"success": True, "data": consents}
 
 
 @router.get("/classes/all")
 async def get_all_classes(request: Request, user: dict = Depends(require_role("admin", "owner", "teacher", "staff"))):
     db = get_db()
-    classes = await db.classes.find(scoped_filter({}, get_school_id()), {"_id": 0}).to_list(50)  # branch-scope: intentional — cross-branch class list
+    classes = await db.classes.find(scoped_filter({}, get_school_id()), {"_id": 0}).to_list(50)  # branch-scope: intentional - cross-branch class list
     return {"success": True, "data": classes}
 
 
@@ -545,7 +550,7 @@ async def get_student(student_id: str, request: Request):
     if not student:
         raise HTTPException(404, "Student not found")
 
-    # auth: composite — students may view only their own record; staff
+    # auth: composite - students may view only their own record; staff
     # with read roles may view any. Combined gate not expressible as one Depends.
     if user["role"] == "student" and student.get("user_id") != user["id"]:
         raise HTTPException(403, "Forbidden")
@@ -573,7 +578,7 @@ async def update_student(student_id: str, request: Request):
     if not _role_can_manage(user):
         raise HTTPException(403, "Forbidden")
 
-    # Thin adapter over services.student_service.update_student — the SAME write
+    # Thin adapter over services.student_service.update_student - the SAME write
     # path as the AI `update_student` tool. Transport-head field restriction maps
     # to 403 (preserved); other validation errors map to 400 (Story J.1 / AD7).
     body = await request.json()
@@ -616,6 +621,8 @@ async def delete_student(student_id: str, request: Request):
         await delete_student_service(db, actor_ctx, {"student_id": student_id})
     except StudentNotFoundError:
         raise HTTPException(404, "Student not found")
+    except StudentAuthorizationError as e:
+        raise HTTPException(403, str(e))
     except StudentValidationError as e:
         raise HTTPException(400, str(e))
     return {"success": True}
@@ -623,13 +630,13 @@ async def delete_student(student_id: str, request: Request):
 
 @router.post("/{student_id}/enrolment")
 async def set_student_enrolment(student_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
-    """Move a student between on the roll, NSO, and TC issued — in either direction.
+    """Move a student between on the roll, NSO, and TC issued - in either direction.
 
     Owner requests 9 and 10, 2026-08-06. This is the way BACK as well as the way out:
     before it, nothing in the product could set `is_active` to True, so a student
     marked inactive by mistake was gone from every screen with no route home. The
     school's owner asked for a student deactivated during a demo to be recovered, and
-    this endpoint is how that is done — from the screen, by a person, not by an agent
+    this endpoint is how that is done - from the screen, by a person, not by an agent
     reaching into the database.
 
     Owner or principal only. `DELETE /{student_id}` (deactivate) stays open to the
@@ -741,7 +748,7 @@ async def list_guardians(student_id: str, request: Request):
         if not link:
             raise HTTPException(403, "Forbidden")
     guardians = await db.guardians.find(
-        scoped_filter({"student_id": student_id}, get_school_id()), {"_id": 0}  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+        scoped_filter({"student_id": student_id}, get_school_id()), {"_id": 0}  # branch-scope: intentional - scoped to one named person's own record, not to a branch
     ).to_list(10)
     return {"success": True, "data": guardians}
 
@@ -753,7 +760,7 @@ async def upsert_guardians(student_id: str, request: Request):
     user = get_user(request)
     if not _role_can_manage(user):
         raise HTTPException(403, "Forbidden")
-    # Thin adapter over services.student_service.upsert_guardians — the SAME write
+    # Thin adapter over services.student_service.upsert_guardians - the SAME write
     # path as the AI `manage_student_guardians` tool (Story J.1 / AD7).
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
@@ -780,7 +787,7 @@ async def upload_guardian_photo(student_id: str, guardian_id: str, request: Requ
         raise HTTPException(403, "Forbidden")
 
     guardian = await db.guardians.find_one(
-        scoped_filter({"id": guardian_id, "student_id": student_id}, get_school_id()), {"_id": 0}  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+        scoped_filter({"id": guardian_id, "student_id": student_id}, get_school_id()), {"_id": 0}  # branch-scope: intentional - scoped to one named person's own record, not to a branch
     )
     if not guardian:
         raise HTTPException(404, "Guardian not found")
@@ -821,7 +828,7 @@ async def upload_guardian_photo(student_id: str, guardian_id: str, request: Requ
     }
     await db.file_uploads.insert_one(record)
     await db.guardians.update_one(
-        scoped_filter({"id": guardian_id}, get_school_id()),  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+        scoped_filter({"id": guardian_id}, get_school_id()),  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
         {"$set": {"photo_url": photo_url}},
     )
     return {"success": True, "data": {"photo_url": photo_url}}
@@ -838,14 +845,14 @@ async def erase_student(
 
     Owner request 2026-08-07: this was owner-only, so the principal's screen offered
     View / Edit / Status and no way to delete anyone, which is what was reported. The
-    principal is a head of school and already decides — through
-    `POST /{student_id}/enrolment` — that a child has left; widening this to
+    principal is a head of school and already decides - through
+    `POST /{student_id}/enrolment` - that a child has left; widening this to
     `require_owner_or_principal` puts the two decisions on the same footing.
 
     Still deliberately heavier than a delete: it demands a written reason of at least
     ten characters, writes the full record into the audit trail before touching
     anything, anonymises attendance history, and purges profile notes and AI memory.
-    None of that is relaxed here — only who may start it.
+    None of that is relaxed here - only who may start it.
     """
     db = get_db()
     if not reason or len(reason.strip()) < 10:
@@ -868,12 +875,12 @@ async def erase_student(
         _student_query({"student_id": student_id}),
         {"$set": {"student_id": token, "student_name": None, "guardian_phone": None, "erased_student_ref": token}},
     )
-    uploads = await db.file_uploads.find(scoped_filter({"linked_table": "students", "linked_id": student_id}, get_school_id()), {"_id": 0}).to_list(100)  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+    uploads = await db.file_uploads.find(scoped_filter({"linked_table": "students", "linked_id": student_id}, get_school_id()), {"_id": 0}).to_list(100)  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     for upload in uploads:
         if upload.get("s3_key"):
             delete_object(upload["s3_key"])
-    await db.guardians.delete_many(scoped_filter({"student_id": student_id}, get_school_id()))  # branch-scope: intentional — scoped to one named person's own record, not to a branch
-    await db.file_uploads.delete_many(scoped_filter({"linked_table": "students", "linked_id": student_id}, get_school_id()))  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+    await db.guardians.delete_many(scoped_filter({"student_id": student_id}, get_school_id()))  # branch-scope: intentional - scoped to one named person's own record, not to a branch
+    await db.file_uploads.delete_many(scoped_filter({"linked_table": "students", "linked_id": student_id}, get_school_id()))  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     # Owner request 4: private notes about this child go with the child. Leaving them
     # behind would keep a written account of someone the school has erased.
     try:

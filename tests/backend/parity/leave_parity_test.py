@@ -1,4 +1,4 @@
-"""Story A.2 — dual-entrypoint parity for leave decisions.
+"""Story A.2 - dual-entrypoint parity for leave decisions.
 
 Same seed through both write entrypoints (REST PATCH /api/staff/leaves/{id} via
 TestClient, and the AI `approve_leave` tool via its real dispatch fn) → the leave

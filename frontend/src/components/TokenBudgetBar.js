@@ -31,20 +31,20 @@ const PACK_LIST = [
 ];
 
 /**
- * TokenBudgetBar — shown below the chat input bar.
+ * TokenBudgetBar - shown below the chat input bar.
  *
  * Props:
- *   used           : number — tokens used this month
- *   limit          : number — monthly limit (-1 = unlimited)
- *   canRecharge    : boolean — show recharge button when exhausted
- *   onRecharge     : (packId: string) => void — called when user picks a pack
- *   selfRechargeEnabled : boolean — whether self-recharge is allowed
+ *   used           : number - tokens used this month
+ *   limit          : number - monthly limit (-1 = unlimited)
+ *   canRecharge    : boolean - show recharge button when exhausted
+ *   onRecharge     : (packId: string) => void - called when user picks a pack
+ *   selfRechargeEnabled : boolean - whether self-recharge is allowed
  */
 export default function TokenBudgetBar({ used = 0, limit = -1, canRecharge = false, onRecharge, selfRechargeEnabled = true }) {
   const { isDark } = useTheme();
   const [showPacks, setShowPacks] = useState(false);
 
-  // Unlimited mode — either no budget configured or role limit is -1
+  // Unlimited mode - either no budget configured or role limit is -1
   const isUnlimited = limit <= 0;
   const pct = isUnlimited ? 0 : Math.min(1, used / limit);
   const isExhausted = !isUnlimited && used >= limit;

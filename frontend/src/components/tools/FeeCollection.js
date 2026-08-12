@@ -260,7 +260,7 @@ export default function FeeCollection() {
   ], []);
   const payrollSort = useColumnSort(disbursements, payrollSortAccessors);
 
-  // Receipt and Actions are controls, not data — no sorting offered on them.
+  // Receipt and Actions are controls, not data - no sorting offered on them.
   const overdueSortAccessors = useMemo(() => [
     (t) => t.student_name || t.student_id || '',
     (t) => t.class_name || '',
@@ -662,7 +662,21 @@ export default function FeeCollection() {
 
       <div className="fee-section-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: 14, marginBottom: 18 }}>
         <section style={panelStyle}>
-          <h2 style={panelTitle}><Percent size={16} />Discount type</h2>
+          <h2 style={panelTitle}><Percent size={16} />One-off discount type</h2>
+          {/* R2 audit finding 5, 2026-08-12. This section is the OLD hand-typed
+              mechanism, and the school's four real concessions are not in it. Somebody
+              looking here would conclude the sibling and employee concessions do not
+              exist, or worse, re-type them here, where the figure is fixed and would be
+              wrong next quarter. Saying which is which is the fix; the section itself is
+              still needed for genuine one-offs. */}
+          <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 10, lineHeight: 1.5 }}>
+            For a one-off amount you type in yourself. <strong>The school&apos;s four
+            standing concessions do not belong here:</strong> the sibling and
+            employee&apos;s child concessions, the 5% for paying the year by 30 April and
+            the one-time amount agreed at admission all work themselves out each quarter.
+            Set those on the child&apos;s own record in the School Directory, or just ask
+            Flo. Typing one in here fixes the figure and it will be wrong next quarter.
+          </div>
           <input value={discountTypeForm.name} onChange={e => setDiscountTypeForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Discount name" style={inputStyle} />
           <div style={twoCol}>
             <input value={discountTypeForm.value} onChange={e => setDiscountTypeForm(prev => ({ ...prev, value: e.target.value }))} placeholder="Value" type="number" style={inputStyle} />
@@ -727,7 +741,7 @@ export default function FeeCollection() {
 
       {/* Payroll Disbursements */}
       <div style={panelStyle}>
-        <h2 style={panelTitle}>Payroll — This Month</h2>
+        <h2 style={panelTitle}>Payroll - This Month</h2>
         {loadingPayroll ? (
           <div style={emptyStyle}>Loading payroll...</div>
         ) : disbursements.length === 0 ? (
@@ -779,7 +793,7 @@ export default function FeeCollection() {
           ) : (
             pendingApprovals.map(p => (
               <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid color-mix(in srgb, var(--tool-hex-fbbf24) 20%, transparent)' }}>
-                <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>Student: {p.student_id} — {money(p.discount_amount)}</span>
+                <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>Student: {p.student_id} - {money(p.discount_amount)}</span>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={() => approveDiscount(p.id)}
                     style={{ ...primaryButton('var(--tool-hex-34d399)'), minHeight: 32, padding: '5px 12px', fontSize: 12 }}>Approve</button>
@@ -800,7 +814,7 @@ export default function FeeCollection() {
               <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' }}>Edit overdue record</h3>
               <button onClick={() => setOverdueEditTxn(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-muted)' }}><X size={16} /></button>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 12 }}>{overdueEditTxn.student_name || overdueEditTxn.student_id} — {overdueEditTxn.fee_head || overdueEditTxn.fee_type}</div>
+            <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 12 }}>{overdueEditTxn.student_name || overdueEditTxn.student_id} - {overdueEditTxn.fee_head || overdueEditTxn.fee_type}</div>
             {overdueActionError && <div style={alertStyle('var(--tool-hex-f87171)')}><AlertTriangle size={14} />{overdueActionError}</div>}
             <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <div>
@@ -820,7 +834,7 @@ export default function FeeCollection() {
               <div>
                 <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4 }}>Payment mode</div>
                 <select value={overdueEditForm.payment_mode} onChange={e => setOverdueEditForm(p => ({ ...p, payment_mode: e.target.value }))} style={inputStyle}>
-                  <option value="">— unchanged —</option>
+                  <option value="">- unchanged -</option>
                   <option value="cash">Cash</option>
                   <option value="upi">UPI</option>
                   <option value="cheque">Cheque</option>
@@ -839,7 +853,7 @@ export default function FeeCollection() {
             </div>
             <div style={{ marginTop: 4 }}>
               <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginBottom: 4 }}>Reason for change <span style={{ color: 'var(--tool-hex-f87171)' }}>*</span></div>
-              <textarea value={overdueEditForm.reason} onChange={e => setOverdueEditForm(p => ({ ...p, reason: e.target.value }))} placeholder="Required — describe correction" style={textareaStyle} />
+              <textarea value={overdueEditForm.reason} onChange={e => setOverdueEditForm(p => ({ ...p, reason: e.target.value }))} placeholder="Required - describe correction" style={textareaStyle} />
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
               <button onClick={saveOverdueEdit} disabled={saving} style={{ ...primaryButton('var(--tool-hex-4f8ff7)'), flex: 1, minHeight: 38, fontSize: 12 }}>{saving ? 'Saving…' : 'Save changes'}</button>
@@ -888,7 +902,18 @@ export default function FeeCollection() {
             <tbody>
               {overdueSort.items.map((txn, index) => (
                 <tr key={txn.id} style={{ borderTop: index ? '1px solid var(--color-border)' : 'none' }}>
-                  <td style={tdStyle}>{txn.student_name || txn.student_id}</td>
+                  <td style={tdStyle}>
+                    {txn.student_name || txn.student_id}
+                    {/* R2 step 6, Sonu's request: who else of this family is in the
+                        school, so the sibling concession is visible on the fee screen
+                        itself. The admission numbers are the school's own links. */}
+                    {txn.siblings?.length > 0 && (
+                      <div style={{ fontSize: 10, color: 'var(--color-text-muted)', marginTop: 2 }}
+                        title="Brothers or sisters in this school, by admission number">
+                        Sibling of {txn.siblings.join(', ')}
+                      </div>
+                    )}
+                  </td>
                   <td style={tdStyle}>{txn.class_name || 'N/A'}</td>
                   <td style={tdStyle}>{txn.fee_head || txn.fee_type}</td>
                   <td style={{ ...tdStyle, color: 'var(--tool-hex-f87171)', fontWeight: 700 }}>{money(txn.amount)}</td>
@@ -919,7 +944,7 @@ export default function FeeCollection() {
         )}
       </div>
 
-      {/* WhatsApp fee reminders — owner/accountant only */}
+      {/* WhatsApp fee reminders - owner/accountant only */}
       {(currentUser?.role === 'owner' || currentUser?.sub_category === 'accountant') && (
         <div style={{ ...panelStyle, marginTop: 18 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>

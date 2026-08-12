@@ -1,0 +1,201 @@
+{
+  "students": {
+    "on_the_roll": 1876,
+    "active": 1842,
+    "missing": {
+      "date of birth": {
+        "count": 787,
+        "why": "needed on a Transfer Certificate and for CBSE registration",
+        "stored_as": {
+          "dob": 1055
+        }
+      },
+      "gender": {
+        "count": 173,
+        "why": "needed on official documents",
+        "stored_as": {
+          "gender": 1669
+        }
+      },
+      "father's name": {
+        "count": 8,
+        "why": "needed on a Bonafide and a TC",
+        "stored_as": {
+          "father_name": 1834
+        }
+      },
+      "mother's name": {
+        "count": 10,
+        "why": "needed on official documents",
+        "stored_as": {
+          "mother_name": 1832
+        }
+      },
+      "a contact number": {
+        "count": 9,
+        "why": "how the school reaches the family",
+        "stored_as": {
+          "phone": 1833,
+          "father_phone": 60,
+          "mother_phone": 12
+        }
+      },
+      "address": {
+        "count": 10,
+        "why": "needed for transport planning and official documents",
+        "stored_as": {
+          "address": 1832
+        }
+      },
+      "blood group": {
+        "count": 1842,
+        "why": "needed in a medical emergency",
+        "stored_as": {}
+      },
+      "a fee plan": {
+        "count": 1842,
+        "why": "without it the child is on no fee plan",
+        "stored_as": {}
+      }
+    }
+  },
+  "staff": {
+    "on_the_roll": 110,
+    "active": 110,
+    "missing": {
+      "a contact number": {
+        "count": 6,
+        "why": "how the school reaches them",
+        "stored_as": {
+          "phone": 104
+        }
+      },
+      "an employee number": {
+        "count": 2,
+        "why": "needed for payroll",
+        "stored_as": {
+          "employee_id": 108
+        }
+      },
+      "a joining date": {
+        "count": 110,
+        "why": "needed for leave balances and payroll",
+        "stored_as": {}
+      },
+      "a salary": {
+        "count": 110,
+        "why": "needed for payroll. Counts only, never an amount.",
+        "stored_as": {}
+      }
+    }
+  },
+  "collections": {
+    "fee_structures": 0,
+    "classes": 48,
+    "transport_routes": 0,
+    "vendors": 0,
+    "academic_years": 2,
+    "message_templates": 0,
+    "fee_transactions": 1
+  },
+  "class_labels": [
+    "10th-A",
+    "10th-B",
+    "11th-A",
+    "11th-B",
+    "11th-C",
+    "12th-A",
+    "12th-B",
+    "12th-C",
+    "1st-A",
+    "1st-B",
+    "1st-C",
+    "2nd-A",
+    "2nd-B",
+    "2nd-C",
+    "2nd-D",
+    "2nd-E",
+    "3rd-A",
+    "3rd-B",
+    "3rd-C",
+    "3rd-D",
+    "4th-A",
+    "4th-B",
+    "4th-C",
+    "5th-A",
+    "5th-B",
+    "5th-C",
+    "6th-A",
+    "6th-B",
+    "6th-C",
+    "7th-A",
+    "7th-B",
+    "7th-C",
+    "8th-A",
+    "8th-B",
+    "9th-A",
+    "9th-B",
+    "LKG-A",
+    "LKG-B",
+    "LKG-C",
+    "LKG-D",
+    "NUR-A",
+    "NUR-B",
+    "NUR-C",
+    "NUR-D",
+    "UKG-A",
+    "UKG-B",
+    "UKG-C",
+    "UKG-D"
+  ],
+  "students_per_class": {
+    "12th-A": 57,
+    "11th-A": 54,
+    "9th-A": 54,
+    "8th-A": 53,
+    "9th-B": 52,
+    "10th-A": 52,
+    "8th-B": 52,
+    "10th-B": 49,
+    "6th-B": 48,
+    "6th-C": 48,
+    "6th-A": 47,
+    "4th-B": 47,
+    "4th-A": 47,
+    "2nd-B": 45,
+    "1st-A": 45,
+    "5th-B": 44,
+    "5th-A": 44,
+    "5th-C": 44,
+    "2nd-C": 44,
+    "2nd-A": 44,
+    "1st-C": 44,
+    "1st-B": 43,
+    "7th-C": 42,
+    "3rd-A": 41,
+    "2nd-D": 41,
+    "3rd-B": 40,
+    "3rd-C": 40,
+    "2nd-E": 40,
+    "7th-A": 39,
+    "7th-B": 39,
+    "NUR-D": 36,
+    "3rd-D": 35,
+    "UKG-A": 33,
+    "UKG-C": 33,
+    "LKG-C": 33,
+    "LKG-A": 33,
+    "LKG-B": 33,
+    "UKG-B": 32,
+    "UKG-D": 30,
+    "LKG-D": 30,
+    "NUR-A": 26,
+    "NUR-B": 25,
+    "NUR-C": 24,
+    "11th-B": 22,
+    "12th-B": 21,
+    "11th-C": 8,
+    "12th-C": 8,
+    "4th-C": 1
+  }
+}

@@ -80,8 +80,8 @@ test('the shared tool table carries the card hook used by the phone rules', () =
 });
 
 /*
- * Owner report, 2026-08-06 (iPhone 15 Pro): the platform opened already magnified —
- * menu and profile picture cut off the screen edges — and tapping any entry box
+ * Owner report, 2026-08-06 (iPhone 15 Pro): the platform opened already magnified -
+ * menu and profile picture cut off the screen edges - and tapping any entry box
  * magnified it further, neither one asked for.
  *
  * One defect behind both complaints. Safari force-zooms the page when a field under
@@ -92,7 +92,7 @@ test('the shared tool table carries the card hook used by the phone rules', () =
  * `!important` is the only thing that outranks an inline style.
  *
  * These are source-text guards against the rules being deleted. They deliberately do
- * NOT prove the fix works — reading the CSS would have reported the floor as present
+ * NOT prove the fix works - reading the CSS would have reported the floor as present
  * and correct throughout the whole period it was being silently overridden, which is
  * exactly why this reached the owner. Computed sizes are asserted in the browser, in
  * `tests/e2e/responsive.spec.js`.
@@ -121,7 +121,7 @@ test('the user is never forbidden from zooming the page themselves', () => {
   // accessibility failure. The zoom is stopped by removing its cause instead.
   const html = fs.readFileSync(path.resolve(__dirname, '../../../index.html'), 'utf8');
   const tag = html.match(/<meta\s+name="viewport"[^>]*>/i);
-  // Jest's expect takes no message argument (Playwright's does) — the assertion name
+  // Jest's expect takes no message argument (Playwright's does) - the assertion name
   // carries the meaning instead.
   expect(tag).toBeTruthy();
   expect(tag[0]).not.toMatch(/user-scalable\s*=\s*(no|0)/i);

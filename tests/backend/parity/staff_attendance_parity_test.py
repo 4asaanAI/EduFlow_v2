@@ -1,4 +1,4 @@
-"""Dual-entrypoint parity — bulk staff attendance marking.
+"""Dual-entrypoint parity - bulk staff attendance marking.
 
 Same seed through REST `POST /api/attendance/staff/bulk` and the AI
 `mark_staff_attendance` tool → identical staff_attendance docs + ONE audit row

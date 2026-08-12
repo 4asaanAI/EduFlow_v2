@@ -69,7 +69,7 @@ async function overhangingElements(page) {
  *
  * Owner report, 2026-08-06 (iPhone 15 Pro): the platform opened already magnified,
  * with the menu and profile picture cut off the screen edges, and tapping any entry
- * box magnified it further — neither one asked for. Both are the SAME defect. Safari
+ * box magnified it further - neither one asked for. Both are the SAME defect. Safari
  * force-zooms the page whenever a field under 16px takes focus, and it never zooms
  * back out, so one tap left the whole site stuck magnified for the rest of the visit.
  *
@@ -79,7 +79,7 @@ async function overhangingElements(page) {
  *
  * COMPUTED size is what is asserted, deliberately. Reading the CSS file would have
  * reported the floor as present and correct throughout the period it was being
- * overridden — the exact reason this went unnoticed.
+ * overridden - the exact reason this went unnoticed.
  */
 async function undersizedFields(page) {
   return page.evaluate(() => {

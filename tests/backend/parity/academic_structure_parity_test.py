@@ -1,4 +1,4 @@
-"""Story K.2 — dual-entrypoint parity for academic-structure CRUD.
+"""Story K.2 - dual-entrypoint parity for academic-structure CRUD.
 
 Same seed + same actor (owner) through the new service-backed REST routes
 (POST/PATCH/DELETE /api/settings/classes, POST/PATCH/DELETE /api/activities/houses)

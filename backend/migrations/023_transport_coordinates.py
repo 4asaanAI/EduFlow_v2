@@ -4,7 +4,7 @@ Run: python backend/migrations/023_transport_coordinates.py
 
 Note: plain dict {"lat": float, "lng": float} is not GeoJSON/legacy-pair format required
 by 2dsphere indexes, so we use regular sparse indexes instead of 2dsphere. Haversine
-distance is computed in Python — no $near/$geoWithin queries are used.
+distance is computed in Python - no $near/$geoWithin queries are used.
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ async def migrate(db=None):
         print("=" * 60)
 
         # Sparse regular index on transport_routes.centroid.lat (for existence queries)
-        # Plain dict {"lat": float, "lng": float} is not GeoJSON — 2dsphere not applicable.
+        # Plain dict {"lat": float, "lng": float} is not GeoJSON - 2dsphere not applicable.
         try:
             await db.transport_routes.create_index(
                 [("centroid.lat", 1)],

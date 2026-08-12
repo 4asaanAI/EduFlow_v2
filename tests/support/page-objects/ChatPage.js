@@ -1,5 +1,5 @@
 /**
- * Page Object: ChatPage — EduFlow
+ * Page Object: ChatPage - EduFlow
  *
  * Encapsulates interactions with the main chat interface (ChatInterface.js).
  * The chat is the primary way users interact with EduFlow.

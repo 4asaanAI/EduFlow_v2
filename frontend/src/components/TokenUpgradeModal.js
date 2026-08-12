@@ -8,19 +8,19 @@ const PLAN_META = {
     icon: Zap,
     accent: { light: '#4f8ff7', dark: '#60a5fa' },
     bg: { light: '#eff6ff', dark: '#1a2a3f' },
-    suitableFor: 'Light daily AI use — quick chat, lookups, short queries',
+    suitableFor: 'Light daily AI use - quick chat, lookups, short queries',
   },
   monthly_growth: {
     icon: Star,
     accent: { light: '#8b5cf6', dark: '#a78bfa' },
     bg: { light: '#f5f3ff', dark: '#231b3f' },
-    suitableFor: 'Regular users — lesson plans, reports, data analysis',
+    suitableFor: 'Regular users - lesson plans, reports, data analysis',
   },
   monthly_enterprise: {
     icon: Crown,
     accent: { light: '#f59e0b', dark: '#fbbf24' },
     bg: { light: '#fffbeb', dark: '#2e2000' },
-    suitableFor: 'Power users — AI-heavy work, automation, full daily use',
+    suitableFor: 'Power users - AI-heavy work, automation, full daily use',
   },
 };
 
@@ -281,7 +281,7 @@ export default function TokenUpgradeModal({ onClose, currentUsage, roleLimit, ca
         {/* Footer */}
         <div style={{ padding: '14px 28px 22px', borderTop: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            {['Secure — Razorpay', 'Cancel anytime', 'Instant token credit'].map((t, i) => (
+            {['Secure - Razorpay', 'Cancel anytime', 'Instant token credit'].map((t, i) => (
               <span key={i} style={{ fontSize: 11, color: subtext, display: 'flex', alignItems: 'center', gap: 4 }}>
                 <span style={{ color: '#10b981', fontWeight: 700 }}>✓</span> {t}
               </span>

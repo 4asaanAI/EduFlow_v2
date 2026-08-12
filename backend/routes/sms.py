@@ -378,7 +378,7 @@ async def get_whatsapp_defaulters(request: Request, user: dict = Depends(require
     branch_id = user.get("branch_id")
     school_id = get_school_id()
 
-    # Fee defaulters — students with any outstanding transaction this school year
+    # Fee defaulters - students with any outstanding transaction this school year
     fee_query = scoped_query(
         {"status": {"$in": ["pending", "overdue", "unpaid"]}},
         branch_id=branch_id,
@@ -386,7 +386,7 @@ async def get_whatsapp_defaulters(request: Request, user: dict = Depends(require
     txns = await db.fee_transactions.find(fee_query, {"_id": 0, "student_id": 1, "amount": 1}).to_list(2000)
     fee_student_ids = list({t["student_id"] for t in txns if t.get("student_id")})
 
-    # Attendance defaulters — students with attendance < 75% for the current month
+    # Attendance defaulters - students with attendance < 75% for the current month
     now = datetime.now(timezone.utc)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     att_query = scoped_query(
@@ -432,7 +432,7 @@ async def get_whatsapp_defaulters(request: Request, user: dict = Depends(require
     # emitting it raw put a UUID where the class should be in the WhatsApp modal.
     class_ids = [cid for cid in {s.get("class_id") for s in students} if cid]
     classes = await db.classes.find(
-        scoped_filter({"id": {"$in": class_ids}}, school_id),  # branch-scope: intentional — pinned by unique ids already narrowed to this branch's students
+        scoped_filter({"id": {"$in": class_ids}}, school_id),  # branch-scope: intentional - pinned by unique ids already narrowed to this branch's students
         {"_id": 0, "id": 1, "name": 1, "section": 1},
     ).to_list(500) if class_ids else []
     class_map = {c["id"]: c for c in classes}

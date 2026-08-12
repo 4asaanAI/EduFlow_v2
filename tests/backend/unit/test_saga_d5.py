@@ -1,9 +1,9 @@
-"""D.5 — saga fallback for non-Mongo side effects + needs-manual-reconciliation.
+"""D.5 - saga fallback for non-Mongo side effects + needs-manual-reconciliation.
 
 Mongo writes commit atomically in the transaction (D.3). NON-Mongo side effects
 (SMS/email) run AFTER commit; if a later side effect fails the executor compensates
 the completed ones in reverse. If a compensation itself fails, the plan halts in
-`needs_manual_reconciliation` with an audit row — never a silent partial success.
+`needs_manual_reconciliation` with an audit row - never a silent partial success.
 """
 
 from __future__ import annotations
@@ -108,7 +108,7 @@ async def test_compensation_failure_yields_needs_manual_reconciliation_with_audi
 
 async def test_db_writes_committed_before_side_effects_run():
     """Fault injection: even when a side effect fails, the Mongo write already
-    committed (it ran inside the transaction) — DB ends fully-applied."""
+    committed (it ran inside the transaction) - DB ends fully-applied."""
     db = _Db()
     committed = []
 

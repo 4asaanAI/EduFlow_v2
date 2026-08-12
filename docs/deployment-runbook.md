@@ -181,12 +181,12 @@ For a second school:
 Use branch-level isolation inside a school through `branch_id`; do not use branch ids as a substitute for `SCHOOL_ID` across different schools.
 
 
-## 8. AI Action Layer — Safety Operations (AI Layer Hardening, Epic F)
+## 8. AI Action Layer - Safety Operations (AI Layer Hardening, Epic F)
 
 The AI assistant can perform writes (attendance, fees, approvals, announcements, …)
 through the same shared service layer as the UI. Three operator controls govern it.
 
-### 8.1 Kill-switch — stop all AI writes instantly (Story F.4)
+### 8.1 Kill-switch - stop all AI writes instantly (Story F.4)
 
 The flag lives in `db.system_flags` keyed `ai_writes_enabled`. When off, the
 `/api/chat/confirm` dispatch refuses every write; **reads keep working**.
@@ -194,7 +194,7 @@ The flag lives in `db.system_flags` keyed `ai_writes_enabled`. When off, the
 **Cross-worker timing (R9.3 / M8):** the confirm/write path reads the flag
 **fresh from Mongo on every confirmed write** (`ai_writes_enabled(db,
 force_fresh=True)`), so flipping the switch OFF takes effect on the **next
-confirmed write across ALL Elastic Beanstalk workers immediately** — it does not
+confirmed write across ALL Elastic Beanstalk workers immediately** - it does not
 wait for any per-worker cache to expire. The ≤30s in-process cache
 (`CACHE_TTL_SECONDS`) now only serves non-write reads; it no longer bounds how
 fast a disable reaches a worker on the write path.
@@ -212,7 +212,7 @@ Programmatic: `services.ai_kill_switch.set_ai_writes_enabled(db, enabled=False, 
 ### 8.2 Shadow / dry-run mode (Story F.5)
 
 Flag `ai_dry_run` in `db.system_flags`. When on, confirmed plans run inside an
-always-aborted transaction and report the would-be diff — **committing nothing**;
+always-aborted transaction and report the would-be diff - **committing nothing**;
 post-commit SMS/email never fire. Use it during the pilot to accumulate parity
 evidence at zero write-risk before enabling live writes.
 
@@ -220,7 +220,7 @@ evidence at zero write-risk before enabling live writes.
 db.system_flags.updateOne({key:"ai_dry_run"}, {$set:{key:"ai_dry_run", enabled:true}}, {upsert:true})
 ```
 
-### 8.3 Reverting a bad AI write — remediation runbook (Story F.9)
+### 8.3 Reverting a bad AI write - remediation runbook (Story F.9)
 
 Every AI dispatch is recorded write-ahead in `db.ai_dispatch_audit_log` (one row
 per dispatch, `_id = ai-dispatch-<confirm-token>`), and each domain write also
@@ -238,12 +238,12 @@ emits a row in `db.audit_logs`. To reverse a specific bad AI write:
 3. **Reconstruct the blast radius.** Cross-reference `db.audit_logs` for the same
    actor/time window. Each domain audit row carries `collection`, `entity_id`,
    `action`, and `changes` (before/after where the service records them).
-4. **Reverse it through the UI/service layer**, never with an ad-hoc raw write —
+4. **Reverse it through the UI/service layer**, never with an ad-hoc raw write -
    re-open the affected record in the panel and apply the inverse operation
    (e.g. re-mark attendance, reverse/void the fee transaction, un-approve the
    leave). This keeps the correction itself scoped, validated, and audited.
 5. **Destructive (delete) dispatches** are tagged in `audit_logs` with
-   `action="delete"` and `changes.actor` / `changes.actor_name` — query
+   `action="delete"` and `changes.actor` / `changes.actor_name` - query
    "who deleted what, when":
    ```js
    db.audit_logs.find({action:"delete"}).sort({created_at:-1})
@@ -260,11 +260,11 @@ kill_switch_blocked, parity_diff}`. These rows are PII-free by construction.
 ## 9. LayaaStat health-check integration (push telemetry)
 
 EduFlow pushes telemetry to **LayaaStat** (the Layaa AI health-check platform) so the
-backend can be watched live. EduFlow's portfolio path is **push/ingest** — custom
+backend can be watched live. EduFlow's portfolio path is **push/ingest** - custom
 product events to `POST /api/ingest` and GenAI/LLM spans to `POST /api/otel`, plus a
-periodic `service_health` heartbeat — authenticated by a tenant-scoped ingest key.
+periodic `service_health` heartbeat - authenticated by a tenant-scoped ingest key.
 
-**The integration is fully dormant until both env vars below are set** — no buffering,
+**The integration is fully dormant until both env vars below are set** - no buffering,
 no network, no heartbeat task. All call sites are no-ops when disabled, and telemetry
 failures never affect a request (best-effort, fail-open).
 

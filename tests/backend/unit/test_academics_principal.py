@@ -66,7 +66,7 @@ def test_lesson_plan_completion_blocked_for_unauthenticated(client):
 
 
 def test_exams_accessible_to_principal(client):
-    """Principal (admin role) can access the exams list — endpoint has no auth guard."""
+    """Principal (admin role) can access the exams list - endpoint has no auth guard."""
     resp = client.get("/api/academics/exams", headers=_principal_headers())
     assert resp.status_code == 200
     assert "data" in resp.json()

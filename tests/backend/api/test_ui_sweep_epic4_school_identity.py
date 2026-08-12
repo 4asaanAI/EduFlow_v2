@@ -26,7 +26,7 @@ def _teacher():
 
 @pytest.fixture(autouse=True)
 def _clean(fake_db):
-    # Snapshot/restore — the FakeDb is a session-wide singleton, so wiping a
+    # Snapshot/restore - the FakeDb is a session-wide singleton, so wiping a
     # collection outright deletes rows other test files depend on.
     saved = list(fake_db.school_settings.docs)
     fake_db.school_settings.docs[:] = []

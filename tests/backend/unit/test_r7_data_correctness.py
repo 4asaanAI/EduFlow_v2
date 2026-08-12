@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from tests.backend.conftest import FakeCollection
 
 # ---------------------------------------------------------------------------
-# R7.1 — shared fee-outstanding helper (M5)
+# R7.1 - shared fee-outstanding helper (M5)
 # ---------------------------------------------------------------------------
 
 async def test_compute_fee_totals_canonical_formula():
@@ -69,7 +69,7 @@ async def test_fee_defaulters_includes_pending_not_only_overdue(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# R7.1 — branch comparison reads student_attendance (M3)
+# R7.1 - branch comparison reads student_attendance (M3)
 # ---------------------------------------------------------------------------
 
 async def test_branch_comparison_attendance_reads_student_attendance(monkeypatch):
@@ -97,7 +97,7 @@ async def test_branch_comparison_attendance_reads_student_attendance(monkeypatch
 
 
 # ---------------------------------------------------------------------------
-# R7.3 — exam pass-rate uses actual max_marks (M7)
+# R7.3 - exam pass-rate uses actual max_marks (M7)
 # ---------------------------------------------------------------------------
 
 async def test_exam_pass_rate_uses_actual_max_marks(monkeypatch):
@@ -125,7 +125,7 @@ async def test_exam_pass_rate_uses_actual_max_marks(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# R7.3 — attendance rate can never exceed 100% (M7)
+# R7.3 - attendance rate can never exceed 100% (M7)
 # ---------------------------------------------------------------------------
 
 async def test_attendance_rate_never_exceeds_100(monkeypatch):
@@ -138,7 +138,7 @@ async def test_attendance_rate_never_exceeds_100(monkeypatch):
         "students": FakeCollection([
             {"id": "s1", "name": "Active One", "class_id": "c1", "is_active": True, "schoolId": "aaryans-joya"},
         ]),
-        # Two present records but only one active student — must not yield 200%.
+        # Two present records but only one active student - must not yield 200%.
         "student_attendance": FakeCollection([
             {"student_id": "s1", "class_id": "c1", "date": today, "status": "present", "schoolId": "aaryans-joya"},
             {"student_id": "ghost", "class_id": "c1", "date": today, "status": "present", "schoolId": "aaryans-joya"},
@@ -154,7 +154,7 @@ async def test_attendance_rate_never_exceeds_100(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# R7.3 — detect_navigate anchors on the verb (M-misc / AC3)
+# R7.3 - detect_navigate anchors on the verb (M-misc / AC3)
 # ---------------------------------------------------------------------------
 
 def test_detect_navigate_anchors_on_command():
@@ -169,7 +169,7 @@ def test_detect_navigate_anchors_on_command():
 
 
 # ---------------------------------------------------------------------------
-# R7.3 — _extract_result_count counts the envelope data list (AC4)
+# R7.3 - _extract_result_count counts the envelope data list (AC4)
 # ---------------------------------------------------------------------------
 
 def test_extract_result_count_counts_data_list_not_first_field():

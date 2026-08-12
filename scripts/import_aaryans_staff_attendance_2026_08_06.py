@@ -23,7 +23,7 @@ The parse is self-checked: every row carries a running S.No. that restarts at 1 
 new day, so a day boundary missed by the date regex would show up as a restart with no
 new date. The loader refuses to run unless that count is zero.
 
-MATCHING — WHY NOT BY PHONE
+MATCHING - WHY NOT BY PHONE
 ---------------------------
 Several staff share the school's own switchboard number (8126965555 appears against many
 different people), so a phone match is NOT identifying. Matching is therefore by
@@ -161,11 +161,11 @@ def parse_pdfs() -> tuple[list[dict], int]:
 async def main(apply: bool) -> int:
     rows, restarts = parse_pdfs()
     if not rows:
-        print("ERROR: no attendance rows parsed — check the PDFs are present.")
+        print("ERROR: no attendance rows parsed - check the PDFs are present.")
         return 1
 
     print("=" * 68)
-    print("STAFF ATTENDANCE — source: 4 x 'Staff attendance*.pdf'")
+    print("STAFF ATTENDANCE - source: 4 x 'Staff attendance*.pdf'")
     print("=" * 68)
     print(f"rows parsed                        : {len(rows)}")
     print(f"day-boundary anomalies (must be 0) : {restarts}")
@@ -264,7 +264,7 @@ async def main(apply: bool) -> int:
         print(f"  of those, with a punch-out       : {wo}")
 
         if not apply:
-            print("\nDRY RUN — nothing written. Re-run with --apply to write.")
+            print("\nDRY RUN - nothing written. Re-run with --apply to write.")
             return 0
 
         docs = []
@@ -280,7 +280,7 @@ async def main(apply: bool) -> int:
                 "check_in": r["check_in"],
                 "check_out": r["check_out"],
                 "work_hours": r["work_hrs"],
-                "marking_mode": r["mode"],      # 'Finger Print' or 'ERP' — the school's own device record
+                "marking_mode": r["mode"],      # 'Finger Print' or 'ERP' - the school's own device record
                 "remark": r["remark"],
                 "marked_by": SOURCE_TAG,
                 "created_at": now,

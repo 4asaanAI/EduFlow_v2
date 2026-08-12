@@ -1,12 +1,12 @@
 /**
- * NEW-08 — one definition of the server's address.
+ * NEW-08 - one definition of the server's address.
  *
  * 25 files each declared their own `process.env.REACT_APP_BACKEND_URL` base. That is
  * why commit 80d803b ("Fix mixed-content fetch errors on CloudFront") reached 13 files
- * and missed 7 — including the login and token-refresh path, where getting it wrong
+ * and missed 7 - including the login and token-refresh path, where getting it wrong
  * logs the whole school out. This test fails the build the moment a 26th reader appears.
  *
- * NEW-03 — one refreshing wrapper.
+ * NEW-03 - one refreshing wrapper.
  *
  * 113 calls used a bare `fetch`, so an access token that expired mid-morning surfaced
  * as "something went wrong" instead of quietly renewing. Every call now goes through
@@ -21,7 +21,7 @@ const BASE_URL_ALLOWED = new Set([
   path.join('lib', 'api.js'),
 ]);
 
-// `lib/api.js` IS the wrapper, and `lib/authSession.js` owns the refresh call itself —
+// `lib/api.js` IS the wrapper, and `lib/authSession.js` owns the refresh call itself -
 // routing either through the wrapper that calls them would loop.
 const BARE_FETCH_ALLOWED = new Set([
   path.join('lib', 'api.js'),
@@ -53,7 +53,7 @@ function walk(dir, out = []) {
 
 const FILES = walk(SRC).map((full) => ({ rel: path.relative(SRC, full), full }));
 
-// Comments are allowed to name either thing — the notes explaining WHY these rules
+// Comments are allowed to name either thing - the notes explaining WHY these rules
 // exist have to be able to say what they are about.
 function codeLines(full) {
   return fs
@@ -65,7 +65,7 @@ function codeLines(full) {
       line
         // Strip a line comment, but NOT the `//` in a URL. `(?<!:)` is the whole
         // point: without it, `const u = 'https://x'; fetch(u)` was truncated at the
-        // scheme and the `fetch(` after it went unseen — a hole straight through
+        // scheme and the `fetch(` after it went unseen - a hole straight through
         // the guard this file exists to be.
         .replace(/(?<!:)\/\/.*$/, '')
         .replace(/\/\*.*?\*\//g, '')
@@ -111,7 +111,7 @@ test('no screen calls the server with a bare fetch instead of apiFetch', () => {
 });
 
 // Guards the guard. Both checks above are "expect nothing to be found", which is the
-// shape of assertion that keeps passing after it has quietly stopped working — the
+// shape of assertion that keeps passing after it has quietly stopped working - the
 // comment-stripper swallowing `https://` did exactly that until it was caught.
 test('the checks above actually detect a violation when there is one', () => {
   const offendingSource = [

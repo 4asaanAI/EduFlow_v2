@@ -9,14 +9,14 @@ somewhere the right person can fetch them and nobody else can.
 IT REUSES THE PATH CERTIFICATES ALREADY USE (`routes/image_gen.py`) rather than
 inventing a second one: S3 under the `{school_id}/uploads/...` key convention set in
 Part 6, a `file_uploads` record, an audit row, and a presigned URL with an expiry.
-A generated document must never be reachable on an unauthenticated public URL —
+A generated document must never be reachable on an unauthenticated public URL -
 that was the defect `hotfix-1` was raised for.
 
 THE RULE THAT MATTERS MOST: **generating a document IS a data export.** "Give me a
 spreadsheet of every student" and `GET /api/export/students` return the same 1,802
 children by different routes. Callers must therefore apply the SAME role gate the
-equivalent export already has. This module does not decide that — it cannot know which
-data was drawn on — so the caller must, and `ai/tool_functions_v2.py` is where that
+equivalent export already has. This module does not decide that - it cannot know which
+data was drawn on - so the caller must, and `ai/tool_functions_v2.py` is where that
 happens for Flo.
 """
 
@@ -58,7 +58,7 @@ class DocumentStorageUnavailable(Exception):
     nothing they can act on.
 
     So this is caught and reported in words: the feature is not set up on this server
-    yet. Same principle as OCR shipping dark — a missing piece of infrastructure is
+    yet. Same principle as OCR shipping dark - a missing piece of infrastructure is
     stated plainly, never disguised as a failure of the request.
     """
 
@@ -72,7 +72,7 @@ async def _enforce_daily_cap(db, school_id: str, kind: str = "document") -> bool
     """Per-school, per-kind daily cap. Returns False when over.
 
     Deliberately identical in shape to `routes/image_gen.py:_enforce_daily_cap` and
-    sharing its collection — a second counter would mean a second allowance.
+    sharing its collection - a second counter would mean a second allowance.
     """
     day = date.today().isoformat()
     q = {"schoolId": school_id, "kind": kind, "day": day}
@@ -143,7 +143,7 @@ async def store_document(
     await db.file_uploads.insert_one(record)
 
     # Every generated document is a copy of school data leaving the platform, so it
-    # is audited like one. Ids and counts only — NFR-S2 forbids PII in log fields,
+    # is audited like one. Ids and counts only - NFR-S2 forbids PII in log fields,
     # and the document body may be a child's medical note.
     await write_audit(
         db,
@@ -169,7 +169,7 @@ async def store_document(
     )
 
     # NOTE (D-37): this return travels to the language model as the tool result, so it
-    # carries ONLY a short opaque `file_id` — never a presigned URL. The signed URL is
+    # carries ONLY a short opaque `file_id` - never a presigned URL. The signed URL is
     # ~1,200 characters, ~1,000 of them a random token; asking the model to transcribe
     # it into its reply produced corrupted links and S3 SignatureDoesNotMatch errors.
     # The fresh URL is minted at click time by GET /api/uploads/link/{file_id} instead,
@@ -209,7 +209,7 @@ async def create_document(
     if not storage_configured():
         raise DocumentStorageUnavailable(
             "Saving files is not set up on this server yet, so I cannot give you a "
-            "download. Everything else works normally — this needs file storage "
+            "download. Everything else works normally - this needs file storage "
             "switching on."
         )
 

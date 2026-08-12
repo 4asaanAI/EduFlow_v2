@@ -3,14 +3,14 @@ from __future__ import annotations
 Token management routes for EduFlow.
 
 Endpoints:
-  GET  /api/tokens/balance                  — branch token balance (owner/admin)
-  GET  /api/tokens/usage                    — branch usage stats (owner) or user stats
-  GET  /api/tokens/usage/me                 — current user's usage this month
-  GET  /api/tokens/packs                    — available top-up packs + subscription plans
-  PUT  /api/tokens/limits                   — update per-role limits (owner only)
-  POST /api/tokens/create-checkout-session  — Razorpay one-time payment link (owner only)
-  POST /api/tokens/create-subscription-session — Razorpay subscription (owner only)
-  POST /api/tokens/webhook                  — Razorpay webhook receiver (no JWT auth)
+  GET  /api/tokens/balance                  - branch token balance (owner/admin)
+  GET  /api/tokens/usage                    - branch usage stats (owner) or user stats
+  GET  /api/tokens/usage/me                 - current user's usage this month
+  GET  /api/tokens/packs                    - available top-up packs + subscription plans
+  PUT  /api/tokens/limits                   - update per-role limits (owner only)
+  POST /api/tokens/create-checkout-session  - Razorpay one-time payment link (owner only)
+  POST /api/tokens/create-subscription-session - Razorpay subscription (owner only)
+  POST /api/tokens/webhook                  - Razorpay webhook receiver (no JWT auth)
 """
 
 import hashlib
@@ -75,7 +75,7 @@ async def balance_endpoint(request: Request):
 async def usage_endpoint(request: Request, user_id: str = None):
     user = get_current_user(request)
     branch_id = _resolve_branch(user)
-    # auth: dynamic gate — only branch-wide stats require owner/admin
+    # auth: dynamic gate - only branch-wide stats require owner/admin
     if not user_id and user["role"] not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="Forbidden")
     try:
@@ -241,7 +241,7 @@ async def create_subscription_session_endpoint(
 
 
 # ─── POST /api/tokens/webhook ────────────────────────────────────────────────
-# No JWT auth — Razorpay signature verification replaces it.
+# No JWT auth - Razorpay signature verification replaces it.
 
 @router.post("/webhook")
 async def razorpay_webhook(request: Request):
@@ -289,7 +289,7 @@ async def razorpay_webhook(request: Request):
             extra={"event_type": event_type},
             exc_info=True,
         )
-        # Return 200 to prevent a Razorpay retry storm — log the error for investigation.
+        # Return 200 to prevent a Razorpay retry storm - log the error for investigation.
         await finish_webhook_event(event_id, error="handler_failed")
         raise HTTPException(status_code=500, detail="Webhook processing failed; retry required.")
 

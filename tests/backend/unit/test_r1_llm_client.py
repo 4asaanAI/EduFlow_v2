@@ -1,4 +1,4 @@
-"""R1.6 / R1.7 — LLM client contract: single LLMResult return, empty→ok=False,
+"""R1.6 / R1.7 - LLM client contract: single LLMResult return, empty→ok=False,
 retry with headroom on empty+length, and the academics/assistant migrations."""
 from __future__ import annotations
 

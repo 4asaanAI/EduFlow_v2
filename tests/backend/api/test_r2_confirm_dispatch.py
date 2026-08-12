@@ -1,9 +1,9 @@
-"""Epic R2 — /confirm dispatch surfaces true outcomes (API tier, FakeDb).
+"""Epic R2 - /confirm dispatch surfaces true outcomes (API tier, FakeDb).
 
 Failure matrix at the HTTP boundary: a confirmed step that returns a failure
 envelope aborts with a 422 that names the failed step, and the audit row records
 the same failure (reply == audit). A transaction that cannot be started outside
-development fails loud with a 503 — never a silent non-transactional write.
+development fails loud with a 503 - never a silent non-transactional write.
 """
 
 from __future__ import annotations
@@ -91,7 +91,7 @@ async def test_multistep_step_failure_aborts_with_422_and_audit_agrees(client, f
     assert detail["failed_tool"] == "create_announcement"
     assert "No changes were applied" in detail["message"]
 
-    # The audit row records the failure — the user reply and the audit agree.
+    # The audit row records the failure - the user reply and the audit agree.
     row = _audit_row(fake_db, plan_token)
     assert row is not None
     assert row["success"] is False
@@ -108,7 +108,7 @@ async def test_single_action_failure_reply_from_actual_result(client, fake_db, m
 
     token = _login_owner(client)
     headers = {"Authorization": f"Bearer {token}"}
-    # Legacy single-action token (no `plan`) — the classic single confirmed write.
+    # Legacy single-action token (no `plan`) - the classic single confirmed write.
     tok = str(_uuid.uuid4())
     fake_db.confirm_tokens.docs.append({
         "_id": tok, "token": tok, "action": "set_student_status",

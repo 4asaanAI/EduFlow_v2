@@ -1,4 +1,4 @@
-"""Epic R2 — Confirmed-Write Integrity (unit tier, FakeDb).
+"""Epic R2 - Confirmed-Write Integrity (unit tier, FakeDb).
 
 Covers the plan-executor failure matrix (X2/X4), the fail-loud txn-session policy
 (X5), and the confirm-token HMAC + typed-reason hardening (XM6). API-level wiring
@@ -172,7 +172,7 @@ async def test_get_txn_session_no_client_is_noop(monkeypatch):
 
     monkeypatch.setattr(database, "_client", None)
     monkeypatch.setenv("ENVIRONMENT", "production")
-    # No client at all is the legitimate FakeDb/test tier — never a fail-loud case.
+    # No client at all is the legitimate FakeDb/test tier - never a fail-loud case.
     sess = await database.get_txn_session()
     assert isinstance(sess, database._NoopSession)
 
@@ -183,7 +183,7 @@ _PLAN = [{"idx": 0, "tool": "approve_leave", "kind": "write", "params": {"leave_
 
 
 def test_plan_hash_is_hmac_keyed(monkeypatch):
-    """The MAC must depend on the server secret — an attacker without JWT_SECRET
+    """The MAC must depend on the server secret - an attacker without JWT_SECRET
     cannot forge a matching digest."""
     from services import confirm_tokens
 
@@ -222,7 +222,7 @@ class _OneDocDb:
         self.confirm_tokens = Col()
 
 
-# ── R2.5 (XM1): AC3 decision — notifications are transactional, not post-commit ─
+# ── R2.5 (XM1): AC3 decision - notifications are transactional, not post-commit ─
 #
 # The saga side_effect/compensate machinery is retained (it is correct and tested
 # for genuine non-Mongo effects), but the LIVE AI-write notification path is a Mongo
@@ -286,7 +286,7 @@ async def test_post_consume_plan_tampered_echoes_intent(monkeypatch):
         "school_id": "sch", "branch_id": "b1", "used": False,
         "expires_at": datetime.now(timezone.utc) + timedelta(minutes=5),
         "plan": tampered,
-        # MAC bound to the ORIGINAL plan — the persisted plan was edited.
+        # MAC bound to the ORIGINAL plan - the persisted plan was edited.
         "plan_hash": confirm_tokens.compute_plan_hash(_PLAN, school_id="sch", branch_id="b1"),
     }
 

@@ -1,4 +1,4 @@
-"""AI self-learning (Memory + Skills) for Owner & Principal — Epic G.
+"""AI self-learning (Memory + Skills) for Owner & Principal - Epic G.
 
 Cloned and customized from the open-source Odysseus project
 (github.com/pewdiepie-archdaemon/odysseus): `src/memory.py`, `src/memory_vector.py`,
@@ -10,7 +10,7 @@ EduFlow adaptations vs Odysseus:
 - Every write is PII-minimized with `ai.redaction.redact_text_for_memory()` (DPDP).
 - Phase-1 self-learning is **Owner + Principal only** (Story F.11 / FR43); never
   students. Callers gate via `services.memory.is_memory_subject`.
-- No UI surface anywhere (FR32) — the assistant auto-saves and asks in chat only.
+- No UI surface anywhere (FR32) - the assistant auto-saves and asks in chat only.
 """
 
 from __future__ import annotations

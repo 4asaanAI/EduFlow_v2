@@ -1,4 +1,4 @@
-"""Leave-decision domain service — the single shared write path for approving or
+"""Leave-decision domain service - the single shared write path for approving or
 rejecting a staff leave request (AI Layer Hardening, AD7 / Epic A, Story A.2).
 
 Both `PATCH /api/staff/leaves/{id}` (REST) and the AI `approve_leave` tool call
@@ -7,7 +7,7 @@ the same pending-only idempotency guard, the same staff notification, and the
 same audit row.
 
 **Parity decision (case-by-case, canonical = REST):** the old AI `tool_approve_leave`
-silently diverged — it wrote no notification, no audit, no pending-only guard, did
+silently diverged - it wrote no notification, no audit, no pending-only guard, did
 not require a rejection reason, and stamped a local (not UTC) `approved_at`. All of
 those are corrected to match the REST route, which is the complete/correct path.
 
@@ -81,7 +81,7 @@ async def decide_leave(
     if rejection_reason:
         set_fields["rejection_reason"] = rejection_reason
 
-    # Idempotency guard — only transition a still-pending request (prevents a
+    # Idempotency guard - only transition a still-pending request (prevents a
     # double-decision creating duplicate notifications/audit entries).
     result = await db.leave_requests.update_one(
         scoped_query({"id": leave_id, "status": "pending"}, branch_id=actor_ctx.branch_id),

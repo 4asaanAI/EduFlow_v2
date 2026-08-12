@@ -201,6 +201,6 @@ def test_staff_me_route_accessible(client, fake_db):
     """GET /staff/me is accessible to teachers (routing order check)."""
     fake_db.staff.docs = []
     resp = client.get("/api/attendance/staff/me", headers=_teacher_h())
-    # Should not 404 due to routing shadowing — staff/me must be before staff
+    # Should not 404 due to routing shadowing - staff/me must be before staff
     assert resp.status_code == 200
     assert resp.json().get("success") is True

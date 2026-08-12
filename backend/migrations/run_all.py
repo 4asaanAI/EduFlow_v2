@@ -48,7 +48,7 @@ MIGRATIONS = [
     ("015_ai_rate_limit_counters", "AI rate-limit counters + overrides (Story 7-48)"),
     ("016_admin_sub_category_default", "Backfill legacy admin sub_category=support_staff (Part 1 Auth+RBAC)"),
     ("017_backfill_rate_limit_override_expires_at", "Backfill expires_at=null on override rows without the field (Part 2 P10)"),
-    ("018_drop_otps_collection", "Drop the otps collection — zero code references, dead indexes (Part 4)"),
+    ("018_drop_otps_collection", "Drop the otps collection - zero code references, dead indexes (Part 4)"),
     ("019_notifications_index", "Add notifications compound index for unread count and list queries (Part 5)"),
     ("020_file_uploads_add_school_id", "Backfill file_uploads schoolId and add scoped indexes (Part 6)"),
     ("021_audit_log_indexes", "Add audit log scoped query indexes (Part 7)"),
@@ -63,6 +63,52 @@ MIGRATIONS = [
     ("030_profile_notes_index", "Index-only: the (schoolId, author_id, subject_type, subject_id, created_at) index behind private profile notes (owner request 4, 2026-08-06)"),
     ("031_provision_school_leadership_accounts", "Provision the reviewed Aman, Adesh, Sonu, and Lalit profiles and login authority (data-changing; run explicitly only)"),
     ("032_platform_messaging_indexes", "Add index-only leadership platform messaging storage"),
+    # WARNING: 033 RENAMES TWO LIVE LOGINS AND SIGNS THOSE PEOPLE OUT. It is listed
+    # here because every migration file must be, and it is one more reason this
+    # runner must never be pointed at the live school database. Run 033 BY ITSELF,
+    # on the day, with explicit approval, after its dry run. See its docstring.
+    ("033_rename_two_office_logins", "R2-11: accountant -> sonu.ruhal, management -> lalit.thomas, plus the principal display name (data-changing; REVOKES SESSIONS; run explicitly only)"),
+    # 034 sets a stream on senior classes and students. Listed here because every
+    # migration file must be. It has ALREADY been applied by hand on 2026-08-11 and is
+    # recorded in `_migrations`, so it is a no-op if it ever runs again; it also reads
+    # two spreadsheets out of `aaryans_database/` and does nothing without them. Like
+    # everything above it, run it by itself and never through this runner.
+    ("034_senior_streams", "Release 2 step 2: Commerce/Science stream on the six senior classes and 186 senior students (data-changing; ALREADY APPLIED 2026-08-11; run explicitly only)"),
+    # 035 creates the school's price list. It skips any class that already has a
+    # structure, so a second run creates nothing, but it is still listed here only
+    # because every migration file must be. Run it by itself.
+    ("035_load_fee_structures", "Release 2 step 3: 48 fee structures, four quarterly instalments each, from the school's 2026-27 fee sheet (data-changing; ALREADY APPLIED 2026-08-11; run explicitly only)"),
+    # 036 marks 1,376 children as bus riders. Listed here because every migration file
+    # must be. Run it by itself.
+    ("036_transport_routes_and_riders", "Release 2 step 4: 48 transport routes with 185 stops and rates, and 1,376 riders; eleven billed months with June excluded (data-changing; ALREADY APPLIED 2026-08-11; run explicitly only)"),
+    # 037 tags brothers and sisters and copies the sibling concession the office actually
+    # gave. Listed here only because every migration file must be. It reads the payment
+    # ledger out of `aaryans_database/` and does nothing without it. Run it by itself.
+    ("037_sibling_links", "Release 2 step 6: 377 sibling families and 826 children tagged from the school's own payment remarks, with 445 sibling concessions copied from what the office gave (data-changing; run explicitly only)"),
+    # 038 decides whether a child owes any school fee at all. Listed here only because
+    # every migration file must be. It reads the school's student export and refuses if
+    # the number of marked children has drifted from the 21 the school confirmed.
+    ("038_right_to_education", "Release 2 step 7: the 21 children holding a government-paid Right to Education place, marked so they are never billed a school fee (data-changing; run explicitly only)"),
+    # 039 loads 3.56 crore of the school's collections and 040 retires the figures that
+    # were standing in for them. Both are listed only because every migration file must
+    # be, both are the largest writes in the release, and 040 refuses unless 039 has run.
+    # Run each one by itself.
+    ("039_load_payments_from_ledger", "Release 2 step 8: 10,720 payment lines from the school's ledger of 11 August, 3.56 crore collected across 3,177 receipts (data-changing; run explicitly only)"),
+    ("040_supersede_unvouched_fee_snapshots", "Release 2 step 8: retire the fee figures on 1,844 children that their own label says are not the fee ledger; moved, not deleted (data-changing; run explicitly only)"),
+    # 041 issues real passwords to real people and 043 takes 21 people off the roll and
+    # switches their logins off. Both are listed only because every migration file must
+    # be. Run each one by itself, and read what it prints before saying yes.
+    ("041_office_staff_logins", "Seven new office logins, two staff records linked to logins they already had; teachers, the care taker and the office helpers deliberately excluded (data-changing; ALREADY APPLIED 2026-08-12; run explicitly only)"),
+    ("042_fill_blanks_from_school_sources", "Fill only blanks the school's own records answer: 45 staff subjects, 21 staff addresses, 111 student genders, the school logo (data-changing; ALREADY APPLIED 2026-08-12; run explicitly only)"),
+    ("043_staff_departures", "The 21 staff confirmed as departed, marked left and signed out, and five classes handed to the new teachers the school itself named (data-changing; ALREADY APPLIED 2026-08-12; run explicitly only)"),
+    ("044_dates_of_birth_and_last_contact_fields", "501 dates of birth from the detainees workbook, each one tested against the age its own class actually is, plus the last four contact fields (data-changing; ALREADY APPLIED 2026-08-12; run explicitly only)"),
+    ("045_one_sonu_ruhal", "End the SONU RUHAL subject-teacher label: one record, the accounts head, joined to the login he already uses (data-changing; ALREADY APPLIED 2026-08-12; run explicitly only)"),
+    ("046_merge_sonu_teacher_profile", "Fold Sonu Ruhal's teacher profile and his second working login into the accounts head profile and delete them; rejoin three staff records to the identity the person signs in as (data-changing; ALREADY APPLIED 2026-08-12; run explicitly only)"),
+    ("047_profiles_for_logins_that_have_none", "A profile record for the 12 active logins that had none and were therefore skipped by every notification, digest and approval list (data-changing; ALREADY APPLIED 2026-08-12; run explicitly only)"),
+    # 048 and 049 both exist because a lookup that matches nobody looks exactly like a
+    # lookup with nothing to do. 043 believed it had signed 21 leavers out and had not.
+    ("048_actually_sign_out_departed_staff", "Switch off the logins of the 21 departed staff, which migration 043 reported as done and had not done: it matched the wrong id field and silently changed nothing (data-changing; ALREADY APPLIED 2026-08-12; run explicitly only)"),
+    ("049_stamp_branch_on_staff_logins", "Put the branch on the 95 staff logins that carried none, so branch filtering stops hiding colleagues from each other in staff messaging (data-changing; ALREADY APPLIED 2026-08-12; run explicitly only)"),
 ]
 
 

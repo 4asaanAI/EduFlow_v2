@@ -1,5 +1,5 @@
 from __future__ import annotations
-"""Notifications API — Story 16: persistent in-app notifications + role-scoped digest"""
+"""Notifications API - Story 16: persistent in-app notifications + role-scoped digest"""
 from fastapi import APIRouter, Request, HTTPException, Depends
 from database import get_db
 from middleware.auth import get_current_user, require_role
@@ -30,16 +30,16 @@ async def count_unread(db, user_id: str) -> int:
     Both `GET /unread-count` (which the header bell reads) and `meta.unread_total`
     on the list endpoint (which the panel and the All Notifications page read) call
     this. Written twice they would agree today and diverge the first time anyone
-    added a filter to one of them — and the symptom would be a count the owner
+    added a filter to one of them - and the symptom would be a count the owner
     cannot believe, which is the defect this epic exists to remove.
     """
     return await db.notifications.count_documents(
-        # branch-scope: intentional — a notification belongs to ONE user, and
+        # branch-scope: intentional - a notification belongs to ONE user, and
         # user_id is strictly narrower than branch_id. Notification documents
         # carry no branch_id at all (services/notification_service.py builds them
         # with add_school_id only), so scoped_query(branch_id=...) here would
         # match nothing and silently empty every bell in the school.
-        scoped_filter({"user_id": user_id, "read": False}, get_school_id())  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+        scoped_filter({"user_id": user_id, "read": False}, get_school_id())  # branch-scope: intentional - scoped to one named person's own record, not to a branch
     )
 
 
@@ -56,7 +56,7 @@ async def get_notifications(
 
     CALLED WITH NO ARGUMENTS BY `NotificationsPanel`, which is in the header on
     every screen. Every default here is chosen so that call gets exactly what it
-    got before this endpoint learned to page — digest rows on page 1, the
+    got before this endpoint learned to page - digest rows on page 1, the
     "All Good" fallback, newest first. `tests/backend/api/test_notifications.py`
     pins that; a regression here is a regression everywhere.
 
@@ -75,10 +75,10 @@ async def get_notifications(
     base = {"user_id": user["id"]}
     if unread_only:
         base["read"] = False
-    # branch-scope: intentional — scoped to the caller's own user_id, which is
+    # branch-scope: intentional - scoped to the caller's own user_id, which is
     # narrower than any branch. See count_unread() above for why adding a
     # branch_id clause would return nothing.
-    query = scoped_filter(base, get_school_id())  # branch-scope: intentional — see the note directly above this line
+    query = scoped_filter(base, get_school_id())  # branch-scope: intentional - see the note directly above this line
     total = await db.notifications.count_documents(query)
     persistent = await db.notifications.find(query, {"_id": 0}).sort("created_at", direction).skip(skip).limit(limit).to_list(limit)
 
@@ -91,37 +91,37 @@ async def get_notifications(
     if page == 1 and synthetic_allowed:
         role = user["role"]
         today = date.today().strftime("%Y-%m-%d")
-        ann_query = scoped_filter({"is_draft": {"$ne": True}}, get_school_id())  # branch-scope: intentional — announcements are published to the whole school
+        ann_query = scoped_filter({"is_draft": {"$ne": True}}, get_school_id())  # branch-scope: intentional - announcements are published to the whole school
         recent_ann = await db.announcements.find(ann_query, {"_id": 0, "title": 1, "created_at": 1, "audience_roles": 1}).sort("created_at", -1).to_list(5)
 
         if role in ["owner", "admin"]:
-            pending = await db.leave_requests.count_documents(scoped_filter({"status": "pending"}, get_school_id()))  # branch-scope: intentional — the approver queue counts every pending leave in the school, which is what an owner or principal approves against
+            pending = await db.leave_requests.count_documents(scoped_filter({"status": "pending"}, get_school_id()))  # branch-scope: intentional - the approver queue counts every pending leave in the school, which is what an owner or principal approves against
             if pending > 0:
                 digest.append({"type": "warning", "title": "Pending Leave Requests", "message": f"{pending} leave request(s) awaiting approval", "time": "Now", "read": True, "is_digest": True})
-            overdue = await db.fee_transactions.count_documents(scoped_filter({"status": "overdue"}, get_school_id()))  # branch-scope: intentional — the overdue-fee count is a school-wide figure on the owner's dashboard
+            overdue = await db.fee_transactions.count_documents(scoped_filter({"status": "overdue"}, get_school_id()))  # branch-scope: intentional - the overdue-fee count is a school-wide figure on the owner's dashboard
             if overdue > 0:
                 digest.append({"type": "error", "title": "Fee Overdue", "message": f"{overdue} fee transaction(s) overdue", "time": "Today", "read": True, "is_digest": True})
-            open_facility = await db.facility_requests.count_documents(scoped_filter({"status": {"$in": ["open", "in_progress"]}}, get_school_id()))  # branch-scope: intentional — facility requests are handled by one school-wide maintenance queue
+            open_facility = await db.facility_requests.count_documents(scoped_filter({"status": {"$in": ["open", "in_progress"]}}, get_school_id()))  # branch-scope: intentional - facility requests are handled by one school-wide maintenance queue
             if open_facility > 0:
                 digest.append({"type": "info", "title": "Open Facility Requests", "message": f"{open_facility} facility request(s) in progress", "time": "Today", "read": True, "is_digest": True})
 
         elif role == "teacher":
-            staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()))  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+            staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()))  # branch-scope: intentional - scoped to one named person's own record, not to a branch
             if staff:
-                my_leaves = await db.leave_requests.count_documents(scoped_filter({"staff_id": staff["id"], "status": "pending"}, get_school_id()))  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+                my_leaves = await db.leave_requests.count_documents(scoped_filter({"staff_id": staff["id"], "status": "pending"}, get_school_id()))  # branch-scope: intentional - scoped to one named person's own record, not to a branch
                 if my_leaves > 0:
                     digest.append({"type": "info", "title": "Leave Status", "message": "Your leave request is pending approval", "time": "Now", "read": True, "is_digest": True})
 
         elif role == "student":
-            own = await db.students.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()))  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+            own = await db.students.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()))  # branch-scope: intentional - scoped to one named person's own record, not to a branch
             if own:
-                records = await db.student_attendance.find(scoped_filter({"student_id": own["id"]}, get_school_id())).to_list(200)  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+                records = await db.student_attendance.find(scoped_filter({"student_id": own["id"]}, get_school_id())).to_list(200)  # branch-scope: intentional - scoped to one named person's own record, not to a branch
                 if records:
                     present = sum(1 for r in records if r["status"] == "present")
                     rate = round(present / len(records) * 100, 1)
                     if rate < 75:
-                        digest.append({"type": "error", "title": "Low Attendance", "message": f"Your attendance is {rate}% — below 75% threshold", "time": "Today", "read": True, "is_digest": True})
-                overdue = await db.fee_transactions.count_documents(scoped_filter({"student_id": own["id"], "status": {"$in": ["overdue", "pending"]}}, get_school_id()))  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+                        digest.append({"type": "error", "title": "Low Attendance", "message": f"Your attendance is {rate}% - below 75% threshold", "time": "Today", "read": True, "is_digest": True})
+                overdue = await db.fee_transactions.count_documents(scoped_filter({"student_id": own["id"], "status": {"$in": ["overdue", "pending"]}}, get_school_id()))  # branch-scope: intentional - scoped to one named person's own record, not to a branch
                 if overdue > 0:
                     digest.append({"type": "warning", "title": "Fee Due", "message": f"{overdue} fee payment(s) pending", "time": "Today", "read": True, "is_digest": True})
 
@@ -146,7 +146,7 @@ async def get_notifications(
             "total": total,
             "digest_count": digest_count,
             "has_fallback": has_fallback,
-            # Across ALL pages, not this one — so the bell, the panel and the
+            # Across ALL pages, not this one - so the bell, the panel and the
             # All Notifications page are three readings of one number.
             "unread_total": await count_unread(db, user["id"]),
             "sort": sort if sort in SORT_ORDERS else DEFAULT_SORT,
@@ -166,7 +166,7 @@ async def mark_notification_read(notification_id: str, request: Request):
     db = get_db()
     user = get_user(request)
     result = await db.notifications.update_one(
-        scoped_filter({"id": notification_id, "user_id": user["id"]}, get_school_id()),  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+        scoped_filter({"id": notification_id, "user_id": user["id"]}, get_school_id()),  # branch-scope: intentional - scoped to one named person's own record, not to a branch
         {"$set": {"read": True, "read_at": datetime.now().isoformat()}}
     )
     if result.matched_count == 0:
@@ -180,7 +180,7 @@ async def mark_all_read(request: Request):
     user = get_user(request)
     request_start = datetime.now().isoformat()
     await db.notifications.update_many(
-        scoped_filter(  # branch-scope: intentional — scoped to the caller's own user_id, which is narrower than any branch
+        scoped_filter(  # branch-scope: intentional - scoped to the caller's own user_id, which is narrower than any branch
             {"user_id": user["id"], "read": False, "created_at": {"$lt": request_start}},
             get_school_id(),
         ),
@@ -313,22 +313,22 @@ def _source_summary(rec: dict, source_type: str) -> dict:
     if source_type == "leave_request":
         return {**base, "title": f"{rec.get('leave_type', 'Leave')} request", "subtitle": f"{rec.get('start_date', '')} → {rec.get('end_date', '')}", "detail": rec.get("reason", "")}
     if source_type == "facility_request":
-        return {**base, "title": rec.get("title") or rec.get("description", "Facility request"), "subtitle": f"Location: {rec.get('location', '—')}", "detail": rec.get("description", "")}
+        return {**base, "title": rec.get("title") or rec.get("description", "Facility request"), "subtitle": f"Location: {rec.get('location', '-')}", "detail": rec.get("description", "")}
     if source_type == "incident":
-        return {**base, "title": rec.get("title") or rec.get("incident_type", "Incident"), "subtitle": f"Severity: {rec.get('severity', '—')}", "detail": rec.get("description", "")}
+        return {**base, "title": rec.get("title") or rec.get("incident_type", "Incident"), "subtitle": f"Severity: {rec.get('severity', '-')}", "detail": rec.get("description", "")}
     if source_type == "announcement":
         audience = ", ".join(rec.get("audience_roles") or ["All"])
         return {**base, "title": rec.get("title", "Announcement"), "subtitle": f"Audience: {audience}", "detail": rec.get("body") or rec.get("content", "")}
     if source_type == "certificate":
-        return {**base, "title": f"{rec.get('cert_type') or rec.get('type', 'Certificate')} certificate", "subtitle": f"Student: {rec.get('student_name', '—')}", "detail": rec.get("purpose") or rec.get("reason", "")}
+        return {**base, "title": f"{rec.get('cert_type') or rec.get('type', 'Certificate')} certificate", "subtitle": f"Student: {rec.get('student_name', '-')}", "detail": rec.get("purpose") or rec.get("reason", "")}
     if source_type == "substitution":
-        return {**base, "title": f"Period {rec.get('period_number', '—')} substitution", "subtitle": f"Substitute: {rec.get('substitute_teacher_name', '—')}", "detail": f"Class: {rec.get('class_name', '—')}"}
+        return {**base, "title": f"Period {rec.get('period_number', '-')} substitution", "subtitle": f"Substitute: {rec.get('substitute_teacher_name', '-')}", "detail": f"Class: {rec.get('class_name', '-')}"}
     if source_type in ("tech_request", "approval_request"):
         return {**base, "title": rec.get("title") or rec.get("description", source_type.replace("_", " ").title()), "subtitle": rec.get("category") or rec.get("type", ""), "detail": rec.get("description", "")}
     if source_type == "fee_transaction":
-        return {**base, "title": f"Fee — ₹{rec.get('amount', 0):,}", "subtitle": f"Student: {rec.get('student_name', '—')}", "detail": rec.get("fee_type", "")}
+        return {**base, "title": f"Fee - ₹{rec.get('amount', 0):,}", "subtitle": f"Student: {rec.get('student_name', '-')}", "detail": rec.get("fee_type", "")}
     if source_type == "visitor":
-        return {**base, "title": f"Visitor: {rec.get('visitor_name', '—')}", "subtitle": f"Purpose: {rec.get('purpose', '—')}", "detail": ""}
+        return {**base, "title": f"Visitor: {rec.get('visitor_name', '-')}", "subtitle": f"Purpose: {rec.get('purpose', '-')}", "detail": ""}
     return {**base, "title": rec.get("title") or source_type.replace("_", " ").title(), "subtitle": "", "detail": ""}
 
 
@@ -339,7 +339,7 @@ async def get_notification_detail(notification_id: str, request: Request):
     school_id = get_school_id()
 
     notif = await db.notifications.find_one(
-        scoped_filter({"id": notification_id, "user_id": user["id"]}, school_id), {"_id": 0}  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+        scoped_filter({"id": notification_id, "user_id": user["id"]}, school_id), {"_id": 0}  # branch-scope: intentional - scoped to one named person's own record, not to a branch
     )
     if not notif:
         raise HTTPException(404, "Notification not found")
@@ -362,7 +362,7 @@ async def get_notification_detail(notification_id: str, request: Request):
             coll = getattr(db, coll_name, None)
             if coll is not None:
                 source = await coll.find_one(
-                    scoped_filter({"id": source_id}, school_id), {"_id": 0}  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+                    scoped_filter({"id": source_id}, school_id), {"_id": 0}  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
                 )
 
         if source:
@@ -371,12 +371,12 @@ async def get_notification_detail(notification_id: str, request: Request):
 
             # Audit log events for this record
             audit_entries = await db.audit_logs.find(
-                scoped_filter({"entity_id": source_id}, school_id), {"_id": 0}  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+                scoped_filter({"entity_id": source_id}, school_id), {"_id": 0}  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
             ).sort("created_at", 1).to_list(50)
 
             for entry in audit_entries:
                 action = entry.get("action", "")
-                # Skip create events — already synthesised from record itself
+                # Skip create events - already synthesised from record itself
                 if action in ("facility_request_create", "tech_request_create"):
                     continue
                 label = _ACTION_LABELS.get(action) or action.replace("_", " ").title()
@@ -451,7 +451,7 @@ async def create_notification(request: Request, user: dict = Depends(require_rol
     if not ok:
         raise HTTPException(503, "Notification could not be created")
     created = await db.notifications.find_one(
-        scoped_filter(  # branch-scope: intentional — matches back the notification just written for one named user
+        scoped_filter(  # branch-scope: intentional - matches back the notification just written for one named user
             {
                 "user_id": body["user_id"],
                 "title": body["title"],

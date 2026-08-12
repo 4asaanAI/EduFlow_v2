@@ -1,5 +1,5 @@
 from __future__ import annotations
-# Migration 018: Drop the otps collection — zero code references, dead indexes.
+# Migration 018: Drop the otps collection - zero code references, dead indexes.
 
 import os
 import logging

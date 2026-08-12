@@ -99,7 +99,7 @@ export default function SearchablePicker({
         <option value="">Select…</option>
         {shown.map((o) => (
           <option key={o.value} value={o.value}>
-            {o.hint ? `${o.label} — ${o.hint}` : o.label}
+            {o.hint ? `${o.label} - ${o.hint}` : o.label}
           </option>
         ))}
       </select>

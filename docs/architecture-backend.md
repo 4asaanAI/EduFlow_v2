@@ -1,4 +1,4 @@
-# Architecture — Backend (FastAPI)
+# Architecture - Backend (FastAPI)
 
 _Generated: 2026-05-15 | Scan: deep | Part: backend_
 
@@ -8,11 +8,11 @@ _Generated: 2026-05-15 | Scan: deep | Part: backend_
 
 EduFlow's backend is a **FastAPI monolith** with a domain-routed layout. It serves a React SPA via REST + SSE endpoints. The architecture emphasises:
 
-1. **JWT authentication** — short-lived access tokens (60 min) + httpOnly refresh tokens
-2. **Dual-axis multi-tenancy** — `schoolId` (env-based) + `branch_id` (JWT claim)
-3. **AI layer** — Azure OpenAI primary + Gemini secondary, with per-action rate limiting and a token budget
-4. **S3-backed file storage** — all uploads go to AWS S3 (local `uploads/` is legacy)
-5. **Async-first** — Motor (async MongoDB), async routes throughout
+1. **JWT authentication** - short-lived access tokens (60 min) + httpOnly refresh tokens
+2. **Dual-axis multi-tenancy** - `schoolId` (env-based) + `branch_id` (JWT claim)
+3. **AI layer** - Azure OpenAI primary + Gemini secondary, with per-action rate limiting and a token budget
+4. **S3-backed file storage** - all uploads go to AWS S3 (local `uploads/` is legacy)
+5. **Async-first** - Motor (async MongoDB), async routes throughout
 
 ---
 
@@ -33,8 +33,8 @@ EduFlow's backend is a **FastAPI monolith** with a domain-routed layout. It serv
 | Secondary LLM | google-generativeai | ≥0.8.0 |
 | File storage | boto3 (S3) | ≥1.34 |
 | SMS | twilio | ≥9.2.0 |
-| Database | MongoDB Atlas | — |
-| Deployment | AWS Elastic Beanstalk | — |
+| Database | MongoDB Atlas | - |
+| Deployment | AWS Elastic Beanstalk | - |
 
 ---
 
@@ -113,16 +113,16 @@ HTTP Request
 **School isolation (`schoolId`):**
 - Value comes from `SCHOOL_ID` env var (default: `aaryans-joya`)
 - `ScopedCollection` auto-injects `schoolId` on every write
-- Reads add `{$or: [{schoolId: X}, {schoolId: {$exists: false}}]}` — backward-compatible with pre-migration docs
+- Reads add `{$or: [{schoolId: X}, {schoolId: {$exists: false}}]}` - backward-compatible with pre-migration docs
 - System collections (`auth_users`, `refresh_tokens`, etc.) bypass scoping
 
 **Branch isolation (`branch_id`):**
 - Value from JWT claim `branch_id`
 - `scoped_query(query, branch_id=user["branch_id"])` in `tenant.py`
-- Callers must pass `branch_id` explicitly — `ScopedCollection` does NOT auto-inject it
+- Callers must pass `branch_id` explicitly - `ScopedCollection` does NOT auto-inject it
 - Conflict detection: if query already pins a different `branch_id`, raises `ValueError`
 
-**Known gap (Part 4):** `schoolId` is env-var only — not in JWT. True multi-school deployment requires architectural decision on JWT claim vs. env-per-instance.
+**Known gap (Part 4):** `schoolId` is env-var only - not in JWT. True multi-school deployment requires architectural decision on JWT claim vs. env-per-instance.
 
 ---
 
@@ -200,12 +200,12 @@ User message → POST /api/chat/conversations/{id}/messages
 
 ## API Design
 
-- **REST** — standard HTTP verbs, resource-based URLs, `/api/{domain}/{id}` pattern
-- **SSE** — streaming for AI chat responses, attendance stream, fee stream
-- **Idempotency** — `Idempotency-Key` header supported on mutating endpoints
-- **Pagination** — query param based (`page`, `limit`) in list endpoints
-- **Validation** — Pydantic v2 request models on all write endpoints
-- **Error format** — `{"detail": "message"}` (Starlette default)
+- **REST** - standard HTTP verbs, resource-based URLs, `/api/{domain}/{id}` pattern
+- **SSE** - streaming for AI chat responses, attendance stream, fee stream
+- **Idempotency** - `Idempotency-Key` header supported on mutating endpoints
+- **Pagination** - query param based (`page`, `limit`) in list endpoints
+- **Validation** - Pydantic v2 request models on all write endpoints
+- **Error format** - `{"detail": "message"}` (Starlette default)
 
 ---
 
@@ -260,6 +260,6 @@ User message → POST /api/chat/conversations/{id}/messages
 | E2E | `tests/e2e/` | Playwright | `playwright test` |
 
 **Key test infra:**
-- `tests/backend/conftest.py` — TestClient + MongoDB test fixture
+- `tests/backend/conftest.py` - TestClient + MongoDB test fixture
 - Tests require `APP_AVAILABLE=true` to run (skips if backend can't start)
 - `from __future__ import annotations` required at top of any file using `str | None` (Python 3.9 compatibility)

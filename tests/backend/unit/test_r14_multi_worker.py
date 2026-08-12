@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 # ---------------------------------------------------------------------------
-# R14.1 — SSE startup guard: refuses multi-worker without shared broker
+# R14.1 - SSE startup guard: refuses multi-worker without shared broker
 # ---------------------------------------------------------------------------
 
 def test_sse_startup_refuses_multi_worker_without_redis(monkeypatch):
@@ -44,13 +44,13 @@ def test_sse_startup_defaults_to_single_worker(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# R14.1 — layaastat fire-and-forget: telemetry is held, never silently GC'd/lost
+# R14.1 - layaastat fire-and-forget: telemetry is held, never silently GC'd/lost
 #
 # The former single-module client used a `_pending_tasks` set to hold strong refs
 # to fire-and-forget tasks. The unified LayaaStat package (merged from the
 # layaastat-integration branch) supersedes that with a buffered store-and-forward
 # `LayaaMonitor`: events live in a strongly-referenced buffer until an explicit
-# flush delivers them — a stronger no-loss guarantee than the old task set. These
+# flush delivers them - a stronger no-loss guarantee than the old task set. These
 # tests assert that new guarantee plus the back-compat API surface the app calls.
 # ---------------------------------------------------------------------------
 
@@ -65,7 +65,7 @@ def test_layaastat_backcompat_api_surface_exists():
 
 
 async def test_layaastat_events_are_buffered_and_delivered_not_lost():
-    """Tracked events are held in the monitor's buffer and delivered on flush —
+    """Tracked events are held in the monitor's buffer and delivered on flush -
     they are never dropped/GC'd mid-flight (R14.1 AC2 intent)."""
     from services.layaastat.client import LayaaMonitor
 
@@ -82,7 +82,7 @@ async def test_layaastat_events_are_buffered_and_delivered_not_lost():
         send_func=fake_send,
     )
 
-    # First event is held (buffered), not sent yet — proving a strong ref is kept.
+    # First event is held (buffered), not sent yet - proving a strong ref is kept.
     await monitor.track("user_login", distinct_id="u1", properties={"role": "owner"})
     assert sent == []
     assert len(monitor._events) == 1
@@ -96,7 +96,7 @@ async def test_layaastat_events_are_buffered_and_delivered_not_lost():
 
 
 # ---------------------------------------------------------------------------
-# R14.2 — School status cache: TTL-bounded, fail-open on exception
+# R14.2 - School status cache: TTL-bounded, fail-open on exception
 # ---------------------------------------------------------------------------
 
 async def test_school_status_cached_on_second_call(monkeypatch):
@@ -173,7 +173,7 @@ async def test_school_status_fail_open_on_db_exception(monkeypatch):
         school_doc = await db.schools.find_one({"school_id": school_id})
     except Exception:
         school_context.logger.warning(
-            "school status check failed school_id=%s — failing open", school_id, exc_info=True
+            "school status check failed school_id=%s - failing open", school_id, exc_info=True
         )
         cached = "active"  # fail open
 
@@ -208,7 +208,7 @@ def test_active_school_passes_through(client):
     token = create_jwt({"user_id": "u1", "role": "owner", "school_id": "aaryans-joya"})
     try:
         resp = client.get("/api/staff/", headers={"Authorization": f"Bearer {token}"})
-        # 200 or 404 — anything except 402 means the gate passed
+        # 200 or 404 - anything except 402 means the gate passed
         assert resp.status_code != 402
     finally:
         school_context._clear_school_status_cache()

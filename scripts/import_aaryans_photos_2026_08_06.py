@@ -7,20 +7,20 @@ WHY THIS IS A SEPARATE SCRIPT. The first load (`import_aaryans_2026_08_06.py`) s
 photographs, on the finding that the `Photo` column contained the literal word `View`
 on every filled row. **That finding was wrong**, and Abhimanyu caught it by clicking
 one: `View` is the link LABEL, and the cell's hyperlink TARGET is the real photograph.
-Reading cell *values* — which is what `read_only=True` gives you — never sees it.
+Reading cell *values* - which is what `read_only=True` gives you - never sees it.
 
     openpyxl.load_workbook(path, data_only=True)     # <- hyperlinks ARE exposed
     openpyxl.load_workbook(path, read_only=True)     # <- cell.hyperlink is None
 
 Three different shapes, all in the same pair of files:
-  * student photo  — hyperlink target, absolute URL       (1,427)
-  * teacher photo  — hyperlink target, absolute URL       (13)
-  * parent photos  — RELATIVE path in the cell VALUE      (127 mother, 128 father, 1 guardian)
+  * student photo  - hyperlink target, absolute URL       (1,427)
+  * teacher photo  - hyperlink target, absolute URL       (13)
+  * parent photos  - RELATIVE path in the cell VALUE      (127 mother, 128 father, 1 guardian)
                      valid once prefixed with the CDN host; verified 200 image/jpeg
 
 WHAT THIS WRITES: `photo_url` on students, and on matched staff. Nothing else.
 
-WHAT IT DOES NOT WRITE, and why — see
+WHAT IT DOES NOT WRITE, and why - see
 `_bmad-output/planning-artifacts/data-load-anomalies-2026-08-06.md`:
   * PARENT photos. The `guardians` collection has no photo field. Rather than invent one
     silently (it would be invisible to the API, which serialises the Guardian model),
@@ -144,7 +144,7 @@ def main():
     print(f"  students with no photo in the file: {db.students.count_documents({'schoolId': SCHOOL_ID}) - len(student_photos)}"
           " (left blank, anomaly B3)")
 
-    print("\nPARENT PHOTOGRAPHS — NOT written, no field exists (anomaly C2)")
+    print("\nPARENT PHOTOGRAPHS - NOT written, no field exists (anomaly C2)")
     for k, v in parent_photo_count.items():
         print(f"  {k:16s} {v}")
 
@@ -171,7 +171,7 @@ def main():
         hit = None
         for s in staff:
             sp = "".join(ch for ch in str(s.get("phone") or "") if ch.isdigit())[-10:]
-            # BOTH name and phone must agree — the same bar the teacher comparison used.
+            # BOTH name and phone must agree - the same bar the teacher comparison used.
             if str(s.get("name") or "").strip().upper() == name and sp and sp == phone:
                 hit = s
                 break

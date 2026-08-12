@@ -1,10 +1,10 @@
 /**
- * UI Sweep Epic 4 — column sorting on the tool-screen table.
+ * UI Sweep Epic 4 - column sorting on the tool-screen table.
  *
  * Asked for directly by the owner on 2026-07-22: "make sure that the sorting per
  * column is available in every table that is present over the platform".
  *
- * Added to the SHARED component rather than screen by screen — 33 tool screens
+ * Added to the SHARED component rather than screen by screen - 33 tool screens
  * render through it, so this satisfies FR82 for all of them at once. That is the
  * lesson from the previous retrospective: when a defect is in a shared component,
  * the fix goes in the shared component.

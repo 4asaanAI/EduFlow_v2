@@ -23,16 +23,58 @@ from services.s3_storage import (
     upload_bytes,
 )
 from services.audit_service import write_audit
+from services.actor_context import actor_ctx_from_user
+from services.certificate_service import (
+    CertificateNotFoundError,
+    CertificateStateError,
+    CertificateValidationError,
+    is_approved_for_printing,
+)
+from services.certificate_types import (
+    ID_CARD_TYPE,
+    canonical_type,
+    document_label,
+    requires_approval,
+    same_document,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/image-gen", tags=["image-gen"])
-require_document_issuer = require_owner_or_admin_subcategories("principal", "management")
+# Who may reach the document routes at all. Reaching them is not the same as being
+# allowed to issue: since R2-9 everyone here except the owner and the principal has to
+# name an approved request before anything prints.
+#
+# Abhimanyu, 2026-08-11: the accountant head is back on this list. He was taken off on
+# 2026-08-08, when reaching the route MEANT issuing the document and the school did not
+# want him doing that unwatched. That is no longer what it means - he creates a request
+# and the owner or the principal approves it - so the reason for excluding him has gone.
+require_document_issuer = require_owner_or_admin_subcategories(
+    "principal", "management", "accountant"
+)
 
 # R9.5 (X9 AC3): per-school, per-kind daily generation cap (abuse guard).
 DAILY_GEN_CAP = 200
 
+
+def _issues_without_approval(user: dict) -> bool:
+    """Decision 6, 2026-08-10: the owner and the principal issue directly.
+
+    Everybody else who can reach these routes creates a request and waits for one of
+    those two to approve it. Kept as a function rather than a set of role strings so
+    there is one sentence to read and one place to change.
+    """
+    return user.get("role") == "owner" or (
+        user.get("role") == "admin" and user.get("sub_category") == "principal"
+    )
+
+
+# R2-9: keyed by the CANONICAL document names in `services/certificate_types.py`. These
+# tables used to be keyed by the printer's own private words - `transfer` where the rest
+# of the platform said `transfer_certificate` - which is how a Transfer Certificate came
+# to be the one document that skipped approval entirely. Do not add a key here without
+# adding the document there.
 CERT_LABELS = {
-    "transfer": "Transfer Certificate",
+    "transfer_certificate": "Transfer Certificate",
     "bonafide": "Bonafide Certificate",
     "character": "Character Certificate",
     "sports": "Sports Certificate",
@@ -41,7 +83,7 @@ CERT_LABELS = {
 }
 
 CERT_STYLES = {
-    "transfer":    "royal blue and maroon, formal institutional departure document",
+    "transfer_certificate": "royal blue and maroon, formal institutional departure document",
     "bonafide":    "navy blue and gold, academic prestige, enrollment verification",
     "character":   "deep navy and silver, distinguished formal endorsement",
     "sports":      "vibrant blue and orange, athletic energy, achievement",
@@ -50,7 +92,7 @@ CERT_STYLES = {
 }
 
 CERT_BODIES = {
-    "transfer":    "This is to certify that {name} was a student of {school} in Class {cls}. Transfer Certificate is granted on {date} for the academic year {ay}. Conduct and character were Good throughout.",
+    "transfer_certificate": "This is to certify that {name} was a student of {school} in Class {cls}. Transfer Certificate is granted on {date} for the academic year {ay}. Conduct and character were Good throughout.",
     "bonafide":    "This is to certify that {name} is a bonafide student of {school}, currently studying in Class {cls} during the academic year {ay}. This certificate is issued on request for official purposes.",
     "character":   "This is to certify that {name} of Class {cls} has been a student of {school} during the academic year {ay}. The student maintained exemplary character and conduct. We wish all success in future endeavours.",
     "sports":      "This is to certify that {name} of Class {cls} has actively participated in sports activities at {school} during the academic year {ay}. The student has shown commendable sportsmanship and dedication.",
@@ -69,7 +111,7 @@ def _cert_prompt(cert_type: str, cert_title: str) -> str:
         f"Elegant decorative border with classical ornamental corner patterns and a subtle central watermark area. "
         f"A4 portrait format. Official academic document aesthetic. "
         f"Wide clear area in the centre for printed text content. "
-        f"No text, no letters, no numbers anywhere — purely decorative art."
+        f"No text, no letters, no numbers anywhere - purely decorative art."
     )
 
 
@@ -80,15 +122,15 @@ def _id_card_prompt(school_name: str) -> str:
         f"Blue gradient with subtle geometric pattern, top header strip in dark navy, "
         f"white centre area for content, light footer strip. "
         f"Clean modern academic design. "
-        f"No text, no letters, no words — purely decorative background art."
+        f"No text, no letters, no words - purely decorative background art."
     )
 
 
 # ─── Backgrounds ──────────────────────────────────────────────────────────────
 #
 # R9.5 (X9 AC2): the Google Gemini/Imagen leg was REMOVED. It shipped school data
-# (school name, and the request context) to Google — contradicting the platform's
-# Azure-residency / DPDP ADR — and degraded silently to a plain background on any
+# (school name, and the request context) to Google - contradicting the platform's
+# Azure-residency / DPDP ADR - and degraded silently to a plain background on any
 # failure. Certificates and ID cards are decorative-background documents whose text
 # is drawn locally with fpdf2; the locally-drawn `_plain_cert_bg`/`_plain_card`
 # designs are used exclusively now: deterministic, zero external data egress, zero
@@ -103,7 +145,9 @@ def _build_cert_pdf(data: dict, bg: bytes | None) -> bytes:
 
     school   = data.get("school_name", "School")
     affil    = data.get("affiliation", "")
-    ctype    = data.get("cert_type", "bonafide")
+    # R2-9: canonicalise here too, so a record written before this change (holding the
+    # printer's old `transfer`) still finds its template and its title.
+    ctype    = canonical_type(data.get("cert_type") or "bonafide")
     title    = CERT_LABELS.get(ctype, "Certificate")
     name     = data.get("student_name", "")
     cls      = data.get("class", "")
@@ -111,7 +155,7 @@ def _build_cert_pdf(data: dict, bg: bytes | None) -> bytes:
     issued   = data.get("issued_date", datetime.now().strftime("%d-%m-%Y"))
     ay       = data.get("academic_year", "")
 
-    # R9.5 AC3: type-guard — `class` may arrive as a non-string (int/None); coerce
+    # R9.5 AC3: type-guard - `class` may arrive as a non-string (int/None); coerce
     # before .lower() so it can't raise. Strip a leading "Class " to avoid
     # "Class Class 10-A" when the class name already includes the word.
     cls = str(cls or "")
@@ -358,7 +402,7 @@ async def _enforce_daily_cap(db, school_id: str, kind: str, branch_id: str | Non
 
     Returns False when over. Robust, test-friendly increment: find the day's counter,
     reject if at the cap, else bump (or create). A tiny race can let a couple past the
-    cap concurrently — acceptable for an abuse brake.
+    cap concurrently - acceptable for an abuse brake.
 
     D-53 (2026-08-04): the counter is now keyed on the issuing branch as well. It used
     to be one pool for the whole school, so one branch's principal could exhaust another
@@ -404,12 +448,12 @@ async def _resolve_class_name(db, class_id) -> str:
 async def generate_certificate(request: Request, user: dict = Depends(require_document_issuer)):
     # OWNER DECISION (2026-08-08): issuing an official school document is an AUTHORITY
     # question, not a forgery question. R9.5 resolves identity from the DB so the
-    # CONTENTS cannot be forged — but who may put the school's name on a certificate is
+    # CONTENTS cannot be forged - but who may put the school's name on a certificate is
     # a deliberate, narrow list: the school owner, the principal (admin/principal), and
     # the admin office (admin/management). This supersedes the 2026-08-04 decision that
     # named the accountant as the third issuing office; the owner approved the swap on
     # 2026-08-08, so the accountant no longer issues documents and management does.
-    # Do NOT re-widen this to require_role("admin", "owner") — that readmits all eight
+    # Do NOT re-widen this to require_role("admin", "owner") - that readmits all eight
     # admin sub_categories.
     try:
         data = await request.json()
@@ -419,7 +463,7 @@ async def generate_certificate(request: Request, user: dict = Depends(require_do
     db = get_db()
     school_id = get_school_id()
 
-    # R9.5 AC1: resolve the student's identity from the DB by student_id — NEVER
+    # R9.5 AC1: resolve the student's identity from the DB by student_id - NEVER
     # from client-supplied name/class/marks (those were the forgery vector).
     student_id = str(data.get("student_id") or "").strip()
     if not student_id:
@@ -429,18 +473,61 @@ async def generate_certificate(request: Request, user: dict = Depends(require_do
     # could issue an official certificate for a student who is not theirs. An owner
     # carries no branch_id and still issues for any student, by design.
     # A student outside the issuer's branch answers 404, the same as one who does not
-    # exist — a "you may not issue for this child" message would confirm the child is
+    # exist - a "you may not issue for this child" message would confirm the child is
     # enrolled somewhere, which is not the issuer's business.
     issuer_branch = user.get("branch_id")
     student = await db.students.find_one(scoped_query({"id": student_id}, branch_id=issuer_branch), {"_id": 0})
     if not student:
         raise HTTPException(404, "Student not found")
 
+    cert_type = canonical_type(data.get("cert_type") or "bonafide")  # template, not identity
+
+    # ── R2-9, decision 6 of 2026-08-10 ──────────────────────────────────────
+    # The owner and the principal put the school's name on a document directly. The
+    # admin office (Lalit) creates a request and waits for one of them.
+    #
+    # Until now this route had NO approval step at all, while the record flow in
+    # `certificate_service` did - so the office could raise a request, watch it sit
+    # unapproved, and print the very same Transfer Certificate from the row next to it.
+    # The approval was real and the paper ignored it.
+    #
+    # `sports` and `participation` are awards for taking part and need nobody's
+    # permission; `certificate_types` holds that judgement, not this route.
+    if requires_approval(cert_type) and not _issues_without_approval(user):
+        cert_id = str(data.get("cert_id") or "").strip()
+        if not cert_id:
+            raise HTTPException(
+                403,
+                f"A {document_label(cert_type)} has to be approved by the school's owner "
+                "or principal before it can be printed. Create the request first, then "
+                "print it once it has been approved.",
+            )
+        try:
+            approved = await is_approved_for_printing(db, actor_ctx_from_user(user), cert_id)
+        except CertificateNotFoundError:
+            raise HTTPException(404, "That approval request could not be found")
+        except CertificateStateError as e:
+            raise HTTPException(403, str(e))
+        except CertificateValidationError as e:
+            raise HTTPException(400, str(e))
+        # An approval is for one child and one document. Without these two checks an
+        # approved Sports Certificate would print a Transfer Certificate for a different
+        # student, which is the whole approval step defeated by re-using its id.
+        if approved.get("student_id") != student_id:
+            raise HTTPException(403, "That approval was granted for a different student")
+        if not same_document(approved.get("cert_type"), cert_type):
+            raise HTTPException(
+                403,
+                "That approval was granted for a "
+                f"{document_label(approved.get('cert_type'))}, not a {document_label(cert_type)}",
+            )
+
+    # The daily cap is checked AFTER the approval question, so a refused print does not
+    # spend one of the school's 200 documents for the day.
     if not await _enforce_daily_cap(db, school_id, "certificate", issuer_branch):
-        raise HTTPException(429, "Daily certificate generation limit reached — try again tomorrow")
+        raise HTTPException(429, "Daily certificate generation limit reached - try again tomorrow")
 
     meta = await _school_meta(db)
-    cert_type = data.get("cert_type", "bonafide")  # selects a template — not identity
     title = CERT_LABELS.get(cert_type, "Certificate")
     doc_data = {
         "cert_type": cert_type,
@@ -454,7 +541,7 @@ async def generate_certificate(request: Request, user: dict = Depends(require_do
         "issued_date": datetime.now().strftime("%d-%m-%Y"),
     }
 
-    # R9.5 AC2: no external image provider — background is drawn locally.
+    # R9.5 AC2: no external image provider - background is drawn locally.
     pdf_bytes = _build_cert_pdf(doc_data, None)
     safe_student = (student.get("name") or "certificate").replace(" ", "-")
     filename = f"{title.replace(' ', '-')}-{safe_student}.pdf"
@@ -476,7 +563,7 @@ async def generate_certificate(request: Request, user: dict = Depends(require_do
 
 @router.post("/id-cards")
 async def generate_id_cards(request: Request, user: dict = Depends(require_document_issuer)):
-    # OWNER DECISION 2026-08-04 (NEW-01) — same gate as /certificate above; see the note there.
+    # OWNER DECISION 2026-08-04 (NEW-01) - same gate as /certificate above; see the note there.
     try:
         data = await request.json()
     except Exception:
@@ -485,7 +572,7 @@ async def generate_id_cards(request: Request, user: dict = Depends(require_docum
     db = get_db()
     school_id = get_school_id()
 
-    # R9.5 AC1: resolve card content from the DB by student_id — reject client-only
+    # R9.5 AC1: resolve card content from the DB by student_id - reject client-only
     # data. Accept a list of {student_id} (or {id}) and fetch the real records.
     raw = data.get("students", [])
     ids = [str(s.get("student_id") or s.get("id") or "").strip()
@@ -496,12 +583,48 @@ async def generate_id_cards(request: Request, user: dict = Depends(require_docum
 
     # D-53: same branch rule as /certificate above.
     issuer_branch = user.get("branch_id")
+
+    # ── R2-9, decision 6 of 2026-08-10 ──────────────────────────────────────
+    # An ID card carries the school's name and a child's identity, so it sits under the
+    # same rule as a certificate: the owner and the principal print directly, the admin
+    # office asks first. The request is ONE row covering the whole batch (see
+    # `certificate_service.create_id_card_request`) and lands in the same approval list.
+    #
+    # The printed set must be inside the approved set. Without that check an approval
+    # for four children could be replayed to print all 1,842.
+    if not _issues_without_approval(user):
+        request_id = str(data.get("request_id") or data.get("cert_id") or "").strip()
+        if not request_id:
+            raise HTTPException(
+                403,
+                "ID cards have to be approved by the school's owner or principal before "
+                "they can be printed. Ask for approval first, then print once it has "
+                "been granted.",
+            )
+        try:
+            approved = await is_approved_for_printing(db, actor_ctx_from_user(user), request_id)
+        except CertificateNotFoundError:
+            raise HTTPException(404, "That approval request could not be found")
+        except CertificateStateError as e:
+            raise HTTPException(403, str(e))
+        except CertificateValidationError as e:
+            raise HTTPException(400, str(e))
+        if canonical_type(approved.get("cert_type")) != ID_CARD_TYPE:
+            raise HTTPException(403, "That approval was not granted for ID cards")
+        approved_ids = set(approved.get("student_ids") or [])
+        extra = [i for i in ids if i not in approved_ids]
+        if extra:
+            raise HTTPException(
+                403,
+                f"{len(extra)} of the students asked for are not covered by that approval",
+            )
+
     if not await _enforce_daily_cap(db, school_id, "id_card", issuer_branch):
-        raise HTTPException(429, "Daily ID-card generation limit reached — try again tomorrow")
+        raise HTTPException(429, "Daily ID-card generation limit reached - try again tomorrow")
 
     # Students outside the issuer's branch simply do not come back, so a batch that
     # names them produces cards for the ones they may issue and silently omits the rest
-    # — the same shape as asking for an id that does not exist.
+    # - the same shape as asking for an id that does not exist.
     docs = await db.students.find(
         scoped_query({"id": {"$in": ids}}, branch_id=issuer_branch), {"_id": 0}
     ).to_list(len(ids))

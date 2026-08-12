@@ -1,12 +1,12 @@
-"""UI Sweep — D-37: minting a generated file's download link at request time.
+"""UI Sweep - D-37: minting a generated file's download link at request time.
 
 `GET /api/uploads/link/{file_id}` exchanges the short opaque id Flo now writes into a
 chat message for a FRESH presigned URL. The signed URL never travels through the model,
-so it can never be corrupted in transcription or served stale — the two ways D-37 and
+so it can never be corrupted in transcription or served stale - the two ways D-37 and
 Story 10.3's expiry problem failed.
 
 The tests that matter most: the endpoint is authenticated, it refuses a file the caller
-is not entitled to, and a missing file comes back as our own JSON — never as S3's raw
+is not entitled to, and a missing file comes back as our own JSON - never as S3's raw
 XML with the school's bucket and account number on screen.
 """
 from __future__ import annotations
@@ -88,7 +88,7 @@ def test_unauthenticated_cannot_get_a_link(client, fake_db):
 
 
 def test_a_user_cannot_get_a_file_they_do_not_own(client, fake_db):
-    """A teacher who is neither the uploader nor a principal is refused — the existing
+    """A teacher who is neither the uploader nor a principal is refused - the existing
     file-access permission, no new one."""
     _put(fake_db, file_id="f1", uploaded_by="d-owner")
     resp = client.get(_url("f1"), headers=_teacher())

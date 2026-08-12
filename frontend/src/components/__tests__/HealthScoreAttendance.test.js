@@ -1,9 +1,9 @@
 /**
- * UI Sweep Epic 4 — regression for a defect this epic's own review found.
+ * UI Sweep Epic 4 - regression for a defect this epic's own review found.
  *
  * Making `attendance_rate` honest ("not marked yet" instead of "0%") broke two health
  * scores that did `parseFloat(rate) || 0`. They would have scored a school as failing
- * every morning before the register was taken — the same "absence of data read as a
+ * every morning before the register was taken - the same "absence of data read as a
  * bad number" defect the epic exists to remove, reintroduced in a new place.
  *
  * The shared-field lesson from the previous retrospective, caught by applying it.
@@ -21,14 +21,14 @@ const mockExecuteTool = jest.fn();
 jest.mock('../../lib/api', () => {
   // D-60: the stub is derived from the REAL module's export list rather than hand-written.
   // A hand-written list names a handful of helpers while `lib/api` exports over a hundred,
-  // and a factory mock does NOT fall through to the real module — so the first time this
+  // and a factory mock does NOT fall through to the real module - so the first time this
   // screen calls a helper nobody thought to name, it gets `undefined` and React reports an
   // error that points nowhere near the cause. That is exactly how D-48/T12 cost an hour.
   const actual = jest.requireActual('../../lib/api');
   const stub = {};
   Object.keys(actual).forEach((key) => {
     // PLAIN functions, deliberately NOT jest.fn(). CRA's jest preset sets `resetMocks: true`,
-    // which wipes any implementation supplied in a module factory before every test — a
+    // which wipes any implementation supplied in a module factory before every test - a
     // jest.fn() default would quietly become a do-nothing that returns undefined.
     stub[key] = typeof actual[key] === 'function'
       ? async () => ({ success: true, data: [] })
@@ -86,6 +86,6 @@ test('a marked attendance figure is still scored normally', async () => {
   screen.getByRole('button', { name: /generate/i }).click();
 
   await waitFor(() => {
-    expect(screen.getByText(/attendance at 91.5% — on track/i)).toBeInTheDocument();
+    expect(screen.getByText(/attendance at 91.5% - on track/i)).toBeInTheDocument();
   });
 });

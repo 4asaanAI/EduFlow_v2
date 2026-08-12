@@ -15,7 +15,7 @@ filename sanitising lands in one of them.
 
 WHAT THIS MODULE IS NOT: it does not fetch data, decide who may see it, store anything,
 or write an audit row. It takes a description and returns bytes. Authorization belongs
-to the caller, because the caller knows which data it drew on — see
+to the caller, because the caller knows which data it drew on - see
 `services/document_export.py` for the storing half and `ai/tool_functions_v2.py` for the
 gate.
 """
@@ -132,7 +132,7 @@ def _validate(doc_type: str, title: str) -> None:
 
 
 def _normalise_table(headers: Optional[List[Any]], rows: Optional[List[List[Any]]]):
-    """Return (headers, rows, truncated). Ragged rows are padded, not rejected —
+    """Return (headers, rows, truncated). Ragged rows are padded, not rejected -
     real data is ragged, and refusing the whole document over one short row would
     be worse than filling a blank."""
     hdrs = [_clean_cell(h) for h in (headers or [])][:MAX_COLUMNS]
@@ -169,7 +169,7 @@ def _normalise_table(headers: Optional[List[Any]], rows: Optional[List[List[Any]
 #
 # LICENCE. SIL Open Font License 1.1, checked by reading the licence text shipped
 # beside the font rather than taking it on trust. It grants permission to "use, study,
-# copy, merge, embed, modify, redistribute" — embedding in a generated PDF and
+# copy, merge, embed, modify, redistribute" - embedding in a generated PDF and
 # shipping the file with the server are both covered. Its one relevant condition is
 # that the licence travels with the font, so `assets/fonts/OFL.txt` sits next to the
 # .ttf files and `.ebignore` carries an explicit exception to keep it in the deploy.
@@ -183,7 +183,7 @@ def _normalise_table(headers: Optional[List[Any]], rows: Optional[List[List[Any]
 # rather than merely non-question-marks.
 #
 # THREE TIERS, DEGRADING NEVER FAILING. A missing font file or a missing shaper must
-# not turn every PDF in the school into an error — that would be a far bigger outage
+# not turn every PDF in the school into an error - that would be a far bigger outage
 # than the defect being fixed:
 #   1. font + shaping  -> correct Hindi. This is the shipped configuration.
 #   2. font, no shaper -> Hindi characters appear but conjuncts and vowel signs are
@@ -201,7 +201,7 @@ FONT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 #
 # The first attempt used Noto Sans Devanagari alone, on the assumption that it covered
 # Latin as well. It does not. English text came out of the PDF completely BLANK: the
-# subsetter kept only "space" and "period" out of "Holiday on Monday." — every letter
+# subsetter kept only "space" and "period" out of "Holiday on Monday." - every letter
 # was dropped. That would have replaced a small Hindi defect with a total English one,
 # on a platform where nearly every document is in English.
 #
@@ -253,7 +253,7 @@ def _register_unicode_font(pdf) -> bool:
     """
     if not unicode_font_available():
         logger.warning(
-            "PDF: Devanagari font not found at %s — falling back to Latin-1, so any "
+            "PDF: Devanagari font not found at %s - falling back to Latin-1, so any "
             "Hindi in this document will be replaced with '?'", FONT_DIR,
         )
         return False
@@ -267,7 +267,7 @@ def _register_unicode_font(pdf) -> bool:
         # sentence work rather than forcing a whole document into one script.
         pdf.set_fallback_fonts([DEVANAGARI_FONT_FAMILY])
     except Exception:  # pragma: no cover - defensive, see docstring
-        logger.exception("PDF: could not register the Unicode fonts — falling back to Latin-1")
+        logger.exception("PDF: could not register the Unicode fonts - falling back to Latin-1")
         return False
 
     if text_shaping_available():
@@ -277,7 +277,7 @@ def _register_unicode_font(pdf) -> bool:
             logger.warning("PDF: text shaping could not be enabled; Hindi will render unshaped")
     else:
         logger.warning(
-            "PDF: uharfbuzz is not installed, so Devanagari will render unshaped — "
+            "PDF: uharfbuzz is not installed, so Devanagari will render unshaped - "
             "the characters are correct but conjuncts and vowel signs sit wrong"
         )
     return True
@@ -304,7 +304,7 @@ def _build_pdf_text_encoder(unicode_ok: bool):
 # ── The same document, as editable HTML ─────────────────────────────────────────
 #
 # WHY. Until now a document Flo made could only be downloaded. There was no way to
-# read one, fix a sentence and take the corrected copy — you had to ask Flo again and
+# read one, fix a sentence and take the corrected copy - you had to ask Flo again and
 # hope. Abhimanyu asked for an edit panel on 2026-08-07 and decided the corrected copy
 # is DOWNLOADED ONLY and nothing is saved back to the server, so this is purely a
 # starting point for the browser editor. Nothing here is ever stored as the document.
@@ -315,7 +315,7 @@ def _build_pdf_text_encoder(unicode_ok: bool):
 
 def _escape(text: Any) -> str:
     """HTML-escape. The content comes from Flo and from school data, so it is never
-    trusted as markup — the browser side sanitises again on top of this."""
+    trusted as markup - the browser side sanitises again on top of this."""
     return (
         str(text)
         .replace("&", "&amp;")
@@ -362,7 +362,7 @@ def editable_html(title, paragraphs, headers, rows, truncated_note) -> str:
 #
 # The text comes from `school_identity.py`, the one verified source, so a correction
 # there reaches these documents without a second edit. It reads the module constants
-# only — no database call — so this module keeps its promise of taking a description
+# only - no database call - so this module keeps its promise of taking a description
 # and returning bytes.
 
 _ASSET_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
@@ -736,7 +736,7 @@ def _build_xlsx(title, paragraphs, headers, rows, truncated_note, letterhead=Tru
 
     wb = Workbook()
     ws = wb.active
-    # Sheet names cannot exceed 31 chars or contain []:*?/\ — Excel refuses to open
+    # Sheet names cannot exceed 31 chars or contain []:*?/\ - Excel refuses to open
     # the file rather than complaining, so this is silently fatal if not handled.
     ws.title = (re.sub(r"[\[\]:*?/\\]", "-", str(title or "Sheet"))[:31]) or "Sheet"
 
@@ -977,7 +977,7 @@ def _build_text(doc_type, title, paragraphs, headers, rows, truncated_note, lett
             # NOTE THE TRADE-OFF, because it is a real one: another system reading
             # this file will now see three rows before the column names. That is the
             # cost of branding a data-interchange format, and it is why `build_document`
-            # takes `letterhead=False` — anything being fed to another program should
+            # takes `letterhead=False` - anything being fed to another program should
             # pass it.
             for line in letterhead_lines():
                 writer.writerow([line])
@@ -1051,7 +1051,7 @@ def build_document(
     page with no letterhead does not read as a school document. Pass False for
     something purely internal.
 
-    EXCEPT for spreadsheets — see `UNBRANDED_TYPES` below.
+    EXCEPT for spreadsheets - see `UNBRANDED_TYPES` below.
 
     Raises DocumentBuildError for anything malformed, before any caller has stored
     something it would then have to clean up.
@@ -1059,7 +1059,7 @@ def build_document(
     doc_type = (doc_type or "").lower().lstrip(".")
     # Spreadsheets are DATA, not stationery (Abhimanyu, 2026-08-07). Branding rows
     # above the column headings push every row down and mean anything reading the
-    # file — a formula, a filter, another program, an import into another system —
+    # file - a formula, a filter, another program, an import into another system -
     # starts on the wrong line. The gain was cosmetic and the cost was real, so the
     # branding is off for these two regardless of what the caller asks for.
     if doc_type in UNBRANDED_TYPES:
@@ -1067,7 +1067,7 @@ def build_document(
     _validate(doc_type, title)
 
     if not any([title, paragraphs, rows, slides]):
-        raise DocumentBuildError("Nothing to put in the document — provide a title, text, rows or slides.")
+        raise DocumentBuildError("Nothing to put in the document - provide a title, text, rows or slides.")
 
     hdrs, norm_rows, truncated = _normalise_table(headers, rows)
     note = ""

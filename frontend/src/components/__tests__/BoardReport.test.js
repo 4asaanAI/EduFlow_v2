@@ -1,9 +1,9 @@
 /**
- * UI Sweep Epic 4, Story 4.2 — the Board Report.
+ * UI Sweep Epic 4, Story 4.2 - the Board Report.
  *
  * The screen the owner opens before a trust meeting. It used to load six sources
  * under one Promise.all, catch everything into one banner, and then show nothing at
- * all — while every figure that failed rendered as 0.
+ * all - while every figure that failed rendered as 0.
  *
  * The fixtures below are the shape the FIXED server returns: one envelope, `data` is
  * the payload. A fixture shaped to match whatever the component happens to expect
@@ -30,13 +30,13 @@ jest.mock('../../lib/api', () => ({
   getStaff: jest.fn(),
   fetchPlatformHealth: jest.fn(),
   // NEW-03: the screen's direct server calls now go through the shared refreshing
-  // wrapper instead of a bare `fetch`, so the module mock has to provide it — the
+  // wrapper instead of a bare `fetch`, so the module mock has to provide it - the
   // `global.fetch` stub below is still what answers.
   API: '/api',
   apiFetch: (...args) => global.fetch(...args),
 }));
 
-// One envelope. `data` is the payload — never another envelope.
+// One envelope. `data` is the payload - never another envelope.
 const envelope = (data) => ({ success: true, data, meta: { count: 1 }, message: '', denied: false });
 
 const PULSE = envelope({
@@ -95,7 +95,7 @@ test('reads the real figure out of the single envelope', async () => {
     expect(screen.getByTestId('board-total-students')).toHaveTextContent('1802');
   });
   // The defect rendered a bare "0" where the figure should be. (Not `not
-  // toHaveTextContent('0')` — "1802" contains a 0 and that assertion always fails.)
+  // toHaveTextContent('0')` - "1802" contains a 0 and that assertion always fails.)
   expect(screen.getByTestId('board-total-students')).toHaveAttribute('data-stat-state', 'ok');
 });
 
@@ -183,7 +183,7 @@ test('the PDF export stays available when a section failed', async () => {
 test('pressing Retry does not throw keyboard focus off the button', async () => {
   // Regression for a defect found in this epic's own review: BoardSection and
   // BoardSectionFailure were declared INSIDE the render function, so each render
-  // gave them a new identity and React remounted the subtree — a keyboard user
+  // gave them a new identity and React remounted the subtree - a keyboard user
   // pressing Retry was silently thrown back to the top of the page.
   mockTools({ feeFails: true });
   await generate();

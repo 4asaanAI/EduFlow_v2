@@ -1,4 +1,4 @@
-"""Epic E.2/E.3/E.4 — structured planner, round/size bounds, entity resolution.
+"""Epic E.2/E.3/E.4 - structured planner, round/size bounds, entity resolution.
 
 The planner is exercised with a recorded plan fixture (injected `request_plan`),
 so its logic is deterministic with no live Azure call. Covers: ordered resolved
@@ -128,8 +128,8 @@ async def test_disambiguation_propagates_resolution_options():
         out = dict(params)
         out["_resolution_error"] = "Multiple students named 'Rahul'."
         out["_resolution_options"] = [
-            {"label": "Rahul Kumar — Class 4B — Adm 2024-001", "value": "2024-001"},
-            {"label": "Rahul Singh — Class 5A — Adm 2024-002", "value": "2024-002"},
+            {"label": "Rahul Kumar - Class 4B - Adm 2024-001", "value": "2024-001"},
+            {"label": "Rahul Singh - Class 5A - Adm 2024-002", "value": "2024-002"},
         ]
         return out
 
@@ -189,7 +189,7 @@ async def test_resolution_internal_keys_stripped_from_plan():
     async def _resolve_with_internal(params, db, scope=None):
         out = dict(params)
         out["student_id"] = "stu-7"
-        out["_resolved_student"] = "Rahul Kumar"  # internal — must not leak into plan
+        out["_resolved_student"] = "Rahul Kumar"  # internal - must not leak into plan
         return out
 
     steps = [{"tool": "record_fee_payment", "params": {"student_name": "Rahul", "amount": 100}}]

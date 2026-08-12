@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 """
-Chat routes — conversation CRUD + SSE streaming message handler
+Chat routes - conversation CRUD + SSE streaming message handler
 
 Handles:
   - Conversation CRUD (list, create, update, delete, get messages)
@@ -111,12 +111,12 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 # R1.3 Turn Completion Contract: a user turn can NEVER end with nothing on screen.
 # Any turn that would otherwise finish empty (LLM produced no content, all tool
 # rounds dead-ended, content-policy boilerplate stripped, etc.) substitutes this
-# text — streamed and persisted like any real answer — instead of a silent blank.
+# text - streamed and persisted like any real answer - instead of a silent blank.
 FALLBACK_TEXT = "I wasn't able to produce an answer for that. Please try again or rephrase."
 
 MAX_TOOL_ROUNDS = 3  # AD2/FR5: bounds planning/read iterations ONLY (not confirmed writes)
 MAX_PLAN_STEPS = ai_planner.MAX_PLAN_STEPS  # AD2/FR5: bounds plan SIZE
-KEEPALIVE_INTERVAL = 5  # seconds — keep short for fast disconnect detection
+KEEPALIVE_INTERVAL = 5  # seconds - keep short for fast disconnect detection
 LLM_WALLCLOCK_BUDGET = 90  # seconds; bounded ceiling above per-call 45s timeout
 CHAR_BUDGET = 24000
 HISTORY_LIMIT = 20
@@ -125,7 +125,7 @@ HISTORY_KEEP_RECENT = 10
 THINKING_DELAY_MIN = 0.15  # 150ms
 THINKING_DELAY_MAX = 0.30  # 300ms
 
-# NEW-12/T8 — the word-by-word typing-out effect costs a SECOND model call per turn
+# NEW-12/T8 - the word-by-word typing-out effect costs a SECOND model call per turn
 # to re-say an answer that is already worked out. Owner decision 2026-08-04: off.
 # Flip to "true" in the environment to restore it; no code change, no deploy of new
 # behaviour beyond the setting. Read at import so tests can monkeypatch the constant.
@@ -146,7 +146,7 @@ DESTRUCTIVE_TOOL_NAMES = {
     name for name, tool in TOOL_REGISTRY.items() if tool.get("destructive")
 }
 
-# F.10: student hard-delete / DPDP-erase are NEVER exposed to the assistant — they
+# F.10: student hard-delete / DPDP-erase are NEVER exposed to the assistant - they
 # stay UI-only. These names are refused outright even if a future planner emits one.
 FORBIDDEN_AI_TOOLS = {
     "erase_student",
@@ -184,6 +184,14 @@ WRITE_TOOL_REQUIRED_PARAMS = {
     # send with either one guessed reaches the wrong families on the wrong channel.
     "send_parent_message": ("channel", "audience"),
     "import_data_file": ("file_id",),
+    # Release 2 step 10. Each of these names a rupee figure on a family's bill or
+    # decides whether one is owed, so none of them may be called on a guessed subject.
+    # `authorised_by` is required because the owner or the principal decide a one-time
+    # concession and the accountant head applies it; `reason` because taking a Right to
+    # Education place off starts billing a family the government pays for.
+    "set_student_concession": ("student_id", "concession"),
+    "record_admission_concession": ("student_id", "amount", "authorised_by"),
+    "set_right_to_education": ("student_id", "reason"),
     "create_message_template": ("name", "channel", "body"),
     "update_message_template": ("template_id",),
     "delete_message_template": ("template_id",),
@@ -202,7 +210,7 @@ WRITE_TOOL_REQUIRED_PARAMS = {
     "approve_leave": ("leave_id", "action"),
     "award_house_points": ("student_name", "points"),
     "create_announcement": ("title", "content"),
-    # Epic J — student & staff CRUD
+    # Epic J - student & staff CRUD
     "create_student": ("name", "class_id"),
     "update_student": ("student_id",),
     "set_student_status": ("student_id", "status"),
@@ -211,30 +219,30 @@ WRITE_TOOL_REQUIRED_PARAMS = {
     "create_student_login": ("student_id", "password"),
     "set_profile_password": ("new_password",),
     "update_staff": ("staff_id",),
-    # Owner request 4 (2026-08-06) — private notes on a profile. `name` rather than an
+    # Owner request 4 (2026-08-06) - private notes on a profile. `name` rather than an
     # id because nobody asks Flo to note something against "student 8f3c-…"; the tool
     # resolves the name and refuses if more than one person matches.
     "add_profile_note": ("name", "note"),
-    # Epic K.1 — fee-config CRUD
+    # Epic K.1 - fee-config CRUD
     "create_fee_structure": ("name",),
     "update_fee_structure": ("structure_id",),
     "create_discount_type": ("name", "value", "value_type", "recurrence", "reason_note"),
     "update_discount_type": ("discount_type_id",),
     "delete_discount_type": ("discount_type_id",),
-    # Epic K.2 — academic-structure CRUD
+    # Epic K.2 - academic-structure CRUD
     "create_class": ("name",),
     "update_class": ("class_id",),
     "delete_class": ("class_id",),
     "create_house": ("name",),
     "update_house": ("house_id",),
     "delete_house": ("house_id",),
-    # Epic K.3 — org-config CRUD
+    # Epic K.3 - org-config CRUD
     "create_branch": ("name",),
     "update_branch": ("branch_id", "name"),
     "delete_branch": ("branch_id",),
     "update_school_settings": (),
     "year_end_transition": ("new_year_name",),
-    # Drift-gate remediation — operations tools added post-Phase-1 (ff2e929)
+    # Drift-gate remediation - operations tools added post-Phase-1 (ff2e929)
     "create_expense": ("category", "amount"),
     "create_enquiry": ("student_name",),
     "update_enquiry_status": ("enquiry_id", "status"),
@@ -257,13 +265,13 @@ WRITE_TOOL_REQUIRED_PARAMS = {
     "add_custom_form_row": ("form_id", "answers"),
     "delete_custom_form": ("form_id",),
     "create_incident": ("description",),
-    # Owner coverage gap-close — expenses edit/delete, staff attendance, fee txn, fee sync
+    # Owner coverage gap-close - expenses edit/delete, staff attendance, fee txn, fee sync
     "update_expense": ("expense_id",),
     "delete_expense": ("expense_id",),
     "mark_staff_attendance": (),
     "correct_fee_transaction": ("transaction_id", "reason"),
     "delete_fee_transaction": ("transaction_id",),
-    # Owner instruction 2026-08-07 — the deletes Flo was missing.
+    # Owner instruction 2026-08-07 - the deletes Flo was missing.
     "delete_student": ("student_id",),
     "delete_staff": ("staff_id",),
     "delete_fee_structure": ("structure_id",),
@@ -273,7 +281,7 @@ WRITE_TOOL_REQUIRED_PARAMS = {
     "delete_legal_entity": ("entity_id",),
     "delete_retail_product": ("product_id",),
     "trigger_fee_sync": (),
-    # Wave 2 — assets, visitors, certificates, query tickets, transport, announcement moderation
+    # Wave 2 - assets, visitors, certificates, query tickets, transport, announcement moderation
     "create_asset": ("name",),
     "update_asset": ("asset_id",),
     "delete_asset": ("asset_id",),
@@ -326,30 +334,30 @@ WRITE_TOOL_PARAM_LABELS = {
     "points": "points",
     "reason": "reason",
     "title": "announcement title",
-    # NOTE: "content" is defined once above (generic label) — do not redefine per tool.
-    # Epic J — student & staff CRUD
+    # NOTE: "content" is defined once above (generic label) - do not redefine per tool.
+    # Epic J - student & staff CRUD
     "name": "name",
     "status": "status",
     "guardians": "guardians",
     "staff_type": "staff type",
     "staff_id": "staff member",
-    # Epic K.1 — fee-config CRUD
+    # Epic K.1 - fee-config CRUD
     "structure_id": "fee structure",
     "value": "discount value",
     "value_type": "discount value type",
     "recurrence": "recurrence",
     "reason_note": "reason note",
-    # Epic K.2 — academic-structure CRUD
+    # Epic K.2 - academic-structure CRUD
     "section": "section",
     "house_id": "house",
     "colour": "colour",
-    # Epic K.3 — org-config CRUD
+    # Epic K.3 - org-config CRUD
     "branch_id": "branch",
     "new_year_name": "new academic year",
     # Operations + fee-record tools
     "category": "expense category",
     "expense_id": "expense",
-    # NOTE: "student_name" is defined once above ("student") — do not redefine.
+    # NOTE: "student_name" is defined once above ("student") - do not redefine.
     "enquiry_id": "enquiry",
     "entity_id": "legal entity",
     "inventory_item_id": "inventory item",
@@ -604,7 +612,7 @@ NAVIGATE_MAP = {
     "open maintenance": "facility-requests",
     "open school activities": "school-activities",
     "show school activities": "school-activities",
-    # D-44 part 2: "fee receipts" was never a separate screen — it opened the same
+    # D-44 part 2: "fee receipts" was never a separate screen - it opened the same
     # Fee Collection screen. The phrases stay, because that is what people say;
     # only the id they resolve to changed.
     "open fee receipts": "fee-collection",
@@ -635,7 +643,7 @@ NAVIGATE_MAP = {
 
 
 def _owned_conversation_filter(conv_id: str, user: dict) -> dict:
-    return scoped_filter({"id": conv_id, "user_id": user["id"]}, get_school_id())  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+    return scoped_filter({"id": conv_id, "user_id": user["id"]}, get_school_id())  # branch-scope: intentional - scoped to one named person's own record, not to a branch
 
 
 async def _require_owned_conversation(db, conv_id: str, user: dict) -> dict:
@@ -672,7 +680,7 @@ async def list_conversations(
 
     CALLED WITH NO ARGUMENTS BY THE SIDEBAR, which is on every screen. The
     defaults are therefore exactly what it received before this endpoint learned
-    to page — the newest 50, most-recent first — and `meta` is added alongside
+    to page - the newest 50, most-recent first - and `meta` is added alongside
     rather than reshaping anything. A test pins that against the old behaviour.
 
     Everyone sees only their own conversations. That was put to the Owner on
@@ -686,11 +694,11 @@ async def list_conversations(
     skip = max(page - 1, 0) * per_page
     sort_field, sort_dir = CONVERSATION_SORTS.get(sort, CONVERSATION_SORTS[DEFAULT_CONVERSATION_SORT])
 
-    # branch-scope: intentional — a conversation belongs to ONE user, and user_id
+    # branch-scope: intentional - a conversation belongs to ONE user, and user_id
     # is strictly narrower than branch_id. Conversation documents carry no
     # branch_id field (models/schemas.py Conversation is school-scoped only), so
     # a branch clause here would match nothing and empty everyone's history.
-    query = scoped_filter({"user_id": user["id"]}, get_school_id())  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+    query = scoped_filter({"user_id": user["id"]}, get_school_id())  # branch-scope: intentional - scoped to one named person's own record, not to a branch
     term = (search or "").strip()[:MAX_CONVERSATION_SEARCH]
     if term:
         # re.escape or the term is a pattern: an injection surface, and a way to
@@ -725,9 +733,9 @@ async def bulk_delete_conversations(body: ConversationBulkDelete, request: Reque
     TWO THINGS HERE ARE LOAD-BEARING AND EASY TO "TIDY" AWAY:
 
     1. `body` is a Pydantic model, never `await request.json()`. See
-       ConversationBulkDelete — untyped ids turn this into "delete everything".
-    2. The MESSAGE delete uses `owned_ids` — what the ownership query actually
-       returned — never `body.ids`. The messages filter carries no user_id; it is
+       ConversationBulkDelete - untyped ids turn this into "delete everything".
+    2. The MESSAGE delete uses `owned_ids` - what the ownership query actually
+       returned - never `body.ids`. The messages filter carries no user_id; it is
        safe in the single-delete path only because ownership is proven one id at
        a time first. Passing the caller's raw list here would destroy another
        user's messages while leaving their conversation standing: a chat they can
@@ -740,10 +748,10 @@ async def bulk_delete_conversations(body: ConversationBulkDelete, request: Reque
     # Deduplicated, so a caller repeating one id ten times is not told ten chats
     # were removed.
     requested = list(dict.fromkeys(body.ids))
-    # branch-scope: intentional — pinned to the caller's own user_id, which is
+    # branch-scope: intentional - pinned to the caller's own user_id, which is
     # narrower than branch; conversations carry no branch_id field.
     owned = await db.conversations.find(
-        scoped_filter({"id": {"$in": requested}, "user_id": user["id"]}, school_id),  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+        scoped_filter({"id": {"$in": requested}, "user_id": user["id"]}, school_id),  # branch-scope: intentional - scoped to one named person's own record, not to a branch
         {"_id": 0, "id": 1},
     ).to_list(len(requested))
     owned_ids = [c["id"] for c in owned]
@@ -751,21 +759,21 @@ async def bulk_delete_conversations(body: ConversationBulkDelete, request: Reque
     if owned_ids:
         # Conversations first: an orphaned message is invisible and harmless, a
         # conversation that outlives its messages is a chat that opens empty.
-        # branch-scope: intentional — own user_id, as above.
+        # branch-scope: intentional - own user_id, as above.
         await db.conversations.delete_many(
-            scoped_filter({"id": {"$in": owned_ids}, "user_id": user["id"]}, school_id)  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+            scoped_filter({"id": {"$in": owned_ids}, "user_id": user["id"]}, school_id)  # branch-scope: intentional - scoped to one named person's own record, not to a branch
         )
-        # branch-scope: intentional — `owned_ids` are already proven to be this
+        # branch-scope: intentional - `owned_ids` are already proven to be this
         # caller's, which is what makes a filter with no user_id safe here. Same
         # reasoning as the single-delete path directly below.
         await db.messages.delete_many(
-            scoped_filter({"conversation_id": {"$in": owned_ids}}, school_id)  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+            scoped_filter({"conversation_id": {"$in": owned_ids}}, school_id)  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
         )
 
     # Ids only, never a title or any message text (NFR-S2).
     #
     # The ids go in `changes`, NOT in `entity_id`. `audit_logs` carries an index
-    # on entity_id, and joining up to 100 UUIDs makes a ~3.6 KB indexed key — a
+    # on entity_id, and joining up to 100 UUIDs makes a ~3.6 KB indexed key - a
     # bulk action would quietly become the most expensive row in the log.
     await write_audit(
         db,
@@ -784,7 +792,7 @@ async def bulk_delete_conversations(body: ConversationBulkDelete, request: Reque
     )
 
     # An id that was not found and an id belonging to somebody else are reported
-    # identically — from outside, they are indistinguishable.
+    # identically - from outside, they are indistinguishable.
     return {
         "success": True,
         "data": {"deleted": len(owned_ids), "not_found": len(requested) - len(owned_ids)},
@@ -817,7 +825,7 @@ async def delete_conversation(conv_id: str, request: Request):
     user = get_current_user(request)
     await _require_owned_conversation(db, conv_id, user)
     await db.conversations.delete_one(_owned_conversation_filter(conv_id, user))
-    await db.messages.delete_many(scoped_filter({"conversation_id": conv_id}, get_school_id()))  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+    await db.messages.delete_many(scoped_filter({"conversation_id": conv_id}, get_school_id()))  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     return {"success": True}
 
 
@@ -827,25 +835,25 @@ async def get_messages(conv_id: str, request: Request):
     user = get_current_user(request)
     await _require_owned_conversation(db, conv_id, user)
     msgs = await db.messages.find(
-        scoped_filter({"conversation_id": conv_id}, get_school_id()), {"_id": 0}  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+        scoped_filter({"conversation_id": conv_id}, get_school_id()), {"_id": 0}  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     ).sort("created_at", 1).to_list(100)
     return {"success": True, "data": msgs}
 
 
 @router.get("/conversations/{conv_id}/trace")
 async def conversation_trace(conv_id: str, request: Request, user: dict = Depends(require_owner)):
-    """R11.5: per-turn diagnostic timeline for support — answers "did the user
+    """R11.5: per-turn diagnostic timeline for support - answers "did the user
     get a reply, and if not, why?" without server-log access (AC3).
 
     RBAC: owner-only, and school-scoped so an owner sees only their own school's
     conversations (AC2). CONFIDENTIALITY: the underlying provider/model is NEVER
-    revealed to any client — every turn reports the assistant as "Layaa AI". The
+    revealed to any client - every turn reports the assistant as "Layaa AI". The
     raw provider/model stays in the internal `ai_turn_traces` collection for
     platform operators / telemetry only.
     """
     db = get_db()
     traces = await db.ai_turn_traces.find(
-        scoped_filter({"conversation_id": conv_id}, get_school_id()), {"_id": 0}  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+        scoped_filter({"conversation_id": conv_id}, get_school_id()), {"_id": 0}  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     ).sort("created_at", 1).to_list(200)
     turns = []
     for t in traces:
@@ -856,7 +864,7 @@ async def conversation_trace(conv_id: str, request: Request, user: dict = Depend
             "outcome": t.get("outcome"),
             "language": t.get("language"),
             "tools": t.get("tools") or [],
-            # Confidentiality: no Azure/OpenAI/model name — always "Layaa AI".
+            # Confidentiality: no Azure/OpenAI/model name - always "Layaa AI".
             "assistant": "Layaa AI",
             "finish_reason": llm.get("finish_reason"),
             "ok": llm.get("ok"),
@@ -952,7 +960,7 @@ def _tool_calls_to_candidates(tool_calls) -> list[dict]:
 
     Replaces the deleted JSON-in-text parsers (`_parse_tool_calls`/
     `_parse_tool_call`/`_normalize_tool_call`/`_strip_tool_json_from_text`). The
-    model can no longer emit tool JSON in prose — tool calls arrive as structured
+    model can no longer emit tool JSON in prose - tool calls arrive as structured
     `tool_calls` from the provider, so there is nothing to regex out of the text.
     """
     out: list[dict] = []
@@ -1003,7 +1011,7 @@ def _close_tool_matches(name: str, user: dict, limit: int = 3) -> list:
 
 
 def _authorized_tool_names(user: dict) -> list:
-    """Every tool this caller may use — the input to the deferred-tool catalogue."""
+    """Every tool this caller may use - the input to the deferred-tool catalogue."""
     return [
         name for name, tdef in TOOL_REGISTRY.items()
         if _is_tool_authorized(user, tdef) and is_chat_advertised(user, name)
@@ -1016,7 +1024,7 @@ def _build_llm_tools(user: dict, only: "set | None" = None,
 
     Only tools the caller is authorized for (role + sub_category + Phase-1
     lockdown) are advertised, so the provider can never let the model invoke a
-    tool the caller can't use — the same gate that `_is_tool_authorized` applies
+    tool the caller can't use - the same gate that `_is_tool_authorized` applies
     at dispatch, now enforced at the model boundary too. Schemas come straight
     from TOOL_REGISTRY (single source, AC2).
     """
@@ -1030,7 +1038,7 @@ def _build_llm_tools(user: dict, only: "set | None" = None,
             continue
         # Deferred tool loading (2026-08-08). Send the CORE schemas plus anything the
         # model has already searched for this turn; the rest are named in the prompt
-        # catalogue and fetched on demand. Cost only — the authorization gate above is
+        # catalogue and fetched on demand. Cost only - the authorization gate above is
         # unchanged, and an explicitly-named tool (`only=...`) is never deferred, so
         # nothing becomes unreachable.
         if only is None and tool_search.enabled():
@@ -1160,7 +1168,7 @@ def _trim_history(messages: list[dict]) -> list[dict]:
         for m in trimmed[:HISTORY_KEEP_FIRST]:
             content = m.get("content", "") or ""
             if len(content) > anchor_budget:
-                # Keep the tail — most recent context within the anchor.
+                # Keep the tail - most recent context within the anchor.
                 m["content"] = "[…truncated…] " + content[-anchor_budget:]
 
     return trimmed
@@ -1185,7 +1193,7 @@ def _extract_result_count(result: dict) -> Optional[int]:
     if isinstance(data, list):
         return len(data)
 
-    # Legacy fallback (pre-envelope shapes) — retained defensively.
+    # Legacy fallback (pre-envelope shapes) - retained defensively.
     for key in ("total", "count", "total_alerts", "total_defaulters",
                 "total_staff", "total_students"):
         if key in result and isinstance(result[key], (int, float)):
@@ -1200,7 +1208,7 @@ def _extract_result_count(result: dict) -> Optional[int]:
 
 def _extract_empty_message(result: dict) -> Optional[str]:
     """The context-aware message for an empty/denied/failed tool result. R4.2:
-    read the single envelope — surface the message when the tool denied, failed,
+    read the single envelope - surface the message when the tool denied, failed,
     or returned zero records."""
     if not isinstance(result, dict):
         return None
@@ -1306,7 +1314,7 @@ def _token_meta_destructive_steps(token_meta: dict) -> list:
 
 
 async def _audit_destructive_step(db, user: dict, step: dict) -> None:
-    """F.10/FR42: actor-tagged deletion audit row — 'who deleted what, when'."""
+    """F.10/FR42: actor-tagged deletion audit row - 'who deleted what, when'."""
     params = step.get("params") or {}
     target = (
         params.get("id")
@@ -1385,7 +1393,7 @@ async def _resolve_params(params: dict, db, scope=None) -> dict:
     - Substring/unanchored matches with 2+ hits return an explicit ambiguity
       sentinel (``_resolution_error``) instead of picking arbitrarily; callers
       surface this to the user as "please specify the admission number".
-    - The ``is_active`` filter is no longer applied at resolution time —
+    - The ``is_active`` filter is no longer applied at resolution time -
       tools can decide for themselves. An inactive match adds
       ``_resolved_inactive: True`` so the model can mention it.
     """
@@ -1406,7 +1414,7 @@ async def _resolve_params(params: dict, db, scope=None) -> dict:
             if adm:
                 label_bits.append(f"Adm {adm}")
             opts.append({
-                "label": " — ".join(str(b) for b in label_bits),
+                "label": " - ".join(str(b) for b in label_bits),
                 # Prefer the admission number (unique); fall back to the id.
                 "value": str(adm) if adm else str(d.get("id", "")),
             })
@@ -1418,7 +1426,7 @@ async def _resolve_params(params: dict, db, scope=None) -> dict:
             role = d.get("designation") or d.get("role")
             label = d.get("name", "Unknown")
             if role:
-                label = f"{label} — {role}"
+                label = f"{label} - {role}"
             opts.append({"label": label, "value": str(d.get("id", ""))})
         return opts
 
@@ -1451,7 +1459,7 @@ async def _resolve_params(params: dict, db, scope=None) -> dict:
                 })).to_list(5)
         if len(matches) > 1:
             resolved["_resolution_error"] = (
-                f"Multiple classes match '{class_name}' — please specify both class and section."
+                f"Multiple classes match '{class_name}' - please specify both class and section."
             )
         elif len(matches) == 1:
             cls = matches[0]
@@ -1469,7 +1477,7 @@ async def _resolve_params(params: dict, db, scope=None) -> dict:
             matches = exact
         elif len(exact) > 1:
             resolved["_resolution_error"] = (
-                f"Multiple students share the name '{student_name}' — "
+                f"Multiple students share the name '{student_name}' - "
                 f"please specify the admission number."
             )
             resolved["_resolution_options"] = _student_options(exact)
@@ -1481,7 +1489,7 @@ async def _resolve_params(params: dict, db, scope=None) -> dict:
             })).to_list(5)
             if len(matches) > 1:
                 resolved["_resolution_error"] = (
-                    f"Multiple students match '{student_name}' — "
+                    f"Multiple students match '{student_name}' - "
                     f"please specify the admission number."
                 )
                 resolved["_resolution_options"] = _student_options(matches)
@@ -1503,7 +1511,7 @@ async def _resolve_params(params: dict, db, scope=None) -> dict:
         })).to_list(5)
         if len(matches) > 1:
             resolved["_resolution_error"] = (
-                f"Multiple students match '{search_term}' — "
+                f"Multiple students match '{search_term}' - "
                 f"please specify the admission number."
             )
             resolved["_resolution_options"] = _student_options(matches)
@@ -1585,7 +1593,7 @@ async def _resolve_messaging_audience(params: dict, user: dict, db) -> dict:
     """Attach `_recipients`, `_recipient_count` and `_message_preview` to a send.
 
     Runs before the confirm card is built, for two reasons. First, the card must state
-    how many families the send reaches — an approval given without that number is not
+    how many families the send reaches - an approval given without that number is not
     informed consent. Second, the resolved list is frozen into the confirm token, so the
     set a person approves is exactly the set that gets sent; re-querying at send time
     could drift (a fee paid in the interim, a student marked inactive) and would then
@@ -1633,7 +1641,7 @@ def _build_confirm_display(tool_name: str, params: dict) -> str:
         ),
         "create_announcement": lambda p: (
             f"Publish announcement '{p.get('title', '?')}' to "
-            f"{p.get('audience_type', 'all')} — \"{p.get('content', '')[:80]}{'...' if len(p.get('content','')) > 80 else ''}\""
+            f"{p.get('audience_type', 'all')} - \"{p.get('content', '')[:80]}{'...' if len(p.get('content','')) > 80 else ''}\""
         ),
         "set_profile_password": lambda p: (
             "Replace the password for profile "
@@ -1660,7 +1668,7 @@ def _build_confirm_display(tool_name: str, params: dict) -> str:
             f"Import '{p.get('_import_filename', p.get('file_id', '?'))}' into the live "
             f"student records: fill {p.get('_import_fields', '?')} missing details across "
             f"{p.get('_import_students', '?')} students"
-            + (" — OVERWRITING information already on record"
+            + (" - OVERWRITING information already on record"
                if p.get("overwrite") else " (blanks only; existing information is kept)")
         ),
         "submit_whatsapp_template": lambda p: (
@@ -1814,7 +1822,7 @@ async def _build_plan_confirm_event(
         "tool": "plan",
         "is_plan": True,
         "steps": step_displays,
-        "display": "I'll run these steps in order — confirm to proceed:",
+        "display": "I'll run these steps in order - confirm to proceed:",
         "expires_in_seconds": 5 * 60,
         "buttons": [
             {"label": "Confirm", "action": "confirm"},
@@ -1878,7 +1886,7 @@ async def _stream_plan(calls, user, db, scope, session_id, conv_id, lang, total_
             yield ev
         return
 
-    # E.6: graceful fallback — disambiguation, unauthorized, too-long, or
+    # E.6: graceful fallback - disambiguation, unauthorized, too-long, or
     # cannot-plan. NOTHING was written and no token issued; hand off to the UI.
     # Disambiguation is a question (no dead-end), so it gets no deep-link; the
     # other dead-ends offer a panel to finish the job by hand (UX-DR4).
@@ -1886,7 +1894,7 @@ async def _stream_plan(calls, user, db, scope, session_id, conv_id, lang, total_
     if deep_link is None and result.status in (ai_planner.CANNOT_PLAN, ai_planner.TOO_LONG):
         deep_link = "/app?tool=dashboard"
     extra_events = []
-    # I.3: a disambiguation is a question with selectable candidates — emit a
+    # I.3: a disambiguation is a question with selectable candidates - emit a
     # structured event the chat renders as clickable options (no deep-link, no
     # token, no write). The picked option's `value` continues the flow.
     if result.status == ai_planner.DISAMBIGUATION and result.options:
@@ -1925,8 +1933,8 @@ _RICH_MARKER = "<<<RICH_CONTENT>>>"
 async def _stream_final_answer(system_prompt, messages, session_id, sink: dict):
     """R11.3: stream the final answer token-by-token from the model.
 
-    Yields SSE `text_delta` events for the SAFE visible prefix — the text before
-    any ``<<<RICH_CONTENT>>>`` marker — holding back a short tail so a partial
+    Yields SSE `text_delta` events for the SAFE visible prefix - the text before
+    any ``<<<RICH_CONTENT>>>`` marker - holding back a short tail so a partial
     marker is never shown to the user. The rich-content JSON that follows the
     marker is buffered (parsed downstream), never streamed as visible prose.
 
@@ -1976,7 +1984,7 @@ async def _stream_final_answer(system_prompt, messages, session_id, sink: dict):
                 "error": ev.get("reason") or "stream_failed",
             })
             return
-    # Stream ended without an explicit terminal event — best-effort salvage.
+    # Stream ended without an explicit terminal event - best-effort salvage.
     sink["text"] = "".join(buf)
 
 
@@ -1988,7 +1996,7 @@ async def _record_turn_trace(db, *, conv_id, message_id, user, outcome, lang,
 
     Confidentiality: the real provider/model are stored here for INTERNAL
     operator/telemetry use only; the client-facing trace endpoint abstracts them
-    to "Layaa AI" and never reveals the vendor to a school user. Fail-open — a
+    to "Layaa AI" and never reveals the vendor to a school user. Fail-open - a
     trace write must never break or delay a turn.
     """
     try:
@@ -2008,7 +2016,7 @@ async def _record_turn_trace(db, *, conv_id, message_id, user, outcome, lang,
             "outcome": outcome,
             "language": lang,
             "tools": tools,
-            # Internal-only provider/model — NEVER surfaced to a client (R11.5
+            # Internal-only provider/model - NEVER surfaced to a client (R11.5
             # confidentiality); the endpoint reports the assistant as "Layaa AI".
             "llm": {
                 "provider": "azure_openai",
@@ -2028,7 +2036,7 @@ async def _record_turn_trace(db, *, conv_id, message_id, user, outcome, lang,
 # ─── SSE Generator (main pipeline) ───────────────────────────────────────────
 
 def _user_content(text: str, image_data: str | None):
-    """Build user message content — plain string or multimodal list if image attached."""
+    """Build user message content - plain string or multimodal list if image attached."""
     if not image_data:
         return text
     return [
@@ -2041,7 +2049,7 @@ def _reattach_image(messages: list, user_text: str, image_data: str | None) -> l
     """Put the attached photograph back on the current turn.
 
     Phase 1 saves the user's message to the database as plain text, and Phase 5
-    rebuilds the entire history from those stored rows — so by the time a request is
+    rebuilds the entire history from those stored rows - so by the time a request is
     assembled, `image_data` has been dropped and the model would receive only the
     words. Every path that calls the model with an attachment must re-attach it, or
     the image silently never arrives.
@@ -2049,7 +2057,7 @@ def _reattach_image(messages: list, user_text: str, image_data: str | None) -> l
     Kept as a named function rather than inline branch logic because it was the
     inline version that got missed: the two tool-calling paths rebuilt the last turn
     correctly and the ordinary no-tool path did not, which made a photo sent with a
-    plain question — the commonest case — the one that never reached the model.
+    plain question - the commonest case - the one that never reached the model.
     """
     if not image_data or not messages:
         return messages
@@ -2057,7 +2065,7 @@ def _reattach_image(messages: list, user_text: str, image_data: str | None) -> l
 
 
 # R9.4 (X8) AC3: chat `image_data` re-enters POST /chat as a client-supplied base64
-# data URL — validate its format and decoded size server-side (the upload endpoint's
+# data URL - validate its format and decoded size server-side (the upload endpoint's
 # checks don't apply to a value posted directly to /chat).
 _MAX_IMAGE_BYTES = 20 * 1024 * 1024  # 20 MB decoded
 _IMAGE_DATA_URL_RE = re.compile(
@@ -2147,7 +2155,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
         return
 
-    # ── Phase 1b: Memory commands / confirmations (Epic G — Owner/Principal) ──
+    # ── Phase 1b: Memory commands / confirmations (Epic G - Owner/Principal) ──
     # Inline "remember:"/"forget", an affirmative reply to a pending memory, or a
     # correction are handled BEFORE the LLM. A returned string short-circuits the
     # turn. Best-effort: any failure falls through to the normal flow.
@@ -2257,12 +2265,12 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
 
     # ── Phase 5: Load + trim conversation history ────────────────────────
     # Part 2 Patch P2: the prior implementation used `.sort("created_at", 1).to_list(HISTORY_LIMIT)`
-    # which loads the OLDEST 20 messages — defeating `HISTORY_KEEP_FIRST=2 + HISTORY_KEEP_RECENT=10`
+    # which loads the OLDEST 20 messages - defeating `HISTORY_KEEP_FIRST=2 + HISTORY_KEEP_RECENT=10`
     # entirely. After 20 turns the AI silently lost all recent context.
     # Fix: load first HISTORY_KEEP_FIRST anchors ASC + last HISTORY_KEEP_RECENT
     # by DESC and re-sort. Total messages == both ends, never the middle.
     try:
-        msg_filter = scoped_filter({"conversation_id": conv_id, "role": {"$in": ["user", "assistant"]}, "is_flagged": {"$ne": True}}, get_school_id())  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+        msg_filter = scoped_filter({"conversation_id": conv_id, "role": {"$in": ["user", "assistant"]}, "is_flagged": {"$ne": True}}, get_school_id())  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
         anchors = await db.messages.find(msg_filter, {"_id": 0}).sort("created_at", 1).to_list(HISTORY_KEEP_FIRST)
         anchor_ids = {a.get("id") for a in anchors if a.get("id")}
         recent = await db.messages.find(msg_filter, {"_id": 0}).sort("created_at", -1).to_list(HISTORY_KEEP_RECENT)
@@ -2310,7 +2318,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
     if detected_tool:
         tool_name = detected_tool
         # D-25: lookup + gate are one call, shared with the tool-panel door. Writes are
-        # not blocked here — this path leads to the confirm card, which is where a write
+        # not blocked here - this path leads to the confirm card, which is where a write
         # gets its token, kill-switch check and audit row.
         try:
             tool_def = resolve_tool(tool_name, user, authorize=_is_tool_authorized)
@@ -2335,7 +2343,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                 params = {}
                 try:
                     # R11.2: force the single detected tool via native function
-                    # calling and read its structured arguments — no JSON-in-text
+                    # calling and read its structured arguments - no JSON-in-text
                     # to parse, and the model cannot name a different tool.
                     extraction_result = await llm_client.chat(
                         system_prompt,
@@ -2455,7 +2463,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
 
             yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'status': 'running'})}\n\n"
 
-            # R7.3/AC5: actually START a keepalive — run the read tool as a task and
+            # R7.3/AC5: actually START a keepalive - run the read tool as a task and
             # emit keepalive frames while it runs, so a slow query can't stall the SSE
             # stream into an idle-timeout. (Previously the keepalive coroutine was
             # defined but never scheduled, and yielded nothing.)
@@ -2488,7 +2496,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                 all_tool_calls.append({"tool": tool_name, "result": tool_result})
 
             except Exception as e:
-                # Part 2 Patch P3: never expose `str(e)` to the LLM / client —
+                # Part 2 Patch P3: never expose `str(e)` to the LLM / client -
                 # may contain Mongo URIs, collection names, stack frame paths.
                 # D-25: one definition of that shape, shared with the other door.
                 tool_result = safe_failure(tool_name, e)
@@ -2505,7 +2513,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             if empty_msg:
                 empty_note = f"\n\nNote: The tool returned no data with this message: \"{empty_msg}\". Relay this to the user helpfully."
 
-            # R9.2 AC1 (M10): do NOT run topic-blocking over serialized tool JSON —
+            # R9.2 AC1 (M10): do NOT run topic-blocking over serialized tool JSON -
             # `tool_result` is ALREADY PII-redacted (_safe_tool_result_for_chat →
             # redact_for_llm above), and running filter_response over the JSON would
             # let one blocked word in legitimate data nuke the ENTIRE dataset. The
@@ -2527,11 +2535,11 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             ]
         else:
             # A photo sent with an ordinary question needs no tool, so this is the
-            # commonest attachment path — and it was the one that dropped the image.
+            # commonest attachment path - and it was the one that dropped the image.
             messages_for_llm_final = _reattach_image(messages_for_llm, user_text, image_data)
 
         # R11.2: advertise the caller's authorized tools via native function
-        # calling — the model returns structured tool_calls (or a final answer),
+        # calling - the model returns structured tool_calls (or a final answer),
         # never JSON-in-text, and can only name a tool it is allowed to use.
         # Deferred tool loading: names the model has fetched via `search_tools` this
         # turn become callable for the rest of it.
@@ -2589,7 +2597,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                 except asyncio.TimeoutError:
                     elapsed += KEEPALIVE_INTERVAL
                     if elapsed >= LLM_WALLCLOCK_BUDGET:
-                        logger.warning("LLM wallclock budget exceeded (%ds) — bailing", elapsed)
+                        logger.warning("LLM wallclock budget exceeded (%ds) - bailing", elapsed)
                         llm_response = ""
                         llm_tokens = 0
                         llm_ok = False
@@ -2652,7 +2660,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         return
 
-    # ── Phase 8.5: agentic planner (Epic E) — whole-job-by-instruction ────
+    # ── Phase 8.5: agentic planner (Epic E) - whole-job-by-instruction ────
     # When the model proposes MORE THAN ONE tool call in a turn and at least one
     # is a write, treat it as a compound job: resolve + authorize the whole plan
     # server-side and gate it behind ONE plan-confirm card (plan-then-confirm-once).
@@ -2670,7 +2678,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
     # ── Phase 9: LLM tool detection + multi-tool chaining ─────────────────
     # Part 2 Patch P5 (E6/L4): treat the keyword-detected tool as round 1 so
     # MAX_TOOL_ROUNDS is honored (was previously off-by-one: 4 effective rounds
-    # when a keyword tool fired). Loop condition is now `<` only — relying on
+    # when a keyword tool fired). Loop condition is now `<` only - relying on
     # the inner `break` to handle "no further tool requested".
     tool_rounds = 1 if detected_tool else 0
 
@@ -2678,7 +2686,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         while tool_rounds < MAX_TOOL_ROUNDS:
             # R11.2: the model's next tool request is the first structured
             # tool_call from the most recent LLM turn (Phase 8 or a follow-up).
-            # No text parsing — if there is no pending call, the model produced a
+            # No text parsing - if there is no pending call, the model produced a
             # final answer and we stop chaining.
             llm_tool_call = pending_calls[0] if pending_calls else None
             if not llm_tool_call:
@@ -2688,7 +2696,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             llm_tool_name = llm_tool_call.get("action")
             llm_tool_params = llm_tool_call.get("params", {})
 
-            # D-25: lookup + gate are one call. The wording stays this door's own —
+            # D-25: lookup + gate are one call. The wording stays this door's own -
             # the tool panel answers 403 for both cases so the registry cannot be
             # mapped, while chat must not tell someone a feature does not exist when
             # it does. `reason` is what keeps both true from one code path.
@@ -2703,7 +2711,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                     _suffix = f" Did you mean: {', '.join(_close)}?" if _close else ""
                     llm_response = f'I don\'t have a capability called "{llm_tool_name}".{_suffix}'
                 else:
-                    # R1.5 AC2: a real capability the caller's role can't use — distinct
+                    # R1.5 AC2: a real capability the caller's role can't use - distinct
                     # message from "unknown" so we don't imply the feature doesn't exist.
                     llm_response = "That action isn't available for your role."
                 break
@@ -2874,7 +2882,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
             ]
 
             # A `search_tools` round only pays off if the fetched schemas are actually
-            # advertised on the NEXT call — otherwise the model is handed instructions
+            # advertised on the NEXT call - otherwise the model is handed instructions
             # for tools it still cannot invoke, and loops searching for them.
             if tool_name == "search_tools":
                 for _row in (tool_result or {}).get("data") or []:
@@ -2957,17 +2965,17 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
 
             total_tokens_used += safe_token_count(llm_tokens, llm_response)
 
-            # R11.2: the follow-up may request another tool — that structured
+            # R11.2: the follow-up may request another tool - that structured
             # request drives the next loop iteration (bounded by MAX_TOOL_ROUNDS).
             pending_calls = _tool_calls_to_candidates(llm_tool_calls)
         else:
             # R1.5 AC3: while-else runs only when the loop exits by exhausting
             # MAX_TOOL_ROUNDS (no break). If the model STILL wants another tool,
-            # we've hit the chaining limit — narrate it instead of ending on a
+            # we've hit the chaining limit - narrate it instead of ending on a
             # dangling, answerless tool request.
             if pending_calls:
                 llm_response = (
-                    "This request needs more steps than I can chain in one go — "
+                    "This request needs more steps than I can chain in one go - "
                     "try narrowing it or asking for one part at a time."
                 )
 
@@ -3012,17 +3020,17 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
     # The final-answer LLM call uses stream=True and its deltas are forwarded as
     # `text_delta` events for real first-token latency (AC1/AC2). We stream only
     # a genuine model synthesis (not a canned dead-end message, not a pending
-    # tool request) and only for non-student roles — the student content filter
+    # tool request) and only for non-student roles - the student content filter
     # must run BEFORE any text reaches a student, so students keep the buffered
     # filter-then-emit path below. Confidentiality: no provider/model identity is
-    # ever emitted — deltas carry only the assistant's words.
+    # ever emitted - deltas carry only the assistant's words.
     #
     # NEW-12/T8: this second model call exists ONLY to re-say an answer that has
     # already been worked out, word by word. It roughly doubles the cost of every
     # turn. Abhimanyu decided on 2026-08-04 to switch it off, so the default is
     # off; set AI_STREAM_SECOND_CALL=true to bring the typing-out effect back
     # without a code change. When it is off, the answer is delivered through the
-    # buffered simulated-chunk path below — same text, no second call.
+    # buffered simulated-chunk path below - same text, no second call.
     _role = user.get("role")
     stream_error = None
     stream_final = (
@@ -3061,7 +3069,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                 # AC3: a mid-stream provider failure keeps the partial text and
                 # marks the turn interrupted; the R1 contract persists it below.
                 stream_error = _sink.get("error") or "stream_failed"
-                raw_final = raw_final.rstrip() + "\n\n_(reply interrupted — please retry)_"
+                raw_final = raw_final.rstrip() + "\n\n_(reply interrupted - please retry)_"
                 yield f"data: {json.dumps({'type': 'error', 'phase': 'streaming', 'message': 'The reply was interrupted. Please try again.'})}\n\n"
         else:
             # Streaming yielded nothing (e.g. not configured / instant failure):
@@ -3079,12 +3087,12 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         logger.error(f"Phase 11 (content filter) error: {e}")
         clean_response = raw_final
 
-    # Strip content-policy hallucination — the LLM occasionally generates this
+    # Strip content-policy hallucination - the LLM occasionally generates this
     # boilerplate from poisoned conversation history. Detect and remove it so
     # it never reaches the user regardless of role.
     # R1.4: keep ONLY true content-policy boilerplate. The removed markers
     # ("try rephrasing your question", "wasn't able to process that") are ordinary
-    # phrases a genuine answer may contain — matching them nuked real replies.
+    # phrases a genuine answer may contain - matching them nuked real replies.
     _CONTENT_POLICY_MARKERS = [
         "content policy settings on the AI service",
         "school management tools in the sidebar are fully available",
@@ -3108,11 +3116,11 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
     # ── R1.3 Turn Completion Contract: substitute the fallback BEFORE streaming ──
     # This is the choke point for the silent-empty-turn incident. If the turn has
     # neither text nor rich blocks (confirm/error/tool paths already returned with
-    # their own persisted message above), the user still gets words — streamed and
+    # their own persisted message above), the user still gets words - streamed and
     # persisted below with a real message id (never the old f"empty-{conv_id}").
     _has_rich = bool(rich_content and (rich_content.get('rich_blocks') or rich_content.get('action_buttons')))
     if not (clean_text and clean_text.strip()) and not _has_rich:
-        logger.warning("Empty final turn — substituting FALLBACK_TEXT | conv=%s", conv_id)
+        logger.warning("Empty final turn - substituting FALLBACK_TEXT | conv=%s", conv_id)
         clean_text = FALLBACK_TEXT
 
     # ── Phase 13: Deliver the answer ──────────────────────────────────────
@@ -3136,7 +3144,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
                 await asyncio.sleep(0.008)
 
         # Send rich content block. R9.2 AC1 (M10): structured output gets a narrow
-        # PII-only pass (redact_for_llm), NOT topic-blocking — a blocked word inside
+        # PII-only pass (redact_for_llm), NOT topic-blocking - a blocked word inside
         # a legitimate table cell must not nuke the whole block. The LLM's prose is
         # already topic-filtered above (clean_response).
         if rich_content:
@@ -3155,7 +3163,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
     # ── Phase 14: Save AI message to DB (BUG FIX #7: persist BEFORE done event) ──
     # R1.3: single completion choke point. clean_text is guaranteed non-empty by
     # the fallback substitution above, so this ALWAYS persists a real assistant
-    # message with a real uuid and ALWAYS debits tokens — the old
+    # message with a real uuid and ALWAYS debits tokens - the old
     # empty-turn short-circuit (done + f"empty-{conv_id}", no persist, no debit)
     # is gone. A turn can no longer end silently or escape token accounting.
     try:
@@ -3244,7 +3252,7 @@ async def send_message(conv_id: str, request: Request):
     if not user_text and not image_data:
         raise HTTPException(status_code=400, detail="Empty message")
     if not user_text:
-        user_text = "[Image attached — please describe or ask about the image]"
+        user_text = "[Image attached - please describe or ask about the image]"
     raw_session_id = body.get("session_id") or request.headers.get("x-session-id") or request.headers.get("X-SSE-Session-ID")
     session_id = (raw_session_id or "").strip()
     if not session_id:
@@ -3253,7 +3261,7 @@ async def send_message(conv_id: str, request: Request):
 
     from services.layaastat import emit_event
     # R7.3/AC5: the auth user dict keys id as "id" (not "user_id"), so the old
-    # user.get("user_id") sent distinct_id=None — anonymising every analytics event.
+    # user.get("user_id") sent distinct_id=None - anonymising every analytics event.
     await emit_event("ai_chat_message", distinct_id=user["id"], payload={"role": user.get("role", "")})
     return StreamingResponse(
         _generate_chat_sse(conv_id, user_text, user, session_id=session_id, request=request, image_data=image_data),
@@ -3281,9 +3289,9 @@ async def execute_action(conv_id: str, request: Request):
 
     # NEW-07/T13: these two refusals used to answer HTTP 200 with
     # {"success": False, ...}. The action WAS correctly blocked, so this was never a
-    # hole — but a refusal that reports itself as a success cannot be counted by any
+    # hole - but a refusal that reports itself as a success cannot be counted by any
     # monitoring that watches rejected requests, and CLAUDE.md is explicit:
-    # "Errors — ALWAYS raise HTTPException, never return raw dicts."
+    # "Errors - ALWAYS raise HTTPException, never return raw dicts."
     #
     # D-25: lookup + gate are one call. This door keeps 404-vs-403 (unlike the tool
     # panel, which flattens both to 403) because the caller here is the chat screen
@@ -3352,7 +3360,7 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
     # If we incremented first, an attacker (or a buggy client) firing
     # invalid/expired tokens could DoS a user's hourly budget. The peek call
     # returns the token doc (including used=True replays) when (user, session)
-    # match, else None — giving us authentication-style proof of intent.
+    # match, else None - giving us authentication-style proof of intent.
     token_meta = await peek_confirm_token(
         token=token,
         user_id=user["id"],
@@ -3373,7 +3381,7 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
         raise HTTPException(status_code=400, detail="Confirmation token is invalid")
 
     # F.4/AD9: AI-write kill-switch. Checked BEFORE the rate gate AND token consume
-    # so a blocked write neither burns the one-shot token nor a rate slot — the user
+    # so a blocked write neither burns the one-shot token nor a rate slot - the user
     # can retry once an operator re-enables writes. Reads never reach this path.
     # R9.3 (M8): force_fresh bypasses the per-worker cache and reads Mongo directly,
     # so an operator's disable takes effect on the next confirmed write across ALL
@@ -3397,7 +3405,7 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
     # F.10/FR42: two-step destructive confirmation. A plan/action containing a
     # delete requires a SECOND explicit acknowledgment beyond the plan-confirm.
     # Checked on the PEEKED token, before the rate gate + consume, so a missing ack
-    # burns neither the one-shot token nor a rate slot — the client re-confirms with
+    # burns neither the one-shot token nor a rate slot - the client re-confirms with
     # destructive_ack=True (a single rate slot is taken on the acknowledged attempt).
     destructive_steps = _token_meta_destructive_steps(token_meta)
     if destructive_steps and not destructive_ack:
@@ -3408,14 +3416,14 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
                 "code": "destructive_confirmation_required",
                 "message": (
                     "This includes a permanent deletion. Please confirm a second "
-                    "time to proceed — this cannot be undone."
+                    "time to proceed - this cannot be undone."
                 ),
                 "destructive_tools": tools,
             },
         )
 
     # Rate-limit gate runs BEFORE token consumption. A rejected request must
-    # not burn the user's one-shot confirm token — they should be able to
+    # not burn the user's one-shot confirm token - they should be able to
     # retry the same action once the next clock-hour begins. school_id comes
     # from the authoritative tenant context (env), never from caller-supplied
     # fields, so per-tenant overrides cannot be spoofed.
@@ -3455,7 +3463,7 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
             # increment so the losing request doesn't permanently reduce the budget.
             await _ai_rate_decrement(user_id=user["id"], db=db)
         # XM6/E.5: a token that expired while the user was reading the plan gets a
-        # clear, re-planable message — keyed off the TYPED reason code, never a
+        # clear, re-planable message - keyed off the TYPED reason code, never a
         # brittle string-match on the detail text. The original intent is echoed
         # so the client can re-issue in one tap.
         detail_code = exc.detail.get("code") if isinstance(exc.detail, dict) else None
@@ -3481,7 +3489,7 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
         write_step_dicts = [s for s in plan_steps if s.get("kind", "write") == "write"]
         if not write_step_dicts:
             raise HTTPException(status_code=400, detail="Confirmation token has no write steps")
-        # AD14: authorize EVERY step before executing any — a plan with one
+        # AD14: authorize EVERY step before executing any - a plan with one
         # unauthorized step is rejected whole, never partially executed.
         for s in write_step_dicts:
             s_tool = s.get("tool")
@@ -3508,13 +3516,13 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
             raise HTTPException(status_code=400, detail=f"Unknown tool: {tool_name}")
         if tool_name not in WRITE_ACTION_TOOLS:
             raise HTTPException(status_code=400, detail="Confirmation token is not for a write action")
-        # auth: registry enforces role + sub_category — see _is_tool_authorized
+        # auth: registry enforces role + sub_category - see _is_tool_authorized
         if not _is_tool_authorized(user, tool_def):
             raise HTTPException(status_code=403, detail="Forbidden")
 
-    # Part 4 Story 4.2: write-ahead audit row — fail-open with structured warning.
+    # Part 4 Story 4.2: write-ahead audit row - fail-open with structured warning.
     # Audit failure must not block AI responses; proceed and log loudly.
-    # AD14: a whole plan is ONE dispatch — a single audit row, not one per step.
+    # AD14: a whole plan is ONE dispatch - a single audit row, not one per step.
     audit_id = None
     try:
         audit_params = (
@@ -3541,7 +3549,7 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
             exc_info=True,
             extra={"action_name": tool_name, "user_id": user.get("id", "")},
         )
-        # Proceed — audit failure must not block AI responses
+        # Proceed - audit failure must not block AI responses
 
     try:
         scope = await resolve_scope(user, db)
@@ -3554,7 +3562,7 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
                 # the tool's services enlist via the ambient txn-session contextvar.
                 #
                 # D-25: the same invoker as every other door. It deliberately does NOT
-                # catch exceptions, which is what this path depends on — a failure has
+                # catch exceptions, which is what this path depends on - a failure has
                 # to reach the executor for the transaction to roll back.
                 # Every step was already gated above (AD14 authorizes the whole plan
                 # before any of it runs), so the resolved def is passed through.
@@ -3563,7 +3571,7 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
             return _runner
 
         if plan_steps:
-            # AD4/D.3: same single execution path — a resolved multi-step plan.
+            # AD4/D.3: same single execution path - a resolved multi-step plan.
             plan = plan_from_steps(
                 steps=plan_steps,
                 runner_factory=lambda raw: _make_runner(raw.get("tool"), raw.get("params") or {}),
@@ -3572,7 +3580,7 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
                 plan_token=token,
             )
         else:
-            # Legacy single confirmed write — a one-step plan (no len==1 fork).
+            # Legacy single confirmed write - a one-step plan (no len==1 fork).
             plan = single_write_plan(
                 tool=tool_name,
                 params=params,
@@ -3581,7 +3589,7 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
                 branch_id=user.get("branch_id"),
                 plan_token=token,
             )
-        # F.5: shadow/dry-run — runs the writes in an always-aborted txn and
+        # F.5: shadow/dry-run - runs the writes in an always-aborted txn and
         # reports the would-be effect, committing nothing (saga side-effects skipped).
         dry_run = await ai_dry_run_enabled(db)
         exec_result = await plan_executor.run(plan, db=db, dry_run=dry_run)
@@ -3589,11 +3597,11 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
             result = {
                 "success": True,
                 "dry_run": True,
-                "message": "Shadow mode: showing what would change — nothing was committed.",
+                "message": "Shadow mode: showing what would change - nothing was committed.",
                 "would_change": exec_result.step_results,
             }
         elif exec_result.status == "already_applied":
-            # Idempotent replay (concurrent/duplicate confirm) — nothing re-applied.
+            # Idempotent replay (concurrent/duplicate confirm) - nothing re-applied.
             result = {
                 "success": True,
                 "idempotent_replay": True,
@@ -3612,10 +3620,10 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
             result = None
         # XM9: everything below runs AFTER the transaction committed. A failure in
         # a post-commit metric/audit write must NEVER turn a committed plan into a
-        # user-facing 500 — the writes are already durable. Catch + log loudly and
+        # user-facing 500 - the writes are already durable. Catch + log loudly and
         # still return the success reply.
         try:
-            # F.7: pilot observability — one confirmation + plan_executed event per
+            # F.7: pilot observability - one confirmation + plan_executed event per
             # dispatch, plus a per-step outcome. PII-free (tool names + statuses only).
             dispatch_event = (
                 "confirmation"
@@ -3640,14 +3648,14 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
                     db, event="step_outcome", user_id=user["id"], tool_name=sr.get("tool", tool_name),
                     status=sr.get("status", "ok"), school_id=get_school_id(), branch_id=user.get("branch_id"),
                 )
-            # F.10/FR42: actor-tagged deletion audit per destructive step — only when
+            # F.10/FR42: actor-tagged deletion audit per destructive step - only when
             # the dispatch actually committed (not on an idempotent no-op replay).
             if exec_result.status == "committed":
                 for ds in destructive_steps:
                     await _audit_destructive_step(db, user, ds)
         except Exception:
             logger.warning(
-                "post_commit_bookkeeping_failed tool=%s user=%s — plan already committed",
+                "post_commit_bookkeeping_failed tool=%s user=%s - plan already committed",
                 tool_name, user.get("id"), exc_info=True,
             )
     except PlanStaleError as stale:
@@ -3672,7 +3680,7 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
             detail={"code": recon.code, "message": str(recon)},
         )
     except PlanScopeViolationError as scope_exc:
-        # F.3: a step tried to widen tenant/branch scope — refused, nothing applied.
+        # F.3: a step tried to widen tenant/branch scope - refused, nothing applied.
         await audit_ai_dispatch_finalize(
             audit_id=audit_id, result=None, error="plan_scope_violation", db=db,
         )
@@ -3694,7 +3702,7 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
         )
         raise HTTPException(status_code=502, detail={"code": "side_effect_failed", "message": str(saga)})
     except StepExecutionError as step_err:
-        # X2/X4: a confirmed step reported failure — the transaction aborted and
+        # X2/X4: a confirmed step reported failure - the transaction aborted and
         # NOTHING was applied. The audit row records the real failure and the user
         # reply names the failed step, so reply and audit always agree.
         await audit_ai_dispatch_finalize(
@@ -3725,7 +3733,7 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
         await audit_ai_dispatch_finalize(
             audit_id=audit_id, result=None, error="txn_unavailable", db=db,
         )
-        logger.error("txn_unavailable — refused non-transactional confirmed write tool=%s", tool_name)
+        logger.error("txn_unavailable - refused non-transactional confirmed write tool=%s", tool_name)
         raise HTTPException(
             status_code=503,
             detail={
@@ -3769,7 +3777,7 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
     message_id = None
     if conv_id:
         # XM9: the plan already committed. Persisting the assistant transcript
-        # message is best-effort — a Mongo hiccup here must NOT turn a durable,
+        # message is best-effort - a Mongo hiccup here must NOT turn a durable,
         # committed action into a user-facing 500.
         try:
             ai_msg = Message(
@@ -3798,7 +3806,7 @@ async def _execute_confirmed_dispatch(token: str, session_id: str, user: dict, d
             message_id = ai_msg.id
         except Exception:
             logger.warning(
-                "post_commit_message_persist_failed tool=%s user=%s — action already committed",
+                "post_commit_message_persist_failed tool=%s user=%s - action already committed",
                 tool_name, user.get("id"), exc_info=True,
             )
 

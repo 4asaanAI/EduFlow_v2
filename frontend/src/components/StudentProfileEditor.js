@@ -95,7 +95,7 @@ function FormSelect({ v, label, options, icon: Icon, onChange, isDark }) {
           cursor: 'pointer',
         }}
       >
-        <option value="">— Select —</option>
+        <option value="">- Select -</option>
         {options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
     </div>
@@ -278,7 +278,7 @@ function MedicalTab({ profile, onSave, isDark }) {
       {bmi && (
         <div style={{ marginTop: 12, padding: '10px 14px', background: `${bmiColor}14`, border: `1px solid ${bmiColor}30`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 12, color: t.textSub, fontWeight: 500 }}>Body Mass Index (BMI)</span>
-          <span style={{ fontSize: 14, fontWeight: 700, color: bmiColor }}>{bmi} <span style={{ fontSize: 11, fontWeight: 500 }}>— {bmiLabel}</span></span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: bmiColor }}>{bmi} <span style={{ fontSize: 11, fontWeight: 500 }}>- {bmiLabel}</span></span>
         </div>
       )}
 
@@ -325,7 +325,7 @@ function GuardianCard({ guardian, onSave, isDark }) {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {form.name || '—'}
+            {form.name || '-'}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: relColor, background: `${relColor}18`, padding: '2px 8px', borderRadius: 20 }}>
@@ -467,7 +467,7 @@ export default function StudentProfileEditor({ isDark, currentUser, onClose }) {
                 <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: t.textMuted, marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
                   <Lock size={8} />{item.label}
                 </div>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: t.text }}>{item.value || '—'}</div>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: t.text }}>{item.value || '-'}</div>
               </div>
             ))}
           </div>

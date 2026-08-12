@@ -23,7 +23,7 @@ function WhatsAppReminderModal({ onClose }) {
     (async () => {
       // A failure and a genuinely empty list are NOT the same thing. This used to
       // swallow every error into an empty array, so a refused request and a school
-      // with no defaulters both read "No fee defaulters found." — the screen looked
+      // with no defaulters both read "No fee defaulters found." - the screen looked
       // broken-but-fine instead of telling the person what actually happened.
       setLoadError('');
       try {
@@ -68,7 +68,7 @@ function WhatsAppReminderModal({ onClose }) {
           <div>
             <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--tool-hex-e5e5e5)' }}>WhatsApp Fee Reminders</div>
             <div style={{ fontSize: 12, color: 'var(--tool-hex-888)', marginTop: 2 }}>
-              {loadError ? 'Could not load the list' : `${defaulters.length} defaulters — tap a row to open WhatsApp`}
+              {loadError ? 'Could not load the list' : `${defaulters.length} defaulters - tap a row to open WhatsApp`}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -282,7 +282,7 @@ export function SchoolPulse() {
                   staffAbsent.forEach(name => bullet(name));
                   const leaves = pulseData?.pending_leave_requests || [];
                   line11('Pending Leave Requests:', leaves.length || 0);
-                  leaves.forEach(lr => bullet(`${lr.staff_name} — ${lr.leave_type} (${lr.start_date} to ${lr.end_date})`));
+                  leaves.forEach(lr => bullet(`${lr.staff_name} - ${lr.leave_type} (${lr.start_date} to ${lr.end_date})`));
                   y += 4;
 
                   // === SECTION 5: CHRONIC ABSENTEES ===
@@ -312,7 +312,7 @@ export function SchoolPulse() {
                   for (let p = 1; p <= totalPages; p++) {
                     doc.setPage(p);
                     doc.setFontSize(8); doc.setTextColor(160, 160, 160);
-                    doc.text('EduFlow — Daily Report — Confidential', 105, 290, { align: 'center' });
+                    doc.text('EduFlow - Daily Report - Confidential', 105, 290, { align: 'center' });
                     doc.text(`Page ${p} of ${totalPages}`, 190, 290, { align: 'right' });
                   }
 
@@ -376,7 +376,7 @@ export function SchoolPulse() {
   );
 }
 
-// Story 7-41 — Advanced Reporting (Recharts) — Owner sees both attendance
+// Story 7-41 - Advanced Reporting (Recharts) - Owner sees both attendance
 // trend (last 3 months) and fee collection summary (last 6 months); the
 // principal variant in AdminTools.js renders only the attendance chart.
 export function ReportsTrends() {
@@ -407,11 +407,11 @@ export function ReportsTrends() {
       <div style={{ maxWidth: 1000 }}>
         {attendance?.empty ? (
           <div style={{ padding: 24, border: '1px dashed var(--tool-hex-2e2e2e)', borderRadius: 12, color: 'var(--tool-hex-a3a3a3)', marginBottom: 16 }}>
-            Not enough attendance data yet — chart will appear once a month of records exists.
+            Not enough attendance data yet - chart will appear once a month of records exists.
           </div>
         ) : attendanceChartData.length > 0 && (
           <LineChartWidget
-            title="Overall attendance % — last 3 months"
+            title="Overall attendance % - last 3 months"
             data={attendanceChartData}
             xKey="month"
             lines={[{ key: 'pct', name: 'Attendance %', color: 'var(--tool-hex-4f8ff7)' }]}
@@ -420,11 +420,11 @@ export function ReportsTrends() {
 
         {fees?.empty ? (
           <div style={{ padding: 24, border: '1px dashed var(--tool-hex-2e2e2e)', borderRadius: 12, color: 'var(--tool-hex-a3a3a3)' }}>
-            Not enough fee data yet — chart will appear once transactions are recorded.
+            Not enough fee data yet - chart will appear once transactions are recorded.
           </div>
         ) : feeChartData.length > 0 && (
           <BarChartWidget
-            title="Fee collection vs outstanding — last 6 months"
+            title="Fee collection vs outstanding - last 6 months"
             data={feeChartData}
             xKey="month"
             bars={[
@@ -439,7 +439,7 @@ export function ReportsTrends() {
 }
 
 
-// 2. Fee Collection Summary — with bar chart
+// 2. Fee Collection Summary - with bar chart
 export function FeeCollection() {
   const { currentUser } = useUser();
   const [data, setData] = useState(null);
@@ -461,11 +461,11 @@ export function FeeCollection() {
         <StatCard value={stats.collection_rate || '0%'} label="COLLECTION RATE" color="var(--tool-hex-34d399)" />
       </div>
       {chartData.length > 0 && (
-        <BarChartWidget data={chartData} xKey="name" bars={[{ key: 'amount', color: 'var(--tool-hex-f87171)', name: 'Overdue (₹)' }]} title="Top Defaulters — Amount Overdue" height={200} />
+        <BarChartWidget data={chartData} xKey="name" bars={[{ key: 'amount', color: 'var(--tool-hex-f87171)', name: 'Overdue (₹)' }]} title="Top Defaulters - Amount Overdue" height={200} />
       )}
-      <DataTable title={`Fee Defaulters — Top ${defaulters.length}`} headers={['Student', 'Class', 'Amount Overdue', 'Days Overdue']}
+      <DataTable title={`Fee Defaulters - Top ${defaulters.length}`} headers={['Student', 'Class', 'Amount Overdue', 'Days Overdue']}
         rows={defaulters.map(d => [d.student_name, d.class, <span style={{ color: 'var(--tool-hex-f87171)', fontWeight: 600 }}>{d.amount_overdue_fmt}</span>, <span style={{ color: d.days_overdue > 60 ? 'var(--tool-hex-f87171)' : 'var(--tool-hex-fbbf24)' }}>{d.days_overdue} days</span>])}
-        emptyMsg="No fee defaulters — great collection rate!"
+        emptyMsg="No fee defaulters - great collection rate!"
       />
     </ToolPage>
   );
@@ -527,7 +527,7 @@ export function StudentStrength() {
       <DataTable title="Class-wise Strength" headers={['Class', 'Section', 'Students', 'Boys', 'Girls', 'Academic Year']}
         rows={(data?.classes || []).map(c => [
           c.name,
-          c.section || '—',
+          c.section || '-',
           <span style={{ fontWeight: 700, color: 'var(--tool-hex-4f8ff7)', fontSize: 14 }}>{c.student_count}</span>,
           <span style={{ color: 'var(--tool-hex-60a5fa)' }}>{c.boys}</span>,
           <span style={{ color: 'var(--tool-hex-f9a8d4)' }}>{c.girls}</span>,
@@ -543,7 +543,7 @@ export function StudentStrength() {
 export function DataImport() {
   const { currentUser } = useUser();
   // Adding NEW students stays with the owner and principal. The update tab is open to
-  // all four authority profiles, each writing only its own columns — the server decides
+  // all four authority profiles, each writing only its own columns - the server decides
   // which, so this tab being visible never means more access than the server allows.
   const canAddStudents = currentUser?.role === 'owner'
     || (currentUser?.role === 'admin' && currentUser?.sub_category === 'principal');
@@ -670,7 +670,7 @@ function UpdateFromSheet() {
         title="What would be filled, by field"
         headers={['Field', 'Students']}
         rows={Object.entries(shown?.by_field || {}).map(([f, n]) => [f, n])}
-        emptyMsg={shown ? 'Nothing to fill — the records already have this information' : ''}
+        emptyMsg={shown ? 'Nothing to fill - the records already have this information' : ''}
       />
     </>
   );
@@ -739,7 +739,7 @@ function AddNewStudents() {
           {result && (
             <div style={{ marginTop: 12, padding: '10px 14px', background: 'color-mix(in srgb, var(--tool-hex-34d399) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-34d399) 30%, transparent)', borderRadius: 9 }}>
               <div style={{ color: 'var(--tool-hex-34d399)', fontSize: 13, fontWeight: 600 }}>
-                ✓ Import complete — {result.imported_count} student{result.imported_count !== 1 ? 's' : ''} added to the database.
+                ✓ Import complete - {result.imported_count} student{result.imported_count !== 1 ? 's' : ''} added to the database.
               </div>
               {result.skipped_count > 0 && <div style={{ color: 'var(--tool-hex-737373)', fontSize: 12, marginTop: 4 }}>{result.skipped_count} rows skipped (duplicates or errors).</div>}
             </div>
@@ -752,13 +752,13 @@ function AddNewStudents() {
               <StatCard value={report.valid_count || 0} label="VALID ROWS" color="var(--tool-hex-34d399)" />
               <StatCard value={report.error_count || 0} label="ERRORS" color="var(--tool-hex-f87171)" />
               <StatCard value={report.duplicate_count || 0} label="DUPLICATES" color="var(--tool-hex-fbbf24)" />
-              <StatCard value={file?.name || '—'} label="FILE" color="var(--tool-hex-4f8ff7)" />
+              <StatCard value={file?.name || '-'} label="FILE" color="var(--tool-hex-4f8ff7)" />
             </div>
             {canCommit && (
               <div style={{ marginBottom: 16, padding: '12px 16px', background: 'color-mix(in srgb, var(--tool-hex-4f8ff7) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-4f8ff7) 35%, transparent)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tool-hex-4f8ff7)' }}>
-                    Validation passed — {report.valid_count} student{report.valid_count !== 1 ? 's' : ''} ready to import
+                    Validation passed - {report.valid_count} student{report.valid_count !== 1 ? 's' : ''} ready to import
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--tool-hex-737373)', marginTop: 3 }}>
                     Students are NOT saved yet. Click "Commit Import" above to actually add them to the database.
@@ -831,8 +831,8 @@ export function AttendanceOverview() {
         }
         return [
           `${cls.name}${cls.section ? ' ' + cls.section : ''}`,
-          <span style={{ color: 'var(--tool-hex-737373)' }}>—</span>,
-          <span style={{ color: 'var(--tool-hex-737373)' }}>—</span>,
+          <span style={{ color: 'var(--tool-hex-737373)' }}>-</span>,
+          <span style={{ color: 'var(--tool-hex-737373)' }}>-</span>,
           <span style={{ color: 'var(--tool-hex-737373)', fontSize: 11 }}>Not marked</span>,
         ];
       })
@@ -866,7 +866,7 @@ const STATUS_OPTIONS = ['present', 'absent', 'late', 'on-leave'];
 const STATUS_COLORS = { present: '#34d399', absent: '#f87171', late: '#fbbf24', 'on-leave': '#a78bfa', not_marked: '#737373' };
 const STATUS_BG = { present: 'rgba(52,211,153,0.12)', absent: 'rgba(248,113,113,0.12)', late: 'rgba(251,191,36,0.12)', 'on-leave': 'rgba(167,139,250,0.12)', not_marked: 'rgba(115,115,115,0.1)' };
 
-// Exported as StaffAttendanceTracker — when loaded directly as a tool it shows only attendance tab
+// Exported as StaffAttendanceTracker - when loaded directly as a tool it shows only attendance tab
 export function StaffAttendanceTracker({ title = 'Staff Tracker', subtitle = 'Staff attendance tracking', defaultTab = 'attendance', singleTab = 'attendance' }) {
   const { currentUser } = useUser();
   const [data, setData] = useState(null);
@@ -946,7 +946,7 @@ export function StaffAttendanceTracker({ title = 'Staff Tracker', subtitle = 'St
         <StatCard value={leaves.length} label="PENDING LEAVES" color="var(--tool-hex-fbbf24)" />
       </div>
 
-      {/* Tabs — hidden when singleTab is set */}
+      {/* Tabs - hidden when singleTab is set */}
       {!singleTab && (
         <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--c-border)', marginBottom: 14 }}>
           {['attendance', 'leaves'].map(t => (
@@ -1358,7 +1358,7 @@ export function StaffPerformance() {
 
   const getRate = (s) => {
     const st = staffStats[s.id];
-    if (!st || st.total === 0) return '—';
+    if (!st || st.total === 0) return '-';
     return `${Math.round((st.present / st.total) * 100)}%`;
   };
 
@@ -1377,7 +1377,7 @@ export function StaffPerformance() {
         <StatCard value={staff.filter(s => s.staff_type === 'teacher').length} label="TEACHERS" color="var(--tool-hex-4f8ff7)" />
         <StatCard value={staff.filter(s => s.staff_type !== 'teacher').length} label="NON-TEACHING" color="var(--tool-hex-a78bfa)" />
         <StatCard
-          value={staff.length > 0 ? `${Math.round(staff.filter(s => { const st = staffStats[s.id]; return st && st.total > 0 && (st.present / st.total) * 100 >= 90; }).length / staff.length * 100)}%` : '—'}
+          value={staff.length > 0 ? `${Math.round(staff.filter(s => { const st = staffStats[s.id]; return st && st.total > 0 && (st.present / st.total) * 100 >= 90; }).length / staff.length * 100)}%` : '-'}
           label="ABOVE 90% ATT." color="var(--tool-hex-34d399)" />
       </div>
 
@@ -1388,12 +1388,12 @@ export function StaffPerformance() {
           return [
             <span style={{ fontWeight: 600, color: 'var(--tool-hex-e5e5e5)', cursor: 'pointer' }} onClick={() => setSelectedStaff(selectedStaff?.id === s.id ? null : s)}>{s.name}</span>,
             <Badge text={s.staff_type || 'staff'} color={s.staff_type === 'teacher' ? 'blue' : 'purple'} />,
-            s.department || '—',
-            s.employee_id || '—',
-            s.join_date || '—',
-            <span style={{ color: 'var(--tool-hex-34d399)', fontWeight: 600 }}>{st?.present ?? '—'}</span>,
-            <span style={{ color: 'var(--tool-hex-f87171)', fontWeight: 600 }}>{st?.absent ?? '—'}</span>,
-            <span style={{ color: 'var(--tool-hex-fbbf24)', fontWeight: 600 }}>{st?.late ?? '—'}</span>,
+            s.department || '-',
+            s.employee_id || '-',
+            s.join_date || '-',
+            <span style={{ color: 'var(--tool-hex-34d399)', fontWeight: 600 }}>{st?.present ?? '-'}</span>,
+            <span style={{ color: 'var(--tool-hex-f87171)', fontWeight: 600 }}>{st?.absent ?? '-'}</span>,
+            <span style={{ color: 'var(--tool-hex-fbbf24)', fontWeight: 600 }}>{st?.late ?? '-'}</span>,
             <span style={{ color: getRateColor(s), fontWeight: 700 }}>{getRate(s)}</span>,
           ];
         })}
@@ -1411,14 +1411,14 @@ export function StaffPerformance() {
             <button onClick={() => setSelectedStaff(null)} style={{ background: 'none', border: 'none', color: 'var(--tool-hex-737373)', cursor: 'pointer', fontSize: 18 }}>×</button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: 12 }}>
-            <StatCard value={selectedStaff.email || '—'} label="EMAIL" color="var(--tool-hex-4f8ff7)" small />
-            <StatCard value={selectedStaff.phone || '—'} label="PHONE" color="var(--tool-hex-a78bfa)" small />
-            <StatCard value={selectedStaff.join_date || '—'} label="JOIN DATE" color="var(--tool-hex-34d399)" small />
+            <StatCard value={selectedStaff.email || '-'} label="EMAIL" color="var(--tool-hex-4f8ff7)" small />
+            <StatCard value={selectedStaff.phone || '-'} label="PHONE" color="var(--tool-hex-a78bfa)" small />
+            <StatCard value={selectedStaff.join_date || '-'} label="JOIN DATE" color="var(--tool-hex-34d399)" small />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 10 }}>
-            <StatCard value={staffStats[selectedStaff.id]?.present ?? '—'} label="DAYS PRESENT" color="var(--tool-hex-34d399)" small />
-            <StatCard value={staffStats[selectedStaff.id]?.absent ?? '—'} label="DAYS ABSENT" color="var(--tool-hex-f87171)" small />
-            <StatCard value={staffStats[selectedStaff.id]?.late ?? '—'} label="LATE ARRIVALS" color="var(--tool-hex-fbbf24)" small />
+            <StatCard value={staffStats[selectedStaff.id]?.present ?? '-'} label="DAYS PRESENT" color="var(--tool-hex-34d399)" small />
+            <StatCard value={staffStats[selectedStaff.id]?.absent ?? '-'} label="DAYS ABSENT" color="var(--tool-hex-f87171)" small />
+            <StatCard value={staffStats[selectedStaff.id]?.late ?? '-'} label="LATE ARRIVALS" color="var(--tool-hex-fbbf24)" small />
             <StatCard value={getRate(selectedStaff)} label="ATTENDANCE RATE" color={getRateColor(selectedStaff)} small />
           </div>
           {selectedStaff.subjects?.length > 0 && (
@@ -1477,12 +1477,12 @@ export function AiHealthReport() {
 
       const highlights = [];
       const feeLabel = feeRate >= 80 ? 'above average' : feeRate >= 60 ? 'average' : 'needs attention';
-      highlights.push(`Fee collection at ${feeRate}% — ${feeLabel}`);
+      highlights.push(`Fee collection at ${feeRate}% - ${feeLabel}`);
       if (!attKnown) {
-        highlights.push('Student attendance has not been marked yet today — not counted in this score');
+        highlights.push('Student attendance has not been marked yet today - not counted in this score');
       } else {
         const attLabel = attRate >= 85 ? 'on track' : attRate >= 70 ? 'moderate' : 'low';
-        highlights.push(`Student attendance at ${attRate}% — ${attLabel}`);
+        highlights.push(`Student attendance at ${attRate}% - ${attLabel}`);
       }
       if (staffAbsent === 0) highlights.push('All staff present today');
       else highlights.push(`${staffAbsent} staff member${staffAbsent > 1 ? 's' : ''} absent today`);
@@ -1491,7 +1491,7 @@ export function AiHealthReport() {
       const alerts = [];
       if (chronicCount > 0) {
         const names = (d.chronic_absent_students || []).map(x => x.name).slice(0, 3).join(', ');
-        alerts.push(`${chronicCount} student${chronicCount > 1 ? 's' : ''} with chronic absence — ${names}${chronicCount > 3 ? ' & more' : ''}`);
+        alerts.push(`${chronicCount} student${chronicCount > 1 ? 's' : ''} with chronic absence - ${names}${chronicCount > 3 ? ' & more' : ''}`);
       }
       if (s.fee_overdue && s.fee_overdue !== '₹0') {
         alerts.push(`Overdue fees: ${s.fee_overdue} needs follow-up`);
@@ -1663,7 +1663,7 @@ export function SmartAlerts() {
       ) : filtered.length === 0 ? (
         <div style={{ padding: 32, textAlign: 'center', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11 }}>
           <CheckCircle size={22} color="#10b981" style={{ margin: '0 auto 10px', display: 'block' }} />
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text)' }}>{filter === 'all' ? 'No active alerts — all good!' : `No ${filter} alerts`}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text)' }}>{filter === 'all' ? 'No active alerts - all good!' : `No ${filter} alerts`}</div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1796,8 +1796,8 @@ export function ExpenseTracker() {
       <DataTable headers={['Date', 'Category', 'Description', 'Vendor', 'Amount', 'Actions']}
         rows={expenses.map(e => [
           e.date,
-          e.category ? e.category[0].toUpperCase() + e.category.slice(1) : '—',
-          e.description || '—',
+          e.category ? e.category[0].toUpperCase() + e.category.slice(1) : '-',
+          e.description || '-',
           e.vendor || 'N/A',
           <span style={{ color: 'var(--tool-hex-f87171)', fontWeight: 600 }}>₹{(e.amount || 0).toLocaleString('en-IN')}</span>,
           <div style={{ display: 'flex', gap: 6 }}>
@@ -1877,7 +1877,7 @@ export function CustomReportBuilder() {
     setLoading(false);
   };
 
-  // Parse CSV properly — handles quoted fields containing commas
+  // Parse CSV properly - handles quoted fields containing commas
   const parseCSV = (text) => {
     const lines = text.trim().split('\n');
     return lines.map(line => {
@@ -1943,7 +1943,7 @@ export function CustomReportBuilder() {
           errors.push(`${src.label}: ${e.message}`);
         }
 
-        // Section header — no emoji, plain ASCII
+        // Section header - no emoji, plain ASCII
         if (y > maxY - 40) newPage();
         doc.setFontSize(13); doc.setTextColor(30, 30, 30);
         doc.text(`${sectionNum}. ${src.label}`, 15, y); y += 7;
@@ -1971,7 +1971,7 @@ export function CustomReportBuilder() {
         y += 4;
         doc.setDrawColor(180, 180, 180); doc.line(15, y, 195, y); y += 3;
 
-        // Data rows — ALL rows with page breaks
+        // Data rows - ALL rows with page breaks
         doc.setFontSize(7.5); doc.setTextColor(70, 70, 70);
         csvRows.forEach((row, ri) => {
           if (y > maxY) newPage();
@@ -2002,7 +2002,7 @@ export function CustomReportBuilder() {
       for (let p = 1; p <= totalPages; p++) {
         doc.setPage(p);
         doc.setFontSize(8); doc.setTextColor(160, 160, 160);
-        doc.text('EduFlow — Confidential Report', 105, 290, { align: 'center' });
+        doc.text('EduFlow - Confidential Report', 105, 290, { align: 'center' });
         doc.text(`Page ${p} of ${totalPages}`, 190, 290, { align: 'right' });
       }
 
@@ -2078,14 +2078,14 @@ export function CustomReportBuilder() {
 // UI Sweep, Epic 4, Story 4.2. This screen used to load six sources under one
 // Promise.all, catch every failure into a single banner reading "Showing partial
 // report", and then show no report at all because `data` was never set. Anything that
-// failed rendered as `0` or `N/A` — the owner read a broken request as a fact about
+// failed rendered as `0` or `N/A` - the owner read a broken request as a fact about
 // his school, which is owner item 7.
 //
 // Each source now succeeds or fails on its own. A source that failed says so, on the
 // card, and can be retried on its own. Nothing that failed is ever drawn as a number.
 
 /** Run a tool and return its payload, throwing on refusal or failure.
- *  There is ONE envelope (Story 4.1) — `r.data` is the payload, not another envelope. */
+ *  There is ONE envelope (Story 4.1) - `r.data` is the payload, not another envelope. */
 async function runTool(name, params) {
   const r = await executeTool(name, params);
   if (r?.denied) throw new Error('You do not have access to this figure.');
@@ -2093,7 +2093,7 @@ async function runTool(name, params) {
   return r.data;
 }
 
-/** Same contract for the plain REST sources. A non-2xx must NOT become an empty list —
+/** Same contract for the plain REST sources. A non-2xx must NOT become an empty list -
  *  `.catch(() => ({ data: [] }))` is how "0 staff" used to mean "403 Forbidden". */
 async function runRest(url) {
   const res = await apiFetch(url, { headers: h() });
@@ -2117,7 +2117,7 @@ const BOARD_SOURCES = {
  *
  * Declared at module level, NOT inside BoardReport. A component defined inside a
  * render function gets a new identity on every render, so React unmounts and
- * remounts the whole subtree — which throws keyboard focus off the Retry button the
+ * remounts the whole subtree - which throws keyboard focus off the Retry button the
  * instant you press it.
  *
  * `testId` is separate from `sourceKey` because two sections can depend on one source
@@ -2136,7 +2136,7 @@ function BoardSectionFailure({ sourceKey, testId, message, retrying, onRetry }) 
       </span>
       {/* Deliberately NOT `disabled` while retrying: disabling the control a person
           has just pressed removes it from the tab order, and the browser drops focus
-          to the top of the document — so a keyboard user loses their place every time
+          to the top of the document - so a keyboard user loses their place every time
           they retry. The label reports the state and the handler ignores re-entry. */}
       <ActionBtn
         label={retrying ? 'Retrying…' : 'Retry'}
@@ -2231,7 +2231,7 @@ export function BoardReport() {
       }
       doc.setDrawColor(200, 200, 200); doc.line(15, coverY, 195, coverY);
 
-      // Section 1 — School Overview
+      // Section 1 - School Overview
       let y = coverY + 10;
       doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('1. School Overview', 15, y); y += 9;
       doc.setFontSize(10); doc.setTextColor(60, 60, 60);
@@ -2241,7 +2241,7 @@ export function BoardReport() {
       doc.text(`Avg Attendance (30 days): ${fig(!!att, att?.avg_attendance_rate)}`, 20, y); y += 7;
       doc.text(`Total Attendance Records: ${fig(!!att, att?.total_records)}`, 20, y); y += 12;
 
-      // Section 2 — Fee Summary
+      // Section 2 - Fee Summary
       doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('2. Fee & Finance Summary', 15, y); y += 9;
       doc.setFontSize(10); doc.setTextColor(60, 60, 60);
       doc.text(`Total Fees Collected: ${fig(!!fee, fee?.total_collected, '₹0')}`, 20, y); y += 7;
@@ -2257,7 +2257,7 @@ export function BoardReport() {
         : `₹${totalExp.toLocaleString('en-IN')}`);
       doc.text(`Total Expenses Recorded: ${expFmt}`, 20, y); y += 12;
 
-      // Section 3 — Staff
+      // Section 3 - Staff
       doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('3. Staff Summary', 15, y); y += 9;
       doc.setFontSize(10); doc.setTextColor(60, 60, 60);
       const teachers = staffList.filter(st => st.staff_type === 'teacher').length;
@@ -2269,7 +2269,7 @@ export function BoardReport() {
       const pendingLeaves = (payload('pulse')?.pending_leave_requests || []).length;
       doc.text(`Pending Leave Requests: ${fig(ok('pulse'), pendingLeaves)}`, 20, y); y += 12;
 
-      // Section 4 — Class-wise Attendance (today)
+      // Section 4 - Class-wise Attendance (today)
       // A failed section prints its heading and "not available". Silently omitting it
       // would leave the reader thinking it was never part of the report.
       const classStats = ok('attendance') ? (att?.class_stats_today || []) : [];
@@ -2291,7 +2291,7 @@ export function BoardReport() {
         y += 8;
       }
 
-      // Section 5 — Alerts
+      // Section 5 - Alerts
       const alerts = ok('alerts') ? (payload('alerts')?.alerts || []) : [];
       if (y > 220) { doc.addPage(); y = 20; }
       doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('5. Active Alerts', 15, y); y += 9;
@@ -2308,7 +2308,7 @@ export function BoardReport() {
         y += 6;
       }
 
-      // Section 6 — Top Fee Defaulters
+      // Section 6 - Top Fee Defaulters
       const defaulters = ok('fee') ? (payload('fee')?.defaulters || []) : [];
       if (y > 220) { doc.addPage(); y = 20; }
       doc.setFontSize(13); doc.setTextColor(40, 40, 40); doc.text('6. Top Fee Defaulters', 15, y); y += 9;
@@ -2332,7 +2332,7 @@ export function BoardReport() {
 
       // Footer
       doc.setFontSize(8); doc.setTextColor(160, 160, 160);
-      doc.text('EduFlow — Board Report — Confidential', 105, 290, { align: 'center' });
+      doc.text('EduFlow - Board Report - Confidential', 105, 290, { align: 'center' });
 
       doc.save(`board-report-${new Date().toISOString().slice(0, 10)}.pdf`);
     } catch (err) { alert('PDF generation failed. Please try again.'); }
@@ -2347,7 +2347,7 @@ export function BoardReport() {
   // "it tried again and failed" from "my tap did nothing".
   const failureText = (key) => {
     const src = sources[key] || {};
-    if ((src.attempts || 0) > 1) return `Still couldn't load this — check your connection. (${src.message})`;
+    if ((src.attempts || 0) > 1) return `Still couldn't load this - check your connection. (${src.message})`;
     return src.message || "Couldn't load this.";
   };
 
@@ -2364,7 +2364,7 @@ export function BoardReport() {
   // A section that is RETRYING stays in its failure state rather than flashing the
   // stale content back for the duration of the request. Two reasons: the flicker
   // reads as "it worked", and unmounting the failure element takes the Retry button
-  // out of the document — so a keyboard user loses focus the moment they press it.
+  // out of the document - so a keyboard user loses focus the moment they press it.
   const failed = (sourceKey) => {
     const src = sources[sourceKey] || {};
     return src.status === 'error' || (src.status === 'loading' && !!src.message);
@@ -2374,7 +2374,7 @@ export function BoardReport() {
     ? `₹${(totalExp / 100000).toFixed(1)}L`
     : `₹${totalExp.toLocaleString('en-IN')}`;
 
-  // "₹0 collected" is true — the school has one fee record for 1,802 students — and
+  // "₹0 collected" is true - the school has one fee record for 1,802 students - and
   // would otherwise be indistinguishable from the failure this epic exists to remove.
   const feeNote = fee.transactions_on_file !== undefined
     ? `${fee.transactions_on_file} fee record${fee.transactions_on_file === 1 ? '' : 's'} on file`
@@ -2386,7 +2386,7 @@ export function BoardReport() {
         <div style={{ textAlign: 'center', padding: '40px 0' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
           <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 16, marginBottom: 8 }}>Board Meeting Report</h3>
-          <p style={{ color: 'var(--tool-hex-737373)', fontSize: 12, marginBottom: 20 }}>Fetches all school metrics — students, fees, attendance, staff, alerts, and defaulters</p>
+          <p style={{ color: 'var(--tool-hex-737373)', fontSize: 12, marginBottom: 20 }}>Fetches all school metrics - students, fees, attendance, staff, alerts, and defaulters</p>
           <ActionBtn label={loading ? 'Generating...' : 'Generate Full Report'} onClick={generate} disabled={loading} data-testid="board-generate" />
         </div>
       ) : (
@@ -2394,7 +2394,7 @@ export function BoardReport() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
             <span style={{ color: 'var(--tool-hex-737373)', fontSize: 12 }}>Generated: {generated}</span>
             <div style={{ display: 'flex', gap: 8 }}>
-              {/* Export stays available with sections missing — refusing it would leave
+              {/* Export stays available with sections missing - refusing it would leave
                   him in front of the trustees with no document at all. */}
               <ActionBtn label={pdfLoading ? 'Exporting...' : 'Download PDF'} onClick={downloadPDF} disabled={pdfLoading} icon={<Download size={11} />} data-testid="board-download-pdf" />
               <ActionBtn label={loading ? 'Refreshing...' : 'Re-generate'} variant="secondary" onClick={generate} disabled={loading} />
@@ -2402,12 +2402,12 @@ export function BoardReport() {
           </div>
           {failedLabels.length > 0 && (
             <div role="alert" data-testid="board-partial-banner" style={{ fontSize: 12, marginBottom: 12, color: 'var(--color-warning)', background: 'color-mix(in srgb, var(--color-warning) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--color-warning) 20%, transparent)', borderRadius: 8, padding: '8px 12px' }}>
-              Could not load: <strong>{failedLabels.join(', ')}</strong>. Those sections say so below —
+              Could not load: <strong>{failedLabels.join(', ')}</strong>. Those sections say so below -
               they are not being shown as zero. Everything else is up to date.
             </div>
           )}
 
-          {/* Section 1 — School Overview. Each figure names its own source, so one
+          {/* Section 1 - School Overview. Each figure names its own source, so one
               failure never silently zeroes a neighbouring card. */}
           <BoardSection title="School Overview" failed={failed('pulse')} failure={failureFor('pulse')}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
@@ -2433,7 +2433,7 @@ export function BoardReport() {
             </div>
           </BoardSection>
 
-          {/* Section 2 — Fee & Finance */}
+          {/* Section 2 - Fee & Finance */}
           <BoardSection title="Fee & Finance" failed={failed('fee')} failure={failureFor('fee')}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, marginBottom: 12 }}>
               <StatCard value={fee.total_collected} label="TOTAL COLLECTED" color="var(--tool-hex-34d399)" small state={cardState('fee')} note={feeNote} data-testid="board-total-collected" />
@@ -2443,7 +2443,7 @@ export function BoardReport() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
               <StatCard value={fee.students_with_dues} label="STUDENTS WITH DUES" color="var(--tool-hex-fbbf24)" small state={cardState('fee')} />
               <StatCard value={fee.overdue_60_days} label="OVERDUE 60+ DAYS" color="var(--tool-hex-f87171)" small state={cardState('fee')} />
-              {/* Expenses is its own source — it must not inherit the fee section's state. */}
+              {/* Expenses is its own source - it must not inherit the fee section's state. */}
               <StatCard value={expensesValue} label="TOTAL EXPENSES" color="var(--tool-hex-f87171)" small state={cardState('expenses')} />
             </div>
             {sources.expenses?.status === 'error' && (
@@ -2451,7 +2451,7 @@ export function BoardReport() {
             )}
           </BoardSection>
 
-          {/* Section 3 — Staff */}
+          {/* Section 3 - Staff */}
           <BoardSection title="Staff Summary" failed={failed('staff')} failure={failureFor('staff')}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
               <StatCard value={staffList.filter(st => st.staff_type === 'teacher').length} label="TEACHERS" color="var(--tool-hex-4f8ff7)" small state={cardState('staff')} data-testid="board-teachers" />
@@ -2461,7 +2461,7 @@ export function BoardReport() {
             </div>
           </BoardSection>
 
-          {/* Section 4 — Class-wise Attendance. An empty list used to hide the whole
+          {/* Section 4 - Class-wise Attendance. An empty list used to hide the whole
               section, so "failed", "not marked yet" and "no classes" looked alike. */}
           <BoardSection title="Class-wise Attendance (Today)" failed={failed('attendance')} failure={failureFor('attendance')}>
             {(att?.class_stats_today || []).length > 0 ? (
@@ -2483,7 +2483,7 @@ export function BoardReport() {
             )}
           </BoardSection>
 
-          {/* Section 5 — Alerts */}
+          {/* Section 5 - Alerts */}
           <BoardSection title="Active Alerts" failed={failed('alerts')} failure={failureFor('alerts')}>
             {(payload('alerts')?.alerts || []).length > 0 ? (
               payload('alerts').alerts.map((a, i) => (
@@ -2497,7 +2497,7 @@ export function BoardReport() {
             )}
           </BoardSection>
 
-          {/* Section 6 — Top Defaulters */}
+          {/* Section 6 - Top Defaulters */}
           <BoardSection title="Top Fee Defaulters" failed={failed('fee')} failure={failureFor('fee', 'board-section-error-defaulters')}>
             {(payload('fee')?.defaulters || []).length > 0 ? (
               <DataTable headers={['Student', 'Class', 'Overdue Amount', 'Days Overdue']}
@@ -2512,7 +2512,7 @@ export function BoardReport() {
               <EmptyState
                 kind="empty"
                 title="No dues recorded"
-                message={feeNote ? `Nothing outstanding — ${feeNote}.` : 'Nothing outstanding is recorded.'}
+                message={feeNote ? `Nothing outstanding - ${feeNote}.` : 'Nothing outstanding is recorded.'}
               />
             )}
           </BoardSection>
@@ -2771,7 +2771,7 @@ export function AttendanceAlerts() {
               {selectedStudent && (
                 <div style={{ background: 'var(--c-bg)', border: '1px solid var(--tool-hex-a78bfa)', borderRadius: 11, padding: 18, marginBottom: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                    <h4 style={{ color: 'var(--c-text)', fontSize: 13, fontWeight: 600 }}>Send SMS — {selectedStudent.student_name}</h4>
+                    <h4 style={{ color: 'var(--c-text)', fontSize: 13, fontWeight: 600 }}>Send SMS - {selectedStudent.student_name}</h4>
                     <button onClick={() => { setSelectedStudent(null); setSmsResult(null); }} style={{ background: 'transparent', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 16 }}>x</button>
                   </div>
                   <form onSubmit={handleSendSingle}>
@@ -3073,7 +3073,7 @@ export function PlatformHealthDashboard() {
                   <div style={{ fontSize: 13, color: 'var(--text-secondary)', fontFamily: 'JetBrains Mono, monospace' }}>
                     {data.fee_sync_last.started_at
                       ? new Date(data.fee_sync_last.started_at).toLocaleString()
-                      : '—'}
+                      : '-'}
                   </div>
                   {data.fee_sync_last.completed_at && (
                     <>

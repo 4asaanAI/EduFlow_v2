@@ -1,5 +1,5 @@
 """
-API Tests: Students — EduFlow Backend
+API Tests: Students - EduFlow Backend
 
 Tests for student CRUD endpoints under /api/students.
 All endpoints require JWT authentication (admin or teacher role).

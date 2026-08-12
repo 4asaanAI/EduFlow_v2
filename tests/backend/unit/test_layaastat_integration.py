@@ -1,4 +1,4 @@
-"""LayaaStat push-integration tests — client buffering/retry/idempotency + env gating."""
+"""LayaaStat push-integration tests - client buffering/retry/idempotency + env gating."""
 
 from __future__ import annotations
 
@@ -174,7 +174,7 @@ async def test_ai_metrics_forwarded_when_enabled(monkeypatch):
     assert ev["user_id"] == "owner-1"
 
 
-# ─── D-41 — the ingest contract, pinned ──────────────────────────────────────
+# ─── D-41 - the ingest contract, pinned ──────────────────────────────────────
 #
 # These two assertions are the whole of D-41. Both shapes were verified against the
 # LIVE endpoint on 2026-08-04 before and after the fix, not inferred from a document:

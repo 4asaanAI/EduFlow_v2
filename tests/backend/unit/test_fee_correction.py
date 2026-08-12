@@ -64,7 +64,7 @@ def test_original_snapshot_preserved_on_first_correction(client, fake_db):
     """original_snapshot is set on first correction and captures the pre-correction state."""
     txn = make_fee_transaction(id="txn-c4", created_by="own-1", amount=5000)
     fake_db.fee_transactions.docs = [txn]
-    # First correction — reason is required by the endpoint
+    # First correction - reason is required by the endpoint
     client.patch(
         "/api/fees/transactions/txn-c4/correct",
         json={"amount": 4500, "reason": "Data entry error"},

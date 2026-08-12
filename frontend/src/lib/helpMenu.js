@@ -3,7 +3,7 @@
  *
  * WHY THIS FILE EXISTS. These rows used to be `TOOL_GROUPS[role].bottom` inside
  * Sidebar.js. The 2026-08-05 enterprise release rebuilt the owner and principal
- * navigation around the nine management hubs and set their `bottom` to `[]` — which
+ * navigation around the nine management hubs and set their `bottom` to `[]` - which
  * emptied this menu without anyone noticing, because the menu renders exactly that
  * list and an empty list renders as nothing. Aman reported a Help & Support menu that
  * opens onto nothing (owner request 6, 2026-08-06). The two screens it used to reach,
@@ -31,7 +31,7 @@ export function helpToolsForUser(user) {
   if (role === 'owner') return [AUDIT_LOG, QUERY_SECTION];
   if (role === 'admin') {
     // The principal reads the log; every other office profile gets the query desk
-    // only. `it_tech` used to reach the log too — removed with owner request 10.
+    // only. `it_tech` used to reach the log too - removed with owner request 10.
     return sub === 'principal' ? [AUDIT_LOG, QUERY_SECTION] : [QUERY_SECTION];
   }
   if (role === 'teacher' || role === 'student') return [FORM_SUBMISSIONS, RAISE_MAINTENANCE];

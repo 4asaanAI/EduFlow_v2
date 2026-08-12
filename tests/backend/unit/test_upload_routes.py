@@ -76,7 +76,7 @@ def test_role_size_limit_rejects_student_but_accepts_teacher(client, monkeypatch
         "MAX_SIZE_BY_ROLE",
         {"owner": 200, "admin": 200, "teacher": 200, "student": 50},
     )
-    content = b"%PDF-1.4\n" + (b"0" * 100)  # 109 bytes — over student 50B, under teacher 200B
+    content = b"%PDF-1.4\n" + (b"0" * 100)  # 109 bytes - over student 50B, under teacher 200B
 
     student_response = _post_upload(client, _headers("student-1", "student"), "large.pdf", content)
     teacher_response = _post_upload(client, _headers("teacher-1", "teacher"), "large.pdf", content)

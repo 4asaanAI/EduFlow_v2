@@ -70,7 +70,7 @@ def _branch_scoped(query: Dict[str, Any], branch_id: Optional[str]) -> Dict[str,
     ``schoolId`` is already injected by the ``ScopedCollection`` these queries
     run against, so we add ONLY the branch axis here (mirroring how ``filter()``
     composes branch). A ``None`` branch_id (owner, or a branch-agnostic user)
-    is a deliberate no-op — the role legitimately spans branches.
+    is a deliberate no-op - the role legitimately spans branches.
     """
     if not branch_id:
         return query
@@ -190,7 +190,7 @@ class Scope:
 
         Part 2 Patch P1: when ``self.branch_id`` is set, a ``branch_id``
         clause is ALWAYS added to the returned filter (composed via ``$and``
-        when other clauses already exist) — even for ``type="all"`` and
+        when other clauses already exist) - even for ``type="all"`` and
         ``type="domain"``. Previously only ``type="branch"`` consulted
         branch_id, and that type was never produced; ``_apply_branch_filter``
         in tool_functions_v2 was a permanent no-op.
@@ -200,7 +200,7 @@ class Scope:
         if not self.branch_id:
             return base
         # Compose with branch_id. Avoid double-clause if the inner filter
-        # already pinned branch_id (defensive — shouldn't happen).
+        # already pinned branch_id (defensive - shouldn't happen).
         if "branch_id" in base:
             return base
         if not base:
@@ -245,7 +245,7 @@ class Scope:
                 if self.class_ids:
                     return {"class_id": {"$in": self.class_ids}}
                 # R5.3 (X6): a HOD whose subject resolved to ZERO classes must
-                # see NO students — never the school-wide `{}` (fail open).
+                # see NO students - never the school-wide `{}` (fail open).
                 return dict(_IMPOSSIBLE_FILTER)
             # Any other collection under a subject scope is out of domain.
             return dict(_IMPOSSIBLE_FILTER)
@@ -334,7 +334,7 @@ class Scope:
                     # Check whether the student's class is in our scope.
                     return target.get("class_id") in self.class_ids
                 # R5.3 (X6): a HOD/coordinator whose scope resolved to ZERO
-                # classes (empty class_ids) has no student visibility — the old
+                # classes (empty class_ids) has no student visibility - the old
                 # blanket `if self.type == "subject": return True` leaked every
                 # student's personal info when no classes could be resolved.
             return False
@@ -359,7 +359,7 @@ class Scope:
 
         if self.role == "admin":
             # Principal and accountant can see financial data. Legacy admin
-            # rows with no sub_category are denied (Part 1 hardening) —
+            # rows with no sub_category are denied (Part 1 hardening) -
             # migration 016 backfills these to support_staff.
             return self.sub_category in (_ADMIN_FULL_OPS | {"accountant"})
 
@@ -791,7 +791,7 @@ async def _resolve_teacher_scope(
         else:
             # Fallback: look up classes where class_teacher_id matches.
             # R5.3 (L6): `class_teacher_id` may hold EITHER the staff record id
-            # OR the login user_id — match both, exactly like tool_get_class_list.
+            # OR the login user_id - match both, exactly like tool_get_class_list.
             # (AC5) branch-scope so a class teacher only resolves own-branch classes.
             ct_ids = [i for i in (user_id, staff.get("id")) if i]
             class_docs = await db.classes.find(_branch_scoped(
@@ -966,7 +966,7 @@ async def _resolve_legacy_teacher_classes(
 
     class_ids: set = set()
     # R5.3 (L6): `class_teacher_id`/`teacher_id` may hold the staff id or the
-    # login user_id — match both, branch-scoped.
+    # login user_id - match both, branch-scoped.
     linker_ids = [i for i in (user_id, staff_id) if i]
 
     # Classes where this teacher is the class teacher.

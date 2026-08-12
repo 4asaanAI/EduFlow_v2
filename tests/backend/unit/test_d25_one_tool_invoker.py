@@ -1,4 +1,4 @@
-"""D-25 — there is one way to run a registry tool, not two.
+"""D-25 - there is one way to run a registry tool, not two.
 
 The chat tool-loop and the tool-panel endpoint were two doors into `TOOL_REGISTRY`,
 each with its own lookup, gate, scope resolution, calling convention and failure shape.
@@ -40,7 +40,7 @@ def test_no_door_calls_a_tool_function_directly():
 
     `ai/tool_invoker.py` is the one place allowed to, because it IS the invoker.
     A new door that calls `tool_def["fn"](params, user)` directly gets its own idea
-    of the gate, the scope and the failure shape within a release or two — that is
+    of the gate, the scope and the failure shape within a release or two - that is
     the whole of D-25, twice over.
     """
     pattern = re.compile(r"""\[["']fn["']\]\s*\(""")
@@ -135,7 +135,7 @@ def test_authorize_override_is_honoured():
 async def test_two_argument_tool_is_called_with_two_arguments():
     """The tool-panel door used to pass scope unconditionally.
 
-    Every registered tool takes three arguments today, so this never bit — but the
+    Every registered tool takes three arguments today, so this never bit - but the
     first two-argument tool would have raised a TypeError there and been reported as
     a generic "Tool execution failed", while chat handled it fine. One invoker means
     one answer.

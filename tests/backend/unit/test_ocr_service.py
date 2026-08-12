@@ -1,4 +1,4 @@
-"""UI Sweep Epic 10, Story 10.5 — reading a printed page on this server.
+"""UI Sweep Epic 10, Story 10.5 - reading a printed page on this server.
 
 The most important tests here separate THREE answers that a careless implementation
 returns identically as an empty string:
@@ -6,7 +6,7 @@ returns identically as an empty string:
   - the page had no text on it
   - the file was not a readable image
 
-Collapsing those is the Epic 4 defect — a failure that looks like a real result —
+Collapsing those is the Epic 4 defect - a failure that looks like a real result -
 in a new place.
 """
 from __future__ import annotations
@@ -74,7 +74,7 @@ def test_an_empty_file_is_refused(monkeypatch):
 
 def test_an_unavailable_engine_says_so_rather_than_returning_a_blank_page(monkeypatch):
     """THE test for this story. Before the deploy that installs tesseract, every
-    request lands here — and it must not read as 'the page was blank'."""
+    request lands here - and it must not read as 'the page was blank'."""
     monkeypatch.setattr(
         ocr_service, "ocr_available",
         lambda: (False, "The OCR engine is not installed on this server yet."),
@@ -155,7 +155,7 @@ def test_text_on_a_page_comes_back_with_the_language_used(monkeypatch):
 
 def test_a_missing_hindi_pack_falls_back_to_english_and_says_so(monkeypatch):
     """Tesseract errors on a missing language pack rather than degrading, so the
-    languages are tried in order — and the user is told Hindi may be missing."""
+    languages are tried in order - and the user is told Hindi may be missing."""
     monkeypatch.setattr(ocr_service, "ocr_available", lambda: (True, ""))
 
     class _FakeTess:

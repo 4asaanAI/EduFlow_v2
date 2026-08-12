@@ -1,4 +1,4 @@
-"""R1 — Turn Completion Contract (the incident fix).
+"""R1 - Turn Completion Contract (the incident fix).
 
 Drives the real chat SSE endpoint through the failure injections named in the
 architecture doc (§10) and asserts the contract every time:
@@ -120,7 +120,7 @@ def test_content_policy_marker_becomes_fallback_not_blank(client, fake_db, monke
 
 
 def test_llm_exception_completes_turn_with_error(client, fake_db, monkeypatch):
-    """S9: an LLM exception is caught, surfaced (ai_unavailable), and persisted —
+    """S9: an LLM exception is caught, surfaced (ai_unavailable), and persisted -
     never a silent turn. The Phase-8 call wrapper converts the crash to ok=False."""
     _seed_conversation(fake_db)
 

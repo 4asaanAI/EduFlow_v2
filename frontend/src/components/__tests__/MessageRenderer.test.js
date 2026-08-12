@@ -41,7 +41,7 @@ test('R8.4 AC3: markdown tables render as <table> elements', () => {
   expect(container.querySelector('tbody td')).toHaveTextContent('Rahul');
 });
 
-// R8.4 AC3: security invariants still hold — AI-authored content cannot inject a
+// R8.4 AC3: security invariants still hold - AI-authored content cannot inject a
 // dangerous protocol via style, an event handler, or borrow a CSS class.
 test('R8.4 AC3: dangerous style values, handlers and class hooks are neutralized', () => {
   const { container } = render(
@@ -78,7 +78,7 @@ test('R8.4 AC3: a javascript: markdown link is not rendered as an anchor', () =>
       message={{ role: 'assistant', content: 'Click [here](javascript:alert(1))' }}
     />,
   );
-  // Either dropped to a span or stripped by DOMPurify — never a javascript: href.
+  // Either dropped to a span or stripped by DOMPurify - never a javascript: href.
   expect(container.querySelector('a[href^="javascript"]')).toBeNull();
   expect(screen.getByText(/here/)).toBeInTheDocument();
 });

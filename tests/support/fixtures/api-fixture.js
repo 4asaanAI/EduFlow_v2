@@ -1,10 +1,10 @@
 /**
- * API Fixture Helper — EduFlow
+ * API Fixture Helper - EduFlow
  *
  * Provides a thin wrapper around Playwright's APIRequestContext for making
  * authenticated API requests in tests.
  *
- * Note: createApiFixture is a factory — call it with an auth token when you
+ * Note: createApiFixture is a factory - call it with an auth token when you
  * need an authenticated context outside of the page-level fixture.
  */
 

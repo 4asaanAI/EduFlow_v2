@@ -1,12 +1,12 @@
-"""Epic R5 — Tenancy & Scope Fail-Closed (scope_resolver tier).
+"""Epic R5 - Tenancy & Scope Fail-Closed (scope_resolver tier).
 
 Covers X6/L6:
-  * Coordinator class-range regex is anchored — "Class 1" never widens into
+  * Coordinator class-range regex is anchored - "Class 1" never widens into
     "Class 10/11/12" (AC1).
   * A HOD/coordinator whose scope resolves to ZERO classes gets the fail-closed
     impossible filter and no student visibility, never `{}` / school-wide (AC2).
   * class_list scope over fee/exam collections fails closed (AC3).
-  * Regex interpolation is re.escaped — a subject like "C++" does not crash (AC4).
+  * Regex interpolation is re.escaped - a subject like "C++" does not crash (AC4).
   * HOD/coordinator/class_teacher lookups are branch-scoped; class_teacher
     resolution accepts BOTH the staff id and the login user_id (AC5 / L6).
 """

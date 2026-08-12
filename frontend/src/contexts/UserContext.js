@@ -10,7 +10,7 @@ import {
 import { API } from '../lib/api';
 
 // NEW-08: this file used to read `REACT_APP_BACKEND_URL` itself, so it never got
-// the http→https upgrade commit 80d803b added — on the login and token-refresh
+// the http→https upgrade commit 80d803b added - on the login and token-refresh
 // path, the two calls the whole app depends on. The address now comes from
 // `lib/api.js`, which is the only place it is read.
 //
@@ -64,7 +64,7 @@ export function UserProvider({ children }) {
   // ─── Password login ──────────────────────────────────────────────────────
 
   // Deliberately a plain `fetch`, NOT `apiFetch`. A 401 here means the password is
-  // wrong — that is the answer, not an expired session. Sending it through the
+  // wrong - that is the answer, not an expired session. Sending it through the
   // refreshing wrapper would try to renew a login that does not exist yet and then
   // bounce the person to the login page they are already on. Same for logout below.
   const loginPassword = useCallback(async (username, password) => {

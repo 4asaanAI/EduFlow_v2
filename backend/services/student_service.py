@@ -1,4 +1,4 @@
-"""Student CRUD service — the single shared write path for student records
+"""Student CRUD service - the single shared write path for student records
 (AI Layer Hardening, AD7 / AD15 / Epic J, Story J.1).
 
 Both the REST routes (`POST /api/students/`, `PATCH /api/students/{id}`,
@@ -8,7 +8,7 @@ functions here, so an AI-created/edited student is byte-identical to the panel r
 
 Student **hard-delete** (`DELETE /students/{id}`) and **DPDP-erase**
 (`/students/{id}/erase`) are deliberately NOT in this service's AI-reachable surface
-— they stay UI-only (AD15). Photo upload (binary) stays a REST route; the assistant
+- they stay UI-only (AD15). Photo upload (binary) stays a REST route; the assistant
 sets `photo_url` through `update_student`.
 
 Services raise domain exceptions, never `HTTPException`.
@@ -22,11 +22,12 @@ from typing import Optional
 from models.schemas import Guardian, Student
 from services import enrolment_status
 from services.actor_context import ActorContext
+from services.admission_charge_service import raise_joining_charges
 from services.audit_service import write_audit_doc
 from services.txn_context import session_kwargs as _txn_session_kwargs
 from tenant import scoped_filter
 
-# Field whitelists — the SAME sets the REST route enforces (keep in lockstep).
+# Field whitelists - the SAME sets the REST route enforces (keep in lockstep).
 UPDATABLE_FIELDS = {
     "name", "class_id", "admission_number", "roll_number", "dob", "gender",
     "blood_group", "height_cm", "weight_kg", "medical_notes", "emergency_contact",
@@ -43,19 +44,41 @@ UPDATABLE_FIELDS = {
 # developer.
 #
 # What is deliberately NOT in here, and must stay out:
-#   * id / schoolId / branch_id / academic_year_id / created_at — identity and audit
+#   * id / schoolId / branch_id / academic_year_id / created_at - identity and audit
 #     metadata. `created_at` especially: it means "when this record was made on
 #     EduFlow", and the load had to rename the school's own column to
 #     `source_created_at` to avoid destroying it. Making it editable would reopen that.
-#   * source_sid / source_username / source_last_active — identifiers belonging to the
+#   * source_sid / source_username / source_last_active - identifiers belonging to the
 #     PREVIOUS system. They are a historical trail; editing them makes them a lie.
-#   * fee_snapshot — a dated copy of what the school's export said, not the fee ledger.
+#   * fee_snapshot - a dated copy of what the school's export said, not the fee ledger.
 #     It must not drift into a second, editable version of what a family owes.
-#   * *_s3_key / *_s3_bytes — set by the photo migration, not by a person.
-#   * is_active — REMOVED after review. It is derived from `status`; if both were
+#   * *_s3_key / *_s3_bytes - set by the photo migration, not by a person.
+#   * is_active - REMOVED after review. It is derived from `status`; if both were
 #     editable they could disagree, and a child who is status=active but
 #     is_active=False disappears from every list while looking fine on their profile.
 EXTRA_SOURCE_FIELDS = {
+    # ── Added 2026-08-11 (Abhimanyu) ──────────────────────────────────────────
+    # The rule he gave: carry a column across if it HOLDS data, or if it matters even
+    # while empty, because the school intends to fill exactly these gaps through this
+    # platform. A column that is blank today is not a column nobody wants. What is NOT
+    # carried across is the previous vendor's empty filler, listed by name in
+    # `data_import_service.DELIBERATELY_NOT_IMPORTED`.
+    #
+    # `stream` is the one that is urgently needed: 11th and 12th are charged 4,800 a
+    # year apart depending on Commerce or Science, and the only place that fact is
+    # recorded today is a class name inside the fee ledger.
+    "stream",
+    # These carry real data in the school's export and were loaded on 2026-08-06, but
+    # were left out of this set, so nobody could correct one without a developer.
+    # `source_created_at` is deliberately NOT here, for the reason given above: it
+    # belongs to the previous system and editing it makes it a lie.
+    "alternate_number", "apaar_id", "caste", "email", "medium", "pen_no",
+    "place_of_birth", "religion", "rte_application_no",
+    "father_occupation", "father_qualification", "mother_occupation",
+    "mother_qualification", "father_residential_address",
+    "mother_residential_address", "father_email", "father_official_address",
+    "mother_email", "mother_official_address", "enrolled_year",
+    "domicile_application_no", "income_application_no", "caste_application_no",
     "aadhaar_no", "account_holder", "admission_date", "admission_type",
     "attended_class", "attended_school", "bank_account_no", "bank_branch",
     "bank_ifsc", "bank_name", "category", "city",
@@ -91,6 +114,10 @@ class ClassNotFoundError(Exception):
 
 class ClassValidationError(Exception):
     """Class not in current academic year → HTTP 400."""
+
+
+class StudentAuthorizationError(Exception):
+    """This profile may not do that → HTTP 403."""
 
 
 def _session_kwargs(session) -> dict:
@@ -154,7 +181,7 @@ async def create_student(
 
     params: ``{name, class_id, admission_number?, roll_number?, dob?, gender?,
     blood_group?, height_cm?, weight_kg?, medical_notes?, father_*, mother_*,
-    guardian_*, annual_income?}`` — mirrors `StudentCreate`.
+    guardian_*, annual_income?}`` - mirrors `StudentCreate`.
     returns: ``{"student": <student_doc>}``
     """
     school_id = actor_ctx.school_id
@@ -219,7 +246,18 @@ async def create_student(
         db, actor_ctx, action="create", student_id=student.id,
         changes={"created": student_doc}, session=session,
     )
-    return {"student": student_doc}
+
+    # Abhimanyu, 2026-08-12: the school's registration and admission fees are raised
+    # automatically when a child joins. The caller passes `raise_joining_charges=False`
+    # when it is LOADING existing children rather than admitting new ones - a bulk import
+    # of the roll must never bill 1,842 families for joining years ago. See
+    # `services/admission_charge_service.py`, which is deliberately its own file so that
+    # rule is written down in one place rather than implied by a call site.
+    joining = {"raised": [], "skipped_because": "not requested"}
+    if params.get("raise_joining_charges", True):
+        joining = await raise_joining_charges(db, actor_ctx, student_doc, session=session)
+
+    return {"student": student_doc, "joining_charges": joining}
 
 
 async def update_student(
@@ -298,12 +336,12 @@ async def set_student_status(
     idempotency_key: Optional[str] = None,
 ) -> dict:
     """Soft status change (e.g. active → withdrawn). Thin wrapper over
-    `update_student` with a single `status` field — NOT the DELETE route.
+    `update_student` with a single `status` field - NOT the DELETE route.
 
     params: ``{student_id, status}``
 
     ⚠️  This writes the LABEL only. For anything that should change whether the student
-    is on the roll or on the daily register, call `set_enrolment_state` below instead —
+    is on the roll or on the daily register, call `set_enrolment_state` below instead -
     writing `status` on its own leaves `is_active` behind and the two disagree.
     """
     status = params.get("status")
@@ -323,7 +361,7 @@ async def set_enrolment_state(
     session=None,
     idempotency_key: Optional[str] = None,
 ) -> dict:
-    """Move a student between active, NSO and TC issued — and back.
+    """Move a student between active, NSO and TC issued - and back.
 
     params: ``{student_id, state, reason?}``
     returns: ``{"student": <updated_doc>, "noop": bool, "previous_state": str}``
@@ -334,7 +372,7 @@ async def set_enrolment_state(
 
     This is also the route back. Until it existed nothing in the product could set
     `is_active` to True: it was absent from UPDATABLE_FIELDS, so a student marked
-    inactive — as one was during the demo on 2026-08-05 — was unreachable by every
+    inactive - as one was during the demo on 2026-08-05 - was unreachable by every
     endpoint and every AI tool, and the only visible symptom was a headcount one short
     (owner request 9, 2026-08-06). Do not remove this without providing another way
     back, or the same trap reopens.
@@ -372,7 +410,7 @@ async def set_enrolment_state(
         return {"student": existing, "noop": True, "previous_state": previous_state}
 
     update["updated_at"] = actor_ctx.now_iso()
-    # A leaving date belongs to the TC, not to NSO — an NSO student has not left, they
+    # A leaving date belongs to the TC, not to NSO - an NSO student has not left, they
     # have stopped turning up. Clearing it on the way back matters: without that, a
     # restored student carries a withdrawal date that reports would still believe.
     if state == enrolment_status.TC_ISSUED:
@@ -485,10 +523,10 @@ async def delete_student(
     session=None,
     idempotency_key: Optional[str] = None,
 ) -> dict:
-    """Take a student off the roll — the shared path behind `DELETE /api/students/{id}`
+    """Take a student off the roll - the shared path behind `DELETE /api/students/{id}`
     and the AI `delete_student` tool.
 
-    Owner instruction 2026-08-07 — Flo could add a student but had no way to remove one.
+    Owner instruction 2026-08-07 - Flo could add a student but had no way to remove one.
 
     **This does not destroy anything.** It records that the child has left, exactly as
     the delete button on the screen always did, and `set_enrolment_state` puts them back.
@@ -502,6 +540,17 @@ async def delete_student(
     """
     if not params.get("student_id"):
         raise StudentValidationError("student_id is required")
+    # R2-4 / decision 4, 2026-08-10: the management head adds and edits students; he
+    # does not take them off the roll. The guard lives HERE rather than on the route
+    # because the route and the Flo `delete_student` tool both come through this
+    # function - a check on the route alone would leave the chat door open, which is
+    # exactly the drift the shared-service pattern exists to prevent.
+    from services.profile_matrix import may_delete_people, user_from_actor
+
+    if not may_delete_people(user_from_actor(actor_ctx)):
+        raise StudentAuthorizationError(
+            "Only the school's owner or the principal can take a student off the roll"
+        )
     return await set_enrolment_state(
         db,
         actor_ctx,

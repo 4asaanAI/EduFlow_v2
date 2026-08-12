@@ -1,11 +1,11 @@
-"""R4.2 (audit M1) — every registry READ tool returns the one envelope.
+"""R4.2 (audit M1) - every registry READ tool returns the one envelope.
 
 Iterates TOOL_REGISTRY, invokes each read tool against an empty (but permissive)
 fake DB, and asserts the single result envelope:
 `{success: bool, data, meta: {count}, message, denied: bool}`.
 
 This doubles as an H5 robustness check: a read tool that raises on an empty DB /
-missing records (instead of returning an envelope) fails here — one malformed or
+missing records (instead of returning an envelope) fails here - one malformed or
 absent doc must never 500 a tool.
 """
 

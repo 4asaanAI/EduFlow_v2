@@ -1,6 +1,6 @@
-# Compliance Log — EduFlow Legal Records
+# Compliance Log - EduFlow Legal Records
 
-## Azure OpenAI — Data Processing Agreement
+## Azure OpenAI - Data Processing Agreement
 
 | Field | Value |
 |-------|-------|
@@ -13,10 +13,10 @@
 | **Date confirmed** | 2026-05-18 |
 | **Agreement document** | `docs/legal/azure-openai-dpa.pdf` |
 
-**DPDP Act 2023 status:** ✅ Compliant — Azure OpenAI resource is deployed in Central India under a Microsoft India entity agreement. Student PII (names, attendance, fees) may flow to the LLM.
+**DPDP Act 2023 status:** ✅ Compliant - Azure OpenAI resource is deployed in Central India under a Microsoft India entity agreement. Student PII (names, attendance, fees) may flow to the LLM.
 
 ---
 
-## Blocker B3 — Cleared
+## Blocker B3 - Cleared
 
 Story 6-35 (Azure OpenAI India-region DPA) is satisfied. Go-live blocker B3 is resolved.

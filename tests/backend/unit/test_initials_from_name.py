@@ -52,7 +52,7 @@ def test_the_token_carries_the_derived_badge_not_the_stored_one():
 
 
 def test_an_account_with_no_name_still_falls_back_to_what_was_stored():
-    # Never leave the badge blank — a stored value beats nothing at all.
+    # Never leave the badge blank - a stored value beats nothing at all.
     payload, _ = _jwt_payload_from_auth({
         "user_info": {"id": "u2", "role": "admin", "name": "", "initials": "XX"},
     })

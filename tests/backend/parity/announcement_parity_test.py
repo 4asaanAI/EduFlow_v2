@@ -1,8 +1,8 @@
-"""Story A.4 — dual-entrypoint parity for the announcement moderation gate.
+"""Story A.4 - dual-entrypoint parity for the announcement moderation gate.
 
 For the same actor + equivalent audience, the resulting announcement `status` is
 identical whether created via REST `POST /api/ops/announcements` (TestClient) or the
-AI `create_announcement` tool — for BOTH an exempt actor (owner → active) and a
+AI `create_announcement` tool - for BOTH an exempt actor (owner → active) and a
 non-exempt actor (reception → pending_approval).
 """
 

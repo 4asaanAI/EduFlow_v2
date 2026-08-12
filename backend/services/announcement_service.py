@@ -1,19 +1,19 @@
-"""Announcement moderation service — the single source of truth for the
+"""Announcement moderation service - the single source of truth for the
 announcement approval gate (AI Layer Hardening, AD7 / Epic A, Story A.4).
 
 Both `POST /api/ops/announcements` (REST) and the AI `create_announcement` tool
 call `decide_announcement_status(...)`, so the moderation decision is identical
 regardless of entrypoint. This removes the gate logic that was duplicated inline
 in `tool_create_announcement` (project-context.md previously noted the duplication
-existed "due to circular import risk" — this service resolves that).
+existed "due to circular import risk" - this service resolves that).
 
 **Parity decision (case-by-case, canonical = REST, per Story A.4 "exactly as the
-route does"):** the REST route exempts owner & principal (EC-9.1 — they ARE the
+route does"):** the REST route exempts owner & principal (EC-9.1 - they ARE the
 approvers, so self-moderation is a pointless round-trip; documented behavior). The
 old AI tool applied the content gate to *everyone*, so an owner's AI announcement was
-needlessly held for approval — divergent from the panel. The AI now honors the same
+needlessly held for approval - divergent from the panel. The AI now honors the same
 role exemption. (The 5 `test_announcement_moderation.py` tests assert the pre-EC-9.1
-"moderate owner too" policy and remain pinned-failing — they pre-date EC-9.1.)
+"moderate owner too" policy and remain pinned-failing - they pre-date EC-9.1.)
 
 Services raise domain exceptions, never `HTTPException`.
 """
@@ -71,7 +71,7 @@ class AnnouncementStateError(Exception):
 
 
 async def decide_announcement(db, actor_ctx, params: dict) -> dict:
-    """Approve or reject a pending announcement (shared write path — REST
+    """Approve or reject a pending announcement (shared write path - REST
     PATCH /announcements/{id}/approve|reject + AI `decide_announcement`).
 
     params: {announcement_id, decision: approve|reject, reason (reject only)}
@@ -160,7 +160,7 @@ async def decide_announcement(db, actor_ctx, params: dict) -> dict:
 
 
 async def delete_announcement(db, actor_ctx, params: dict) -> dict:
-    """Delete an announcement (shared write path — REST DELETE /announcements/{id}
+    """Delete an announcement (shared write path - REST DELETE /announcements/{id}
     + AI `delete_announcement`). Hard delete, matching the panel, + F.10 audit."""
     import uuid as _uuid
 
@@ -175,7 +175,7 @@ async def delete_announcement(db, actor_ctx, params: dict) -> dict:
     if not existing:
         raise AnnouncementNotFoundError(ann_id)
     await db.announcements.delete_one(scoped_filter({"id": ann_id}, school_id))
-    # F.10: actor-tagged deletion audit — who deleted what, when.
+    # F.10: actor-tagged deletion audit - who deleted what, when.
     await write_audit_doc(
         db,
         {

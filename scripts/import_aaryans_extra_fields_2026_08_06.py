@@ -4,14 +4,14 @@
     python scripts/import_aaryans_extra_fields_2026_08_06.py --apply   # writes
 
 Third and last of the student loaders:
-  1. `import_aaryans_2026_08_06.py`        — the 13 columns that already had a home
-  2. `import_aaryans_photos_2026_08_06.py` — the photographs (hyperlink targets)
-  3. this one                              — the other 71 columns
+  1. `import_aaryans_2026_08_06.py`        - the 13 columns that already had a home
+  2. `import_aaryans_photos_2026_08_06.py` - the photographs (hyperlink targets)
+  3. this one                              - the other 71 columns
 
 Abhimanyu, 2026-08-06: *"add those additional 71 columns over the platform and populate
 the data in them as well"*. No Pydantic change is needed for these to be READABLE: the
 students routes return raw Mongo documents rather than a `response_model`, so extra keys
-flow straight through the API. They are NOT yet editable in the UI or via PATCH — that
+flow straight through the API. They are NOT yet editable in the UI or via PATCH - that
 needs `UPDATABLE_FIELDS` and form work, recorded as a follow-up.
 
 NAME MAP: mostly automatic snake_case, but four names were changed by hand because the
@@ -32,11 +32,11 @@ Deliberate: a proper fee ledger is being built from
 `Students-Fees-Structure-Report-06-08-2026-12-49.xlsx`, and money living in two places
 under similar names is how a platform ends up disagreeing with itself about what a family
 owes. `fee_snapshot` is explicitly a point-in-time copy of what the school's export said
-on 6 Aug 2026 — it is NOT the ledger and must never be totalled as if it were.
+on 6 Aug 2026 - it is NOT the ledger and must never be totalled as if it were.
 
 PARENT PHOTOS (`MotherPhoto`/`FatherPhoto`/`GuardianPhoto`) are relative paths in the
 export; they are converted to absolute CDN URLs here and stored on the STUDENT record.
-That partly closes anomaly C2 — the `guardians` collection still has no photo field, so
+That partly closes anomaly C2 - the `guardians` collection still has no photo field, so
 the photo sits beside the child rather than beside the parent.
 
 Rules carried over and unchanged: never overwrite (only blank fields are filled), never
@@ -66,7 +66,7 @@ XLSX = REPO / "aaryans_database" / "Students-06-08-2026-12-08-00.xlsx"
 SCHOOL_ID = os.environ.get("SCHOOL_ID", "aaryans-joya")
 CDN_BASE = "https://cdn.vedmarg.com/"
 
-# Already loaded by loader 1 or 2 — never touched again here.
+# Already loaded by loader 1 or 2 - never touched again here.
 ALREADY = {"Name", "AdmissionNo", "RollNo", "Dob", "Gender", "Address", "AdmissionDate",
            "Status", "Photo", "Class", "Section", "Mobile", "Transport"}
 
@@ -119,7 +119,7 @@ def coerce(col: str, v):
     low = s.lower()
     if low in YES_NO and col.startswith(("Is", "Has")) or col == "Dropout":
         return YES_NO.get(low, s)
-    # Dates in this export are always '06 Aug, 2026' — a named month, no ambiguity.
+    # Dates in this export are always '06 Aug, 2026' - a named month, no ambiguity.
     if col.endswith("Date") or col in ("TcDate",):
         try:
             return datetime.datetime.strptime(s, "%d %b, %Y").strftime("%Y-%m-%d")
@@ -209,7 +209,7 @@ def main():
     for k, v in sorted(filled.items(), key=lambda x: -x[1]):
         print(f"   {k:30s} {v}")
     if skipped_existing:
-        print("\nALREADY HELD A VALUE — left alone (never overwritten):")
+        print("\nALREADY HELD A VALUE - left alone (never overwritten):")
         for k, v in sorted(skipped_existing.items(), key=lambda x: -x[1]):
             print(f"   {k:30s} {v}")
 

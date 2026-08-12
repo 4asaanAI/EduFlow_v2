@@ -1,5 +1,5 @@
 /**
- * Shared ToolPage layout wrapper — PREMIUM REDESIGN
+ * Shared ToolPage layout wrapper - PREMIUM REDESIGN
  */
 import React from 'react';
 import { RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
@@ -48,17 +48,17 @@ export function ToolPage({ title, subtitle, actions, children, onRefresh, loadin
  *
  * `state` exists because of owner item 7 (UI Sweep, Epic 4). A figure that failed to
  * load used to render as `0`, and a `0` that is genuinely nought rendered the same
- * way — so the screen could not tell the owner which of the two he was looking at.
+ * way - so the screen could not tell the owner which of the two he was looking at.
  * The three states are deliberately distinguished by TEXT and by a dashed border,
  * not by colour alone (WCAG colour-not-only) and not by a tooltip, because he reads
  * this on a phone in a meeting and will never hover anything.
  *
- *   ok            — a real figure. Pass `note` for the honest footnote where the
+ *   ok            - a real figure. Pass `note` for the honest footnote where the
  *                   figure is true but surprising, e.g. "1 transaction on file".
- *   unavailable   — the request failed. Never render 0 for this.
- *   not-recorded  — the field was never captured for these records (date of birth,
+ *   unavailable   - the request failed. Never render 0 for this.
+ *   not-recorded  - the field was never captured for these records (date of birth,
  *                   gender, house and admission date are empty for all 1,802
- *                   students). Not missing — never collected.
+ *                   students). Not missing - never collected.
  */
 export function StatCard({ value, label, color = 'var(--color-accent-blue)', sublabel, small, state = 'ok', note, 'data-testid': testId }) {
   const { isDark } = useTheme();
@@ -71,7 +71,7 @@ export function StatCard({ value, label, color = 'var(--color-accent-blue)', sub
     ? 'Unavailable'
     : state === 'not-recorded' ? 'Not recorded' : value;
   const footnote = isReal ? note : (
-    state === 'unavailable' ? "Couldn't load — this is not a zero" : 'Never filled in for these records'
+    state === 'unavailable' ? "Couldn't load - this is not a zero" : 'Never filled in for these records'
   );
 
   return (
@@ -163,8 +163,8 @@ export function sortableCellText(cell) {
 function compareCells(a, b) {
   const ta = sortableCellText(a).trim();
   const tb = sortableCellText(b).trim();
-  // Strip the decoration Indian school data carries — ₹, %, thousands separators,
-  // and a trailing " days" — so "₹1,20,000" sorts above "₹9,000" rather than below
+  // Strip the decoration Indian school data carries - ₹, %, thousands separators,
+  // and a trailing " days" - so "₹1,20,000" sorts above "₹9,000" rather than below
   // it, which is what a plain string comparison would do.
   const numeric = (s) => {
     const cleaned = s.replace(/[₹,%\s]/g, '').replace(/days?$/i, '');
@@ -186,7 +186,7 @@ function compareCells(a, b) {
  * Column sorting for a table that CANNOT move onto `DataTable` (D-24).
  *
  * `DataTable` takes rows as arrays of cells. A handful of screens cannot express
- * themselves that way — a certificate row can expand into a full-width "reason for
+ * themselves that way - a certificate row can expand into a full-width "reason for
  * rejection" row underneath it, an exam sheet holds a live marks input per row, a
  * timetable's cells span periods. Those keep their own <table>, and take their sorting
  * from here so it behaves, reads and announces itself EXACTLY like every other table on
@@ -212,7 +212,7 @@ export function useColumnSort(items, accessors) {
     const accessor = state.index === null ? null : accessors[state.index];
     if (!accessor) return safe;
     const factor = state.direction === 'descending' ? -1 : 1;
-    // Copy before sorting — mutating the caller's array would reorder their state.
+    // Copy before sorting - mutating the caller's array would reorder their state.
     return [...safe].sort((a, b) => factor * compareCells(accessor(a), accessor(b)));
   }, [safe, accessors, state]);
 
@@ -292,7 +292,7 @@ export function SortableHeaderRow({ headers, sort, accessors, thStyle, trStyle, 
  * whole set. `ui/DataTable` is server-paginated, where a client sort would reorder
  * only the visible page and lie about the rest.
  *
- * Pass `sortable={false}` for a table whose row order is itself the information —
+ * Pass `sortable={false}` for a table whose row order is itself the information -
  * a ranked list, or a timetable.
  */
 export function DataTable({ title, headers, rows, emptyMsg = 'No data found', actions, loading = false, sortable = true, tableId = 'tool-table' }) {
@@ -495,7 +495,7 @@ export function useToolData(fetcher, deps = [], options = {}) {
     try { const result = await fetcher(); setData(result); setError(null); }
     catch (e) { setError(e.message); }
     setLoading(false);
-    // Intentional: `deps` is the CALLER's invalidation list, by design — this is a
+    // Intentional: `deps` is the CALLER's invalidation list, by design - this is a
     // generic data hook, so `fetcher` is recreated every render and must NOT be a
     // dependency (it would refetch forever). ESLint can't verify a variable deps
     // array, hence the disable. Scoped to this ONE line; the wider exhaustive-deps

@@ -102,3 +102,6 @@ entities.json
 # Nothing in this codebase references it and it arrived here by accident. Ignored so it
 # can never be committed by mistake; safe to simply delete the file.
 /upload.sh
+
+# R2-11 rollback files: they name live logins. Reconstructible from PROGRESS.md.
+rollback-033-*.json

@@ -1,4 +1,4 @@
-"""Story B.1 — dual-entrypoint parity + idempotency for fee payments.
+"""Story B.1 - dual-entrypoint parity + idempotency for fee payments.
 
 Same seed through both write entrypoints (REST POST /api/fees/transactions via
 TestClient, and the AI `record_fee_payment` tool via its real dispatch fn) → the

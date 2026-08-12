@@ -279,7 +279,7 @@ async def create_checkout_session(
         {
             "amount": pack["price_inr"] * 100,
             "currency": "INR",
-            "description": f"EduFlow Token Pack — {pack_id}",
+            "description": f"EduFlow Token Pack - {pack_id}",
             "notes": {"branch_id": branch_id, "user_id": user_id, "pack_id": pack_id, "kind": "topup"},
             "callback_url": success_url,
             "callback_method": "get",
@@ -499,7 +499,7 @@ async def handle_subscription_charged(subscription: dict, payment_id: str | None
             logger.info("subscription_charged_already_processed", extra={"reference_id": reference_id})
             return
 
-        # R12.3: atomic — both operations in a single transaction.
+        # R12.3: atomic - both operations in a single transaction.
         session = await get_txn_session()
         async with session:
             async with session.start_transaction():
@@ -597,7 +597,7 @@ async def purchase_topup_razorpay(
     now_iso = datetime.now(timezone.utc).isoformat()
     pack = PACKS.get(pack_id, {})
 
-    # R12.3: atomic — claim insert and balance increment in a single transaction.
+    # R12.3: atomic - claim insert and balance increment in a single transaction.
     session = await get_txn_session()
     async with session:
         async with session.start_transaction():
@@ -619,7 +619,7 @@ async def purchase_topup_razorpay(
                 logger.info("razorpay_topup_already_processed", extra={"reference_id": razorpay_reference_id})
                 return
 
-            # R12.3 AC1: removed "personal_topups": {} from $setOnInsert — it conflicted
+            # R12.3 AC1: removed "personal_topups": {} from $setOnInsert - it conflicted
             # with $inc on personal_topups.{user_id} when the balance doc didn't yet exist.
             # MongoDB's $inc on a sub-path auto-creates the parent object on upsert.
             await db.token_balances.update_one(

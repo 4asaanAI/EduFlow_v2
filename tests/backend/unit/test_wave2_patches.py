@@ -1,12 +1,12 @@
 """Wave 2 (P6–P11) patch acceptance tests.
 
 Covers:
-  P6  — _is_tool_authorized + registry sub_categories
-  P7  — tool_create_announcement moderation gate
-  P8  — content filter on rich_blocks and tool data for students
-  P9  — confirm-token tenant binding, peek raises, TTL boundary, decrement
-  P10 — stable sort tie-break, expires_at required
-  P11 — safe_token_count coerce, restricted_exact extension, random delay,
+  P6  - _is_tool_authorized + registry sub_categories
+  P7  - tool_create_announcement moderation gate
+  P8  - content filter on rich_blocks and tool data for students
+  P9  - confirm-token tenant binding, peek raises, TTL boundary, decrement
+  P10 - stable sort tie-break, expires_at required
+  P11 - safe_token_count coerce, restricted_exact extension, random delay,
          keepalive SSE comment, zero-width whitespace, _extract_rich_content,
          _missing_required_params numeric validators
 """
@@ -31,7 +31,7 @@ def _make_user(role: str, sub_category: str | None = None, **kw) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# P6 — _is_tool_authorized
+# P6 - _is_tool_authorized
 # ---------------------------------------------------------------------------
 
 def test_is_tool_authorized_basic_role_check():
@@ -107,16 +107,28 @@ def test_detect_tool_from_keywords_uses_user_dict(monkeypatch):
 
 
 def test_accountant_blocked_from_non_accountant_tool():
+    """R2-5 / decision 2, 2026-08-10: staff attendance is now his, to READ.
+
+    This used to assert the accountant head was refused `query_attendance_status`.
+    The school asked for the opposite: he needs to see who was in school to settle a
+    fee or a transport charge. He is granted it by name in the profile matrix, and
+    only the read - `mark_staff_attendance` and `correct_attendance` are still refused,
+    which is what this test now pins.
+    """
     from routes.chat import _is_tool_authorized
     from ai.tool_functions_v2 import TOOL_REGISTRY
-    # query_attendance_status requires principal, not accountant
-    tool_def = TOOL_REGISTRY["query_attendance_status"]
-    assert _is_tool_authorized(_make_user("admin", "accountant"), tool_def) is False
-    assert _is_tool_authorized(_make_user("admin", "principal"), tool_def) is True
+
+    accountant = _make_user("admin", "accountant")
+    assert _is_tool_authorized(accountant, TOOL_REGISTRY["query_attendance_status"]) is True
+    assert _is_tool_authorized(_make_user("admin", "principal"), TOOL_REGISTRY["query_attendance_status"]) is True
+
+    # Reading is not marking. He does not touch the register itself.
+    for write_tool in ("mark_staff_attendance", "mark_attendance", "correct_attendance", "approve_leave"):
+        assert _is_tool_authorized(accountant, TOOL_REGISTRY[write_tool]) is False, write_tool
 
 
 # ---------------------------------------------------------------------------
-# P7 — Announcement moderation gate
+# P7 - Announcement moderation gate
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -215,7 +227,7 @@ async def test_create_announcement_parents_audience_is_active():
 
 
 # ---------------------------------------------------------------------------
-# P8 — Content filter for students
+# P8 - Content filter for students
 # ---------------------------------------------------------------------------
 
 def test_filter_response_called_on_rich_blocks_for_student(monkeypatch):
@@ -237,7 +249,7 @@ def test_filter_response_called_on_rich_blocks_for_student(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# P9 — Confirm-token tenant binding
+# P9 - Confirm-token tenant binding
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -361,7 +373,7 @@ async def test_consume_confirm_token_gte_ttl_boundary():
 
 
 # ---------------------------------------------------------------------------
-# P9 — decrement_count
+# P9 - decrement_count
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -390,7 +402,7 @@ async def test_decrement_count_decrements_current_bucket():
 
 
 # ---------------------------------------------------------------------------
-# P11 — Polish bundle
+# P11 - Polish bundle
 # ---------------------------------------------------------------------------
 
 def test_safe_token_count_coerces_non_string_fallback():
@@ -480,7 +492,7 @@ def test_empty_message_rejection_strips_zero_width_whitespace(client, fake_db):
 
 def test_extract_rich_content_uses_json_candidates():
     from routes.chat import _extract_rich_content
-    # Nested JSON inside RICH_CONTENT block — old regex would fail here.
+    # Nested JSON inside RICH_CONTENT block - old regex would fail here.
     nested = {"rich_blocks": [{"value": "{\"inner\": 1}"}], "action_buttons": []}
     payload = json.dumps(nested)
     text = f"Here is my response.\n<<<RICH_CONTENT>>>{payload}<<<END>>>"

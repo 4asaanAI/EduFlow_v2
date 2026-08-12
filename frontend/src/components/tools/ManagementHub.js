@@ -26,7 +26,7 @@ export default function ManagementHub({ hubId }) {
 
   return <ToolPage title={hub.name} subtitle={hub.subtitle}>
     {/* The hub's own icon, and nothing else. This row used to carry
-        "N connected workspaces. Choose what you need." — one shared component, so
+        "N connected workspaces. Choose what you need." - one shared component, so
         the same sentence appeared on all nine hubs. It told a person nothing they
         could not see (the cards are right below it, and they can count), and it
         cost a line of vertical space on every hub on a phone. Removed at the

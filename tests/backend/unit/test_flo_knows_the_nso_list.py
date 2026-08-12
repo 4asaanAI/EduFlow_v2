@@ -90,7 +90,7 @@ def test_the_tool_is_a_read_and_needs_no_confirmation():
 
 
 def test_the_standing_rule_reaches_the_prompt():
-    """The rule has to be in the prompt itself, not only in a tool description —
+    """The rule has to be in the prompt itself, not only in a tool description -
     a tool description is only read once Flo has already decided to call it."""
     prompt = build_system_prompt(
         {"role": "owner", "sub_category": "owner", "name": "Aman Litt"},

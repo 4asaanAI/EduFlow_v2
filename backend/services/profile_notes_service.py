@@ -167,7 +167,7 @@ async def list_notes(db, actor_ctx: ActorContext, params: dict) -> list:
         "subject_type": subject_type,
         "subject_id": subject_id,
         "author_id": actor_ctx.user_id,
-    }, actor_ctx.school_id)  # branch-scope: intentional — a note belongs to one named author about one named person; a branch filter could only hide their own note from them
+    }, actor_ctx.school_id)  # branch-scope: intentional - a note belongs to one named author about one named person; a branch filter could only hide their own note from them
     rows = await db.profile_notes.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
     return rows
 
@@ -190,7 +190,7 @@ async def count_notes(db, actor_ctx: ActorContext, subject_type: str, subject_id
         "subject_type": subject_type,
         "subject_id": {"$in": ids},
         "author_id": actor_ctx.user_id,
-    }, actor_ctx.school_id)  # branch-scope: intentional — pinned to this author's own notes about a named list of people
+    }, actor_ctx.school_id)  # branch-scope: intentional - pinned to this author's own notes about a named list of people
     rows = await db.profile_notes.find(query, {"_id": 0, "subject_id": 1}).to_list(5000)
     counts: dict = {}
     for row in rows:
@@ -201,7 +201,7 @@ async def count_notes(db, actor_ctx: ActorContext, subject_type: str, subject_id
 
 async def _own_note(db, actor_ctx: ActorContext, note_id: str) -> dict:
     doc = await db.profile_notes.find_one(
-        scoped_filter({"id": note_id, "author_id": actor_ctx.user_id}, actor_ctx.school_id),  # branch-scope: intentional — pinned by a unique id and its author
+        scoped_filter({"id": note_id, "author_id": actor_ctx.user_id}, actor_ctx.school_id),  # branch-scope: intentional - pinned by a unique id and its author
         {"_id": 0},
     )
     if not doc:
@@ -228,7 +228,7 @@ async def update_note(db, actor_ctx: ActorContext, note_id: str, params: dict) -
 
     update["updated_at"] = actor_ctx.now_iso()
     await db.profile_notes.update_one(
-        scoped_filter({"id": note_id, "author_id": actor_ctx.user_id}, actor_ctx.school_id),  # branch-scope: intentional — pinned by a unique id and its author
+        scoped_filter({"id": note_id, "author_id": actor_ctx.user_id}, actor_ctx.school_id),  # branch-scope: intentional - pinned by a unique id and its author
         {"$set": update},
     )
     await _audit(db, actor_ctx, action="profile_note_updated", note_id=note_id, changes={
@@ -243,7 +243,7 @@ async def delete_note(db, actor_ctx: ActorContext, note_id: str) -> None:
     """Delete your own note. Yours only."""
     existing = await _own_note(db, actor_ctx, note_id)
     await db.profile_notes.delete_one(
-        scoped_filter({"id": note_id, "author_id": actor_ctx.user_id}, actor_ctx.school_id),  # branch-scope: intentional — pinned by a unique id and its author
+        scoped_filter({"id": note_id, "author_id": actor_ctx.user_id}, actor_ctx.school_id),  # branch-scope: intentional - pinned by a unique id and its author
     )
     await _audit(db, actor_ctx, action="profile_note_deleted", note_id=note_id, changes={
         "subject_type": existing.get("subject_type"),
@@ -259,6 +259,6 @@ async def purge_subject_notes(db, school_id: str, subject_type: str, subject_id:
     opposite of what erasure means.
     """
     result = await db.profile_notes.delete_many(
-        scoped_filter({"subject_type": subject_type, "subject_id": subject_id}, school_id),  # branch-scope: intentional — erasure covers the person everywhere, not one branch's copy
+        scoped_filter({"subject_type": subject_type, "subject_id": subject_id}, school_id),  # branch-scope: intentional - erasure covers the person everywhere, not one branch's copy
     )
     return getattr(result, "deleted_count", 0) or 0

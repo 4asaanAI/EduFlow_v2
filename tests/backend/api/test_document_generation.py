@@ -51,7 +51,7 @@ def _clean(fake_db):
 def _s3_configured(monkeypatch):
     """Production had NO S3 bucket configured when this epic was first deployed, so
     the default in tests must be 'configured' only where that is the case under
-    test — see test_no_storage_says_so_rather_than_erroring."""
+    test - see test_no_storage_says_so_rather_than_erroring."""
     monkeypatch.setenv("S3_BUCKET", "eduflow-test-bucket")
 
 
@@ -60,8 +60,8 @@ def _fake_s3(monkeypatch):
     """S3 is not reachable from a test run. Storage is faked at the boundary so the
     record-keeping and audit behaviour either side of it is still exercised.
 
-    Note (D-37): document_export no longer signs a URL at build time — the signed link
-    is minted at download time by GET /api/uploads/link/{file_id} — so there is nothing
+    Note (D-37): document_export no longer signs a URL at build time - the signed link
+    is minted at download time by GET /api/uploads/link/{file_id} - so there is nothing
     to fake here beyond the upload itself."""
     from services import document_export
 
@@ -103,7 +103,7 @@ def test_the_signed_url_never_travels_through_the_model(client, fake_db):
 
     A presigned URL is ~1,200 characters, ~1,000 of them a random token. The tool used
     to put it in its result and the prompt asked the model to transcribe it, which it
-    could not do byte-for-byte — S3 answered SignatureDoesNotMatch. The tool result the
+    could not do byte-for-byte - S3 answered SignatureDoesNotMatch. The tool result the
     model receives must now carry NO url of any kind: only a short file_id.
     """
     resp = client.post(TOOL_URL, headers=_owner(), json={"params": {
@@ -174,7 +174,7 @@ def test_unauthenticated_cannot_generate_a_document(client):
 def test_the_tool_never_queries_the_database_itself(client):
     """The gate's whole justification is that this tool formats content the caller
     already has, rather than fetching data of its own. If it ever starts querying,
-    that reasoning collapses and the gate must be narrowed — so this is pinned."""
+    that reasoning collapses and the gate must be narrowed - so this is pinned."""
     import inspect
 
     from ai.tool_functions_v2 import tool_draft_document

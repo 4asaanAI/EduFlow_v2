@@ -1,4 +1,4 @@
-"""Epic R5 — Tenancy & Scope Fail-Closed (tool tier, H4).
+"""Epic R5 - Tenancy & Scope Fail-Closed (tool tier, H4).
 
 Every read tool now branch-scopes off the JWT (`_branch_id(user, scope)`), and the
 `find_one` lookups in get_student_profile / award_house_points / mark_attendance are

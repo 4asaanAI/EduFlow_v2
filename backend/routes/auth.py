@@ -2,12 +2,12 @@ from __future__ import annotations
 from typing import Optional
 
 """
-Auth routes — Password login and JWT token management.
+Auth routes - Password login and JWT token management.
 
 Endpoints:
-  POST /api/auth/login           — Username/password login (primary)
-  GET  /api/auth/me              — Get current user profile from JWT
-  GET  /api/auth/seed-status     — Check seed data counts (public in dev/staging; owner-only in production)
+  POST /api/auth/login           - Username/password login (primary)
+  GET  /api/auth/me              - Get current user profile from JWT
+  GET  /api/auth/seed-status     - Check seed data counts (public in dev/staging; owner-only in production)
 """
 
 import os
@@ -222,7 +222,7 @@ async def login(body: LoginRequest, request: Request, response: Response):
                     # Lockout expired, reset
                     await db.login_attempts.delete_one({"key": attempt_key})
 
-    # Find user by username (case-insensitive, safe — no regex injection)
+    # Find user by username (case-insensitive, safe - no regex injection)
     username_lower = username.lower()
     lookup_filter = {"username_lower": username_lower}
     if body.school_id:
@@ -230,7 +230,7 @@ async def login(body: LoginRequest, request: Request, response: Response):
     auth = await db.auth_users.find_one(lookup_filter)
 
     if not auth:
-        # Backward compat: legacy rows that predate multi-tenancy — scope to env-var or client-provided school
+        # Backward compat: legacy rows that predate multi-tenancy - scope to env-var or client-provided school
         from tenant import get_school_id as _gs
         fallback_filter = {"username_lower": username_lower, "schoolId": body.school_id or _gs()}
         auth = await db.auth_users.find_one(fallback_filter)
@@ -256,7 +256,7 @@ async def login(body: LoginRequest, request: Request, response: Response):
         _log_login_failed(request, username, "invalid_password")
         raise HTTPException(401, "Invalid username or password")
 
-    # Successful login — clear attempts
+    # Successful login - clear attempts
     await db.login_attempts.delete_one({"key": attempt_key})
 
     jwt_payload, user_info = _jwt_payload_from_auth(auth)

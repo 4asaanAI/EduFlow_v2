@@ -3,8 +3,9 @@
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
-import { API, apiFetch, getStudents, getAllStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, correctFeeTransaction, deleteFeeTransaction, getPendingLeaves, updateLeave, getWhatsappDefaulters, sendAttendanceAlerts, getSchoolSettings } from '../../lib/api';
+import { API, apiFetch, getStudents, getAllStudents, createStudent, getAllClasses, getTodayAttendance, bulkMarkAttendance, getFeeTransactions, recordFeePayment, correctFeeTransaction, deleteFeeTransaction, getPendingLeaves, updateLeave, getWhatsappDefaulters, sendAttendanceAlerts, getSchoolSettings, getSchoolSummary, getSchoolSummaryHistory } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
+import { canIssueDocumentsDirectly } from '../../lib/toolPermissions';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, ErrorCard, LineChartWidget, useColumnSort, SortableHeaderRow } from './ToolPage';
 import { Search, Plus, CheckCircle, XCircle, Save, RefreshCw, X, FileDown, MessageSquare, Edit3, Trash2 } from 'lucide-react';
 import SearchablePicker from '../ui/SearchablePicker';
@@ -14,7 +15,7 @@ import AdmissionsWorkflow from './AdmissionsWorkflow';
 function h() { return getAuthHeaders(); }
 const tint = (color, amount) => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
 
-// Story 7-41 — Principal reports panel. Attendance trend only (no fees per RBAC).
+// Story 7-41 - Principal reports panel. Attendance trend only (no fees per RBAC).
 export function ReportsTrends() {
   const [attendance, setAttendance] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -37,11 +38,11 @@ export function ReportsTrends() {
       <div style={{ maxWidth: 1000 }}>
         {attendance?.empty ? (
           <div style={{ padding: 24, border: '1px dashed var(--tool-hex-2e2e2e)', borderRadius: 12, color: 'var(--tool-hex-a3a3a3)' }}>
-            Not enough data yet — chart will appear once a month of attendance records exists.
+            Not enough data yet - chart will appear once a month of attendance records exists.
           </div>
         ) : chartData.length > 0 && (
           <LineChartWidget
-            title="Overall attendance % — last 3 months"
+            title="Overall attendance % - last 3 months"
             data={chartData}
             xKey="month"
             lines={[{ key: 'pct', name: 'Attendance %', color: 'var(--tool-hex-4f8ff7)' }]}
@@ -309,7 +310,7 @@ export function FeeTracker() {
               <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--c-text)' }}>Edit Transaction</h3>
               <button onClick={() => setEditTxn(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-muted)' }}><X size={16} /></button>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 12 }}>{editTxn.student_name} — {editTxn.fee_type} — {editTxn.fee_period}</div>
+            <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 12 }}>{editTxn.student_name} - {editTxn.fee_type} - {editTxn.fee_period}</div>
             {actionError && <div style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 10 }}>{actionError}</div>}
             <div className="responsive-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <div>
@@ -351,7 +352,7 @@ export function FeeTracker() {
             </div>
             <div style={{ marginTop: 8 }}>
               <div style={{ fontSize: 11, color: 'var(--c-muted)', marginBottom: 4 }}>Reason for change <span style={{ color: 'var(--tool-hex-f87171)' }}>*</span></div>
-              <textarea value={editForm.reason} onChange={e => setEditForm(p => ({ ...p, reason: e.target.value }))} placeholder="Required — explain the correction" style={{ ...ftInputStyle, minHeight: 64, resize: 'vertical' }} />
+              <textarea value={editForm.reason} onChange={e => setEditForm(p => ({ ...p, reason: e.target.value }))} placeholder="Required - explain the correction" style={{ ...ftInputStyle, minHeight: 64, resize: 'vertical' }} />
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
               <button onClick={handleEditSave} disabled={saving} style={{ flex: 1, padding: '9px 0', borderRadius: 7, border: 'none', background: 'var(--tool-hex-4f8ff7)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}>
@@ -391,8 +392,8 @@ export function FeeTracker() {
             t.class_name || 'N/A',
             t.fee_type,
             `₹${(t.amount || 0).toLocaleString('en-IN')}`,
-            t.payment_mode || '—',
-            t.paid_date || '—',
+            t.payment_mode || '-',
+            t.paid_date || '-',
             <Badge text={t.status} color={statusColors[t.status] || 'gray'} />,
             <div style={{ display: 'flex', gap: 4 }}>
               <button onClick={() => { setActionError(''); openEdit(t); }} title="Edit" style={{ background: 'color-mix(in srgb, var(--tool-hex-4f8ff7) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--tool-hex-4f8ff7) 30%, transparent)', borderRadius: 5, padding: '4px 8px', cursor: 'pointer', color: 'var(--tool-hex-4f8ff7)', display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
@@ -518,7 +519,7 @@ export function AttendanceRecorder() {
         </div>
       )}
       {/* D-24: was a hand-rolled <table>. Moved onto the shared DataTable so the register
-          can be ordered by roll number, by name, or by status — "show me everyone still
+          can be ordered by roll number, by name, or by status - "show me everyone still
           marked absent" is the question a teacher actually asks before saving.
           Safe to reorder: each Quick Mark button updates the record by student_id, never
           by its position in the list. `Quick Mark` is not sortable-meaningful but the
@@ -629,19 +630,31 @@ export function AttendanceWhatsAppAlerts() {
 }
 
 // 4. Certificate Generator
-const CERT_LABELS = { transfer: 'Transfer Certificate', bonafide: 'Bonafide Certificate', character: 'Character Certificate', sports: 'Sports Certificate', participation: 'Participation Certificate', migration: 'Migration Certificate' };
+// R2-9: these keys are the canonical document names in
+// `backend/services/certificate_types.py`. This dropdown used to say `transfer`, which
+// the approval rule had never heard of, so a Transfer Certificate raised here was
+// auto-issued to whoever asked - the school's most sensitive document was the one the
+// mismatch let through. `transfer` and `tc` are still accepted by the server as older
+// spellings of the same thing.
+const CERT_LABELS = { transfer_certificate: 'Transfer Certificate', bonafide: 'Bonafide Certificate', character: 'Character Certificate', sports: 'Sports Certificate', participation: 'Participation Certificate', migration: 'Migration Certificate' };
+// The documents the school's owner or principal must approve before they can be
+// printed. Mirrors APPROVAL_REQUIRED_TYPES on the server; the server is what enforces
+// it, this only decides whether to grey a button out rather than let it fail.
+const CERT_NEEDS_APPROVAL = new Set(['transfer_certificate', 'transfer', 'tc', 'bonafide', 'character', 'migration', 'merit']);
 
 // A refused or failed document download must SAY so. Both callers used to pass no
 // `onError`, so the failure was caught and dropped: the button went from "Generating…"
 // back to normal with no file and no message, and the person retried it as a bug.
 // That silence became reachable the moment issuing was narrowed to Owner + Principal
-// (NEW-01) — office staff who still see these tiles now get a refusal here.
+// (NEW-01) - office staff who still see these tiles now get a refusal here.
 function explainDownloadFailure(status) {
   if (status === 403) {
-    // D-53 widened the server gate to owner, principal AND accountant
-    // (require_owner_principal_or_accountant). This message still named only two of
-    // the three, so it told the reader to go and ask the wrong people.
-    return 'Only the school owner, the principal or the accounts staff can issue this. Please ask one of them.';
+    // R2-9, 2026-08-11: a 403 here now means one of two things, and both end with the
+    // same instruction, so the message says both rather than guessing which. It used to
+    // say only "you are not allowed", which is now wrong for the office and the accounts
+    // desk: they ARE allowed, once the document has been approved.
+    return 'Only the school owner or the principal can issue this document directly. '
+      + 'Anyone else has to send it for approval first and print it once one of them has approved it.';
   }
   if (status === 429) {
     return "Today's limit for generated documents has been reached. Please try tomorrow.";
@@ -682,6 +695,9 @@ export function CertificateGenerator() {
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
   const [school, setSchool] = useState({});
+  // R2-9 / decision 6: the owner and the principal issue directly; the admin office
+  // creates a request and waits.
+  const canIssueDirectly = canIssueDocumentsDirectly(currentUser);
 
   // D-24: this table keeps its own <table> because a row can expand into a full-width
   // "reason for rejection" row underneath itself, which the shared DataTable (one array
@@ -764,6 +780,10 @@ export function CertificateGenerator() {
         student_id: cert.student_id,
         cert_type: cert.cert_type,
         serial_number: cert.serial_number || '',
+        // R2-9: which approved request this print is for. The owner and the principal
+        // print without one; for everybody else the server refuses the print unless
+        // this names a request it has approved, for this child and this document.
+        cert_id: cert.id || '',
       },
       filename,
       () => { setDownloadError(''); setDownloading(key); },
@@ -808,17 +828,26 @@ export function CertificateGenerator() {
 
           {generated && (
             <div style={{ background: 'var(--c-bg)', border: '1px solid var(--tool-hex-34d39930)', borderRadius: 11, padding: 16 }}>
-              <div style={{ fontSize: 11, color: 'var(--tool-hex-34d399)', fontWeight: 700, marginBottom: 10 }}>Certificate Generated!</div>
+              {/* R2-9: this said "Certificate Generated!" whatever had happened, so
+                  somebody whose request was queued for approval was told the document
+                  existed and then met a refusal on the download button. */}
+              <div style={{ fontSize: 11, color: 'var(--tool-hex-34d399)', fontWeight: 700, marginBottom: 10 }} data-testid="certificate-outcome">
+                {generated.status === 'pending_approval'
+                  ? 'Sent for approval - the owner or principal will review it'
+                  : 'Certificate issued'}
+              </div>
               <div style={{ fontSize: 12, color: 'var(--c-muted)', lineHeight: 1.8 }}>
-                <div><b style={{ color: 'var(--c-text)' }}>Type:</b> {CERT_LABELS[generated.cert_type]}</div>
+                <div><b style={{ color: 'var(--c-text)' }}>Type:</b> {CERT_LABELS[generated.cert_type] || generated.cert_type}</div>
                 <div><b style={{ color: 'var(--c-text)' }}>Serial:</b> <span style={{ fontFamily: 'monospace' }}>{generated.serial_number}</span></div>
                 <div><b style={{ color: 'var(--c-text)' }}>Student:</b> {generated.content_data?.student_name}</div>
-                <div><b style={{ color: 'var(--c-text)' }}>Date:</b> {generated.issued_date}</div>
+                <div><b style={{ color: 'var(--c-text)' }}>Date:</b> {generated.issued_date || '-'}</div>
               </div>
-              <div style={{ marginTop: 12 }}>
-                <ActionBtn label={downloading === generated.id ? 'Downloading...' : 'Download PDF'} icon={<FileDown size={11} />}
-                  onClick={() => downloadPdf(generated)} disabled={downloading === generated.id} />
-              </div>
+              {generated.status !== 'pending_approval' && (
+                <div style={{ marginTop: 12 }}>
+                  <ActionBtn label={downloading === generated.id ? 'Downloading...' : 'Download PDF'} icon={<FileDown size={11} />}
+                    onClick={() => downloadPdf(generated)} disabled={downloading === generated.id} />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -844,9 +873,14 @@ export function CertificateGenerator() {
               <tbody>
                 {certSort.items.map((c, i) => {
                   const isPending = c.status === 'pending_approval';
-                  const isApproved = c.status === 'approved';
+                  // R2-9: the status an approved certificate carries is 'generated' -
+                  // that is what approve_certificate writes and always has. This line
+                  // looked for 'approved', which nothing ever sets, so every issued
+                  // certificate in the school's history was shown in red as if it had
+                  // been refused.
+                  const isApproved = c.status === 'generated' || c.status === 'approved';
                   const statusColor = isApproved ? '#22c55e' : isPending ? '#fbbf24' : '#f87171';
-                  const statusLabel = isApproved ? 'Approved' : isPending ? 'Pending' : c.status === 'rejected' ? 'Rejected' : c.status || '—';
+                  const statusLabel = isApproved ? 'Issued' : isPending ? 'Awaiting approval' : c.status === 'rejected' ? 'Rejected' : c.status || '-';
                   return (
                   <React.Fragment key={c.id || i}>
                   <tr style={{ borderBottom: rejectingId === c.id ? 'none' : (i < certs.length - 1 ? '1px solid var(--tool-hex-242424)' : 'none') }}>
@@ -859,8 +893,13 @@ export function CertificateGenerator() {
                     </td>
                     <td style={{ padding: '9px 14px' }}>
                       <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-                        <button onClick={() => downloadPdf(c)} disabled={downloading === (c.id || c.serial_number)}
-                          style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '4px 9px', color: 'var(--tool-hex-93c5fd)', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
+                        {/* R2-9: a document still waiting for approval cannot be
+                            printed, and the server refuses it. Saying so on the button
+                            is better than letting somebody press it and read an error. */}
+                        <button onClick={() => downloadPdf(c)}
+                          disabled={downloading === (c.id || c.serial_number) || (isPending && !canIssueDirectly)}
+                          title={isPending && !canIssueDirectly ? 'Waiting for the owner or principal to approve this' : ''}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '4px 9px', color: 'var(--tool-hex-93c5fd)', fontSize: 11, cursor: 'pointer', fontWeight: 600, opacity: (isPending && !canIssueDirectly) ? 0.45 : 1 }}>
                           <FileDown size={11} />
                           {downloading === (c.id || c.serial_number) ? '...' : 'PDF'}
                         </button>
@@ -1262,7 +1301,7 @@ export function DocumentScanner() {
             </select>
           </div>
 
-          {/* Student dropdown — filtered by class */}
+          {/* Student dropdown - filtered by class */}
           <div style={{ marginBottom: 12 }}>
             {lbl('Student *')}
             <select value={studentId} onChange={e => setStudentId(e.target.value)} style={selStyle} disabled={loading}>
@@ -1472,7 +1511,7 @@ export function SmartFeeDefaulter() {
           {selectedDefaulter && (
             <div style={{ background: 'var(--c-bg)', border: '1px solid var(--tool-hex-4f8ff7)', borderRadius: 11, padding: 18, marginBottom: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <h4 style={{ color: 'var(--c-text)', fontSize: 13, fontWeight: 600 }}>Send SMS — {selectedDefaulter.student_name}</h4>
+                <h4 style={{ color: 'var(--c-text)', fontSize: 13, fontWeight: 600 }}>Send SMS - {selectedDefaulter.student_name}</h4>
                 <button onClick={() => { setSelectedDefaulter(null); setSmsResult(null); }} style={{ background: 'transparent', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 16 }}>✕</button>
               </div>
               <form onSubmit={handleSendSingle}>
@@ -1681,12 +1720,12 @@ export function ParentMessage() {
     <ToolPage title="Parent Message Composer" subtitle="Send SMS to parents via Twilio" loading={loading}>
       <div className="tool-split-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, maxWidth: 980 }}>
 
-        {/* Left — recipient selector */}
+        {/* Left - recipient selector */}
         <div>
           <div style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 10, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>1. Select Class</label>
             <select value={selectedClass} onChange={e => { setSelectedClass(e.target.value); setSelectedStudents(new Set()); }} style={inp}>
-              <option value="">— All Classes —</option>
+              <option value="">- All Classes -</option>
               {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
             </select>
           </div>
@@ -1718,7 +1757,7 @@ export function ParentMessage() {
           </div>
         </div>
 
-        {/* Right — compose & send */}
+        {/* Right - compose & send */}
         <div>
           <div style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 10, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>3. Compose SMS</label>
@@ -1746,7 +1785,7 @@ export function ParentMessage() {
                   {result.sent > 0 && <span style={{ color: 'var(--tool-hex-34d399)' }}>✓ {result.sent} sent</span>}
                   {result.failed > 0 && <span style={{ color: 'var(--tool-hex-f87171)' }}>✗ {result.failed} failed</span>}
                   {result.no_phone > 0 && <span style={{ color: 'var(--tool-hex-fbbf24)' }}>⚠ {result.no_phone} no phone</span>}
-                  {result.not_configured > 0 && <span style={{ color: 'var(--c-faint)' }}>Twilio not configured — {result.not_configured} logged</span>}
+                  {result.not_configured > 0 && <span style={{ color: 'var(--c-faint)' }}>Twilio not configured - {result.not_configured} logged</span>}
                 </div>
               )}
             </div>
@@ -1757,7 +1796,7 @@ export function ParentMessage() {
               <h4 style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Send History</h4>
               {log.map((l, i) => (
                 <div key={i} style={{ fontSize: 11, color: 'var(--c-faint)', padding: '6px 0', borderBottom: '1px solid var(--c-border)' }}>
-                  <span style={{ color: 'var(--c-text)', fontWeight: 600 }}>{l.time}</span> — {l.count} students selected · {l.sent ?? 0} sent · {l.failed ?? 0} failed
+                  <span style={{ color: 'var(--c-text)', fontWeight: 600 }}>{l.time}</span> - {l.count} students selected · {l.sent ?? 0} sent · {l.failed ?? 0} failed
                   <div style={{ color: 'var(--c-faint)', fontSize: 10, marginTop: 2, fontStyle: 'italic' }}>{l.message.slice(0, 60)}{l.message.length > 60 ? '…' : ''}</div>
                 </div>
               ))}
@@ -1820,7 +1859,7 @@ export function StudentTransfer() {
         if (!res.success) throw new Error(res.detail || 'Failed');
         setDone({ type: 'class_change', student: selectedStudent.name, msg: 'Student moved to new class successfully.' });
       } else {
-        // Transfer or withdrawal — deactivate student
+        // Transfer or withdrawal - deactivate student
         const status = transferType === 'transfer' ? 'transferred' : 'withdrawn';
         const patchRes = await apiFetch(`${API}/students/${selectedStudent.id}`, {
           method: 'PATCH', headers: h(),
@@ -1834,7 +1873,10 @@ export function StudentTransfer() {
           method: 'POST', headers: h(),
           body: JSON.stringify({
             student_id: selectedStudent.id,
-            cert_type: 'transfer',
+            // R2-9: the canonical name. Written as 'transfer' until now, which the
+            // approval rule did not recognise, so the Transfer Certificate raised when a
+            // child leaves the school was issued without anybody being asked.
+            cert_type: 'transfer_certificate',
             content_data: {
               student_name: selectedStudent.name,
               class: cls ? `${cls.name}-${cls.section}` : 'N/A',
@@ -2000,6 +2042,11 @@ export function IdCardGenerator() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [printing, setPrinting] = useState(false);
   const [printError, setPrintError] = useState('');
+  // R2-9: the approval request behind this batch, once one has been asked for.
+  const [request, setRequest] = useState(null);
+  const [requesting, setRequesting] = useState(false);
+  const [batches, setBatches] = useState([]);
+  const canIssueDirectly = canIssueDocumentsDirectly(currentUser);
   // Owner note, 2026-08-07: "there should be a search option for the name among the
   // list". Picking one child out of 1,802 by scrolling is not a thing anyone does.
   const [search, setSearch] = useState('');
@@ -2013,9 +2060,20 @@ export function IdCardGenerator() {
       // Was a raw fetch, which bypassed api.js and so skipped the class ordering
       // applied in getAllClasses. Project convention is that all API calls go
       // through api.js for exactly this reason.
-      getAllClasses().then(r => { if (r.success) setClasses(r.data || []); })
+      getAllClasses().then(r => { if (r.success) setClasses(r.data || []); }),
+      // R2-9: batches this office already asked for and had approved. Without this the
+      // approval survives only as long as the browser tab, so a request approved an
+      // hour later could never be printed at all.
+      apiFetch(`${API}/ops/certificates`, { headers: h() })
+        .then(r => r.json())
+        .then(r => { if (r.success) setBatches(r.data || []); })
+        .catch(() => {}),
     ]).finally(() => setLoading(false));
   }, [currentUser]);
+
+  const approvedBatches = batches.filter(
+    b => b.cert_type === 'id_card' && b.status === 'generated' && (b.student_ids || []).length > 0,
+  );
 
   const filtered = students.filter(s => {
     if (filterClass && s.class_id !== filterClass) return false;
@@ -2029,22 +2087,57 @@ export function IdCardGenerator() {
   // somebody prints 1,802 cards while looking at a list of four.
   const toggleAll = () => {
     const allChosen = filtered.length > 0 && filtered.every(s => selectedIds.includes(s.id));
+    setRequest(null);
     setSelectedIds(allChosen ? [] : filtered.map(s => s.id));
   };
 
-  const printCards = () => {
+  // R2-9 / decision 6, 2026-08-10. An ID card carries the school's name and a child's
+  // identity, so it needs the same permission a certificate does. The owner and the
+  // principal print straight away. The admin office asks first, one request for the
+  // whole batch, and prints once it has been approved.
+  const requestApproval = async () => {
+    setPrintError('');
+    setRequesting(true);
+    try {
+      const r = await apiFetch(`${API}/ops/certificates/id-card-request`, {
+        method: 'POST', headers: h(),
+        body: JSON.stringify({ student_ids: selectedIds }),
+      }).then(r => r.json());
+      if (r.success) setRequest(r.data);
+      else setPrintError(r.detail || 'Could not send the request for approval');
+    } catch (e) {
+      setPrintError(e.message || 'Could not send the request for approval');
+    }
+    setRequesting(false);
+  };
+
+  const printCards = (approval) => {
     const selected = students
       .filter(s => selectedIds.includes(s.id))
       .map(s => ({ student_id: s.id }));
     const filename = `ID-Cards-${new Date().toISOString().slice(0, 10)}.pdf`;
     downloadBlobAsPdf(
       `${API}/image-gen/id-cards`,
-      { students: selected, school_name: 'The Aaryans School', academic_year: '2025-26' },
+      {
+        students: selected,
+        school_name: 'The Aaryans School',
+        academic_year: '2025-26',
+        // Empty for the owner and the principal, who need no approval.
+        request_id: approval?.id || '',
+      },
       filename,
       () => { setPrintError(''); setPrinting(true); },
       () => setPrinting(false),
       (e) => setPrintError(e.message),
     );
+  };
+
+  // Asking for approval and then changing the selection would print a batch nobody
+  // approved - the server refuses that, and dropping the stale request here means the
+  // person sees the right button instead of an error.
+  const chooseStudent = (id) => {
+    setRequest(null);
+    setSelectedIds(p => (p.includes(id) ? p.filter(x => x !== id) : [...p, id]));
   };
 
   return (
@@ -2063,16 +2156,42 @@ export function IdCardGenerator() {
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
         </select>
         <ActionBtn label={filtered.length > 0 && filtered.every(s => selectedIds.includes(s.id)) ? 'Deselect all shown' : 'Select all shown'} variant="secondary" onClick={toggleAll} />
-        <ActionBtn label={printing ? 'Generating PDF...' : `Download ${selectedIds.length} ID Cards PDF`} onClick={printCards} disabled={selectedIds.length === 0 || printing} />
+        {/* R2-9: one button or the other, never both. The owner and the principal print;
+            everybody else asks, and prints once the answer comes back. */}
+        {canIssueDirectly ? (
+          <ActionBtn label={printing ? 'Generating PDF...' : `Download ${selectedIds.length} ID Cards PDF`} onClick={() => printCards(null)} disabled={selectedIds.length === 0 || printing} />
+        ) : request && request.status === 'generated' ? (
+          <ActionBtn label={printing ? 'Generating PDF...' : `Download ${selectedIds.length} approved ID Cards`} onClick={() => printCards(request)} disabled={printing} />
+        ) : request ? (
+          <span data-testid="id-card-awaiting" style={{ fontSize: 12, color: 'var(--c-muted)' }}>
+            Sent for approval. The owner or principal will review it; you can print once they have.
+          </span>
+        ) : (
+          <ActionBtn label={requesting ? 'Sending...' : `Ask for approval for ${selectedIds.length} ID Cards`} onClick={requestApproval} disabled={selectedIds.length === 0 || requesting} />
+        )}
       </div>
       {printError && (
         <div data-testid="id-card-error" style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 12 }}>
           {printError}
         </div>
       )}
+      {!canIssueDirectly && approvedBatches.length > 0 && (
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 14, marginBottom: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', marginBottom: 8 }}>
+            Approved and ready to print
+          </div>
+          {approvedBatches.map(b => (
+            <div key={b.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '5px 0', fontSize: 12, color: 'var(--c-muted)' }}>
+              <span style={{ fontFamily: 'monospace' }}>{b.serial_number}</span>
+              <span>{(b.student_ids || []).length} student(s)</span>
+              <ActionBtn label="Download PDF" variant="secondary" onClick={() => { setSelectedIds(b.student_ids || []); setRequest(b); }} />
+            </div>
+          ))}
+        </div>
+      )}
       <DataTable headers={['', 'Name', 'Class', 'Adm No.', 'Roll']}
         rows={filtered.map(s => [
-          <input type="checkbox" checked={selectedIds.includes(s.id)} onChange={() => setSelectedIds(p => p.includes(s.id) ? p.filter(x => x !== s.id) : [...p, s.id])} />,
+          <input type="checkbox" checked={selectedIds.includes(s.id)} onChange={() => chooseStudent(s.id)} />,
           s.name,
           s.class_info ? `${s.class_info.name}-${s.class_info.section}` : 'N/A',
           s.admission_number || 'N/A',
@@ -2579,25 +2698,106 @@ export function TransportManager() {
   );
 }
 export function AutomatedReport() {
-  const { currentUser } = useUser();
-  const [schedules, setSchedules] = useState([{ name: 'Weekly Attendance Report', frequency: 'weekly', day: 'Monday', time: '08:00', active: true }, { name: 'Monthly Fee Summary', frequency: 'monthly', day: '1', time: '09:00', active: true }]);
+  // Abhimanyu, 2026-08-12: build the scheduled reports, at least for Aman and Adesh, so
+  // they have a summary of everything in one place.
+  //
+  // What this screen showed BEFORE was two hardcoded rows with green "Active" badges for
+  // reports that had never existed and were never sent. What it shows now is the real
+  // thing: the school on one page, produced and KEPT the first time either of them opens
+  // it each day, with every earlier day still readable exactly as it was produced.
+  //
+  // It does not arrive by itself in an inbox, and the screen says so in those words.
+  // There is no scheduler on this platform and no sender the school can use yet.
+  const [summary, setSummary] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refused, setRefused] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [today, past] = await Promise.all([
+        getSchoolSummary().catch(() => null),
+        getSchoolSummaryHistory().catch(() => null),
+      ]);
+      if (cancelled) return;
+      if (!today?.success) setRefused(true);
+      else setSummary(today.data);
+      if (past?.success) setHistory(past.data || []);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const money = summary?.money || {};
+  const attendance = summary?.attendance || {};
+  const waiting = summary?.waiting_for_you || {};
+  const changed = summary?.what_changed || {};
+  const rupees = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
+
   return (
-    <ToolPage title="Automated Reports" subtitle="Schedule recurring reports">
-      <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16, maxWidth: 600 }}>
-        <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Scheduled Reports</h3>
-        {schedules.map((s, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--tool-hex-242424)' }}>
-            <div>
-              <div style={{ fontSize: 13, color: 'var(--c-text)', fontWeight: 500 }}>{s.name}</div>
-              <div style={{ fontSize: 11, color: 'var(--c-faint)' }}>{s.frequency} · {s.day} at {s.time}</div>
-            </div>
-            <Badge text={s.active ? 'Active' : 'Paused'} color={s.active ? 'green' : 'gray'} />
-          </div>
-        ))}
-        <div style={{ marginTop: 14 }}>
-          <p style={{ fontSize: 11, color: 'var(--c-faint)' }}>Full scheduling system with email delivery coming in Phase 3. Reports are available via Export section.</p>
+    <ToolPage title="Daily Summary" subtitle="The whole school on one page">
+      {loading ? (
+        <div style={{ color: 'var(--c-faint)', fontSize: 13 }}>Loading…</div>
+      ) : refused ? (
+        <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, maxWidth: 640 }}>
+          <p style={{ fontSize: 13, color: 'var(--c-muted)', lineHeight: 1.6 }}>
+            This page is for the school&apos;s owner and the Principal. It brings together
+            money, the roll and everyone&apos;s changes in one place. Your own screens
+            carry the part that is yours.
+          </p>
         </div>
-      </div>
+      ) : (
+        <>
+          <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, marginBottom: 16, maxWidth: 640 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
+              <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600 }}>
+                {summary?.day}
+              </h3>
+              <span style={{ fontSize: 11, color: 'var(--c-faint)' }}>
+                {summary?.freshly_produced ? 'produced just now' : 'produced earlier today'}
+              </span>
+            </div>
+
+            {[
+              ['On the roll', `${(summary?.school?.students_on_the_roll || 0).toLocaleString('en-IN')} children, ${(summary?.school?.staff || 0).toLocaleString('en-IN')} staff`],
+              ['Attendance', attendance.marked
+                ? `${attendance.present} of ${attendance.children_marked} present (${attendance.present_percent}%), ${attendance.absent} absent`
+                : 'Not marked yet today'],
+              ['Collected today', `${rupees(money.collected_today)} across ${money.receipts_today || 0} receipts`],
+              ['Outstanding', `${rupees(money.outstanding_in_total)} across ${money.children_with_something_outstanding || 0} children`],
+              ['Past their due date', `${money.bills_past_their_due_date || 0} bills`],
+              ['Waiting for you', waiting.total ? `${waiting.total} thing(s) to approve` : 'Nothing'],
+              ['Changes today', changed.total ? `${changed.total}, of which ${changed.money_changes || 0} touched money` : 'None'],
+            ].map(([label, value]) => (
+              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '9px 0', borderBottom: '1px solid var(--c-border)' }}>
+                <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>{label}</span>
+                <span style={{ fontSize: 12, color: 'var(--c-text)', fontWeight: 500, textAlign: 'right' }}>{value}</span>
+              </div>
+            ))}
+
+            <p style={{ fontSize: 11, color: 'var(--c-faint)', marginTop: 14, lineHeight: 1.6 }}>
+              This page is put together and kept the first time you open it each day. It
+              is not emailed or sent to you: nothing on the platform can send it yet.
+            </p>
+          </div>
+
+          {history.length > 1 && (
+            <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 20, maxWidth: 640 }}>
+              <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--c-text)', fontSize: 14, fontWeight: 600, marginBottom: 10 }}>Earlier days</h3>
+              {history.map((row) => (
+                <div key={row.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--c-border)' }}>
+                  <span style={{ fontSize: 12, color: 'var(--c-text)' }}>{row.day}</span>
+                  <span style={{ fontSize: 11, color: 'var(--c-muted)' }}>
+                    collected {rupees(row.money?.collected_today)}
+                    {row.attendance?.marked ? ` · ${row.attendance.present_percent}% present` : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </ToolPage>
   );
 }
@@ -2761,7 +2961,7 @@ export function CustomFormBuilder() {
           </div>
           {/* D-24: hand-rolled table moved onto the shared sortable DataTable. The middle
               columns are the form's own questions, so the headers and the cells are both
-              built from `selectedForm.fields` — sorting works on those just as well. */}
+              built from `selectedForm.fields` - sorting works on those just as well. */}
           <DataTable
             tableId="form-responses"
             headers={[

@@ -1,4 +1,4 @@
-"""Dual-entrypoint parity — fee transaction correction, soft-delete, and fee sync.
+"""Dual-entrypoint parity - fee transaction correction, soft-delete, and fee sync.
 
 Same seed through the REST routes (`PATCH /api/fees/transactions/{id}/correct`,
 `DELETE /api/fees/transactions/{id}`, `POST /api/fees/sync/trigger`) and the AI
@@ -114,7 +114,7 @@ async def test_delete_fee_transaction_parity_is_soft(client, fake_db):
             row.pop("reason", None)
     assert ai_state == rest_state
     txn = rest_state["fee_transactions"][0]
-    assert txn["deleted"] is True              # soft delete — financial trail kept
+    assert txn["deleted"] is True              # soft delete - financial trail kept
     assert len(rest_state["audit"]) == 1       # F.10 actor-tagged deletion audit
 
 

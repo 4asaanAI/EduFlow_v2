@@ -1,4 +1,4 @@
-"""Epic J — adversarial & edge-case regression guards for student/staff CRUD tools.
+"""Epic J - adversarial & edge-case regression guards for student/staff CRUD tools.
 
 Covers the STEP-4 review findings: privilege-escalation blocks, OWNER_ONLY_FIELDS
 silent-strip on the AI path, no-op short-circuits, duplicate detection, and the
@@ -39,6 +39,23 @@ def test_phase1_lockdown_allows_owner_and_principal(tool_name):
 @pytest.mark.parametrize("actor", [ACCOUNTANT, TEACHER, STUDENT])
 def test_phase1_lockdown_blocks_everyone_else(tool_name, actor):
     tdef = TOOL_REGISTRY[tool_name]
+    if tool_name == "create_student" and actor is ACCOUNTANT:
+        # R2-5 / decision 5, 2026-08-10: the accountant head may now put a new child
+        # on the roll, alongside the school's owner, the principal and the management
+        # head. A fee belongs to a child, and Sonu is the one who meets the family at
+        # admission. Only the CREATE - removing a child from the roll stays with the
+        # school's leadership (R2-4).
+        assert _is_tool_authorized(actor, tdef) is True
+        return
+    if tool_name == "update_staff" and actor is ACCOUNTANT:
+        # 2026-08-11, Abhimanyu relaying Aman's and Adesh's instruction: the accountant
+        # head reaches this tool now, for the base salary figure and nothing else. The
+        # narrowing is in `staff_service.update_staff`, which accepts only `salary`
+        # from an accountant caller and silently drops every other field, whichever
+        # door was used. Reaching the tool is not the same as holding it in full; see
+        # tests/backend/api/test_accountant_salary_access_2026_08_11.py.
+        assert _is_tool_authorized(actor, tdef) is True
+        return
     assert _is_tool_authorized(actor, tdef) is False
 
 
@@ -88,7 +105,7 @@ async def test_principal_owner_only_fields_silently_stripped_on_update(fake_db):
 
 
 async def test_principal_granting_owner_role_raises_not_stripped(fake_db):
-    """UI-Sweep Story 1.1 — an attempt to GRANT owner is refused outright.
+    """UI-Sweep Story 1.1 - an attempt to GRANT owner is refused outright.
 
     Was previously folded into the silent-strip test above and returned a no-op
     "success". Escalation and "you may not edit salary" are different events and

@@ -9,7 +9,7 @@ ships **keyword-first** (always available, zero deps) and treats vectors as an
 opt-in enhancement that must **degrade gracefully** (FR33).
 
 `get_memory_vector_store()` returns a singleton whose `.healthy` is False whenever
-the deps/flag are absent — callers (the store's hybrid recall) then fall back to
+the deps/flag are absent - callers (the store's hybrid recall) then fall back to
 keyword scoring. Nothing in this module may raise to the caller.
 """
 
@@ -21,7 +21,7 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# fastembed default — small, CPU-friendly, multilingual-ish; chosen in the G.1 spike.
+# fastembed default - small, CPU-friendly, multilingual-ish; chosen in the G.1 spike.
 _EMBED_MODEL = os.environ.get("MEMORY_EMBED_MODEL", "BAAI/bge-small-en-v1.5")
 _COLLECTION = "eduflow_ai_memories"
 
@@ -174,6 +174,6 @@ def get_memory_vector_store() -> MemoryVectorStore:
 
 
 def reset_memory_vector_store() -> None:
-    """Test hook — drop the singleton so a flag change is re-read."""
+    """Test hook - drop the singleton so a flag change is re-read."""
     global _singleton
     _singleton = None

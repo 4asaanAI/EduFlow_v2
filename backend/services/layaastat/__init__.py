@@ -1,4 +1,4 @@
-"""LayaaStat integration — env-gated push telemetry to the Layaa health-check platform.
+"""LayaaStat integration - env-gated push telemetry to the Layaa health-check platform.
 
 EduFlow's path in the Layaa portfolio is **push/ingest** ("OTel spans + custom events"
 per LayaaStat's product-ingest onboarding doc), distinct from the federation model used
@@ -15,7 +15,7 @@ Optional:
     LAYAASTAT_FLUSH_AT          (default 20)
     LAYAASTAT_HEARTBEAT_SECONDS (default 60; 0 disables the periodic heartbeat task)
 
-When either of the two required vars is unset the integration is **fully dormant** —
+When either of the two required vars is unset the integration is **fully dormant** -
 every helper returns immediately and nothing is buffered, sent, or scheduled.
 """
 
@@ -83,7 +83,7 @@ def reset_monitor() -> None:
     _resolved = False
 
 
-# ── Public helpers — all no-op when the integration is disabled ──────────────
+# ── Public helpers - all no-op when the integration is disabled ──────────────
 
 async def track_event(
     event_name: str,
@@ -128,7 +128,7 @@ async def record_health_heartbeat(
 ) -> None:
     """Emit a ``service_health`` heartbeat event so LayaaStat can watch EduFlow live.
 
-    PII-free by construction — carries only the overall status, an optional 0-100 score,
+    PII-free by construction - carries only the overall status, an optional 0-100 score,
     and per-dependency check states (db/ai/s3/sms), never user data.
     """
     props: dict = {"status": status, "service": service_name()}
@@ -171,7 +171,7 @@ async def emit_event(
     source: str = "eduflow-backend",
     payload: Optional[dict] = None,
 ) -> None:
-    """Legacy product-event API — routes to track_event (payload → properties)."""
+    """Legacy product-event API - routes to track_event (payload → properties)."""
     await track_event(
         event_name,
         distinct_id=distinct_id,
@@ -191,7 +191,7 @@ async def emit_llm_span(
     error_type: Optional[str] = None,
     trace_id: Optional[str] = None,
 ) -> None:
-    """Legacy LLM-span API — routes to track_span (best-effort, PII-free)."""
+    """Legacy LLM-span API - routes to track_span (best-effort, PII-free)."""
     import uuid
 
     await track_span({

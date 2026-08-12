@@ -1,5 +1,5 @@
 /**
- * EduFlow shared UI primitives — Epic 9 "Looks Like The Brochure".
+ * EduFlow shared UI primitives - Epic 9 "Looks Like The Brochure".
  *
  * The playful language of eduflow.layaa.ai, made safe for a working app:
  * rounded shapes, a solid offset "toy" shadow, and a press that depresses the
@@ -10,7 +10,7 @@
  *
  *   1. THE PRESS IS `transform` ONLY. Never top/margin/height. Animating a
  *      layout property makes every neighbouring cell reflow on click, which is
- *      the same family of fault as D-01. Look for `translateY` below — that is
+ *      the same family of fault as D-01. Look for `translateY` below - that is
  *      deliberate, and it is the only thing that moves.
  *
  *   2. LABEL CONTRAST IS FIXED TO THE FILL. `--on-brand-orange` is navy, not
@@ -37,7 +37,7 @@ const PRESSABLE = {
  * It cannot be asserted through the DOM: jsdom's CSS parser silently DROPS
  * `color` and `background` declarations whose value is a `var()`, so a
  * rendered button reports neither. Testing this map is testing the real
- * decision — which token each variant pairs with which fill.
+ * decision - which token each variant pairs with which fill.
  */
 export const VARIANTS = {
   primary: {
@@ -82,7 +82,7 @@ const SIZES = {
  * The platform's button. Depresses into its shadow when pressed.
  *
  * `lift` is the height of the solid shadow AND the distance the button travels
- * when pressed — they are the same number so the bottom edge stays put and the
+ * when pressed - they are the same number so the bottom edge stays put and the
  * row never moves.
  */
 export function Button({
@@ -224,8 +224,8 @@ export function Pill({ tone = 'neutral', icon: Icon, children, style, 'data-test
 export function EmptyState({ kind = 'empty', title, message, action, icon: Icon, 'data-testid': testId }) {
   const COPY = {
     empty:        { title: 'Nothing here yet', message: 'Records will appear here once they are added.' },
-    'not-recorded': { title: 'Not recorded', message: 'This was never filled in for these records — it is not missing, it was never captured.' },
-    error:        { title: "Couldn't load this", message: 'Something went wrong fetching it. This is not a zero — please try again.' },
+    'not-recorded': { title: 'Not recorded', message: 'This was never filled in for these records - it is not missing, it was never captured.' },
+    error:        { title: "Couldn't load this", message: 'Something went wrong fetching it. This is not a zero - please try again.' },
   };
   const c = COPY[kind] || COPY.empty;
   return (

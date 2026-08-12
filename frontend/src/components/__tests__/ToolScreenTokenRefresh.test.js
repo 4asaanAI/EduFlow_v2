@@ -1,5 +1,5 @@
 /**
- * NEW-03 — an expired login on a tool screen must renew itself, not surface an error.
+ * NEW-03 - an expired login on a tool screen must renew itself, not surface an error.
  *
  * Access tokens last 60 minutes. Renewal only ever happened on app load, or when a 401
  * passed through `apiFetch`. 113 calls across 18 tool screens used a bare `fetch`, so
@@ -9,7 +9,7 @@
  *
  * This is the same defect as D-43 (chat upload, fixed 2026-07-23 by routing ONE call
  * through `apiFetch`); these tests prove the tool screens now behave the same way.
- * `apiBaseUrl.test.js` is the structural half — it fails if a bare `fetch` comes back.
+ * `apiBaseUrl.test.js` is the structural half - it fails if a bare `fetch` comes back.
  * This is the behavioural half: it drives the real screen code through a real 401.
  */
 import { render, screen, waitFor } from '@testing-library/react';
@@ -61,7 +61,7 @@ function expiredSessionServer(payload) {
   return calls;
 }
 
-// `jest.restoreAllMocks()` only undoes `jest.spyOn` — a direct assignment to
+// `jest.restoreAllMocks()` only undoes `jest.spyOn` - a direct assignment to
 // `global.fetch` survives it. This repo has already lost days to order-dependent
 // tests (D-03, D-35), so the original is captured and put back by hand.
 const realFetch = global.fetch;
@@ -100,7 +100,7 @@ test('a tool screen with an expired token refreshes once and shows its data', as
 });
 
 // The two tests below exercise `apiFetch` directly. They would ALSO pass on the code
-// before this change, because the wrapper and its refresh-and-retry already existed —
+// before this change, because the wrapper and its refresh-and-retry already existed -
 // what was missing was the tool screens using it. They are kept deliberately, as the
 // contract the screens now depend on: if someone "simplifies" the wrapper, the screen
 // test above says something broke and these two say exactly what.
@@ -120,7 +120,7 @@ test('the retried call carries the NEW token, not the expired one', async () => 
   expect(retry[1].headers.Authorization).toBe('Bearer fresh-token');
 });
 
-test('when the refresh itself fails, the person is sent to log in once — not left on a broken screen', async () => {
+test('when the refresh itself fails, the person is sent to log in once - not left on a broken screen', async () => {
   global.fetch = jest.fn((url) =>
     Promise.resolve(response(401, { detail: String(url).includes('/auth/refresh') ? 'expired' : 'Not authenticated' }))
   );
@@ -136,7 +136,7 @@ test('when the refresh itself fails, the person is sent to log in once — not l
   await waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
 });
 
-// A second, unrelated screen — so this proves a property of the conversion rather than
+// A second, unrelated screen - so this proves a property of the conversion rather than
 // one lucky file. Incident Tracker was one of the 18 affected screens (6 bare calls).
 test('a different tool screen also renews instead of failing', async () => {
   const calls = expiredSessionServer({ success: true, data: [] });

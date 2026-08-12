@@ -1,4 +1,4 @@
-"""Inspection Remediation BLOCK 2 — T8 (NEW-12), the advertised tool list.
+"""Inspection Remediation BLOCK 2 - T8 (NEW-12), the advertised tool list.
 
 **Mechanism replaced 2026-08-08; the intent is unchanged and still pinned here.**
 
@@ -15,8 +15,8 @@ demand. Nothing is invisible, so the failure above cannot recur.
 
 The properties this file has always defended are re-asserted below against the new
 mechanism: the list must be cheaper than the authorized set, it must change cost and
-NOTHING about authorization, everyday work must stay immediate, and no tool — least of
-all a delete — may become unreachable.
+NOTHING about authorization, everyday work must stay immediate, and no tool - least of
+all a delete - may become unreachable.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ def test_deferred_tools_are_still_authorized():
 
     for name in tool_search.deferred_names(_authorized_tool_names(OWNER)):
         tool_def = TOOL_REGISTRY.get(name)
-        assert tool_def is not None, f"{name} is not a real tool — the catalogue has rotted"
+        assert tool_def is not None, f"{name} is not a real tool - the catalogue has rotted"
         assert is_tool_authorized(OWNER, tool_def)
 
 
@@ -72,7 +72,7 @@ def test_a_deferred_tool_is_still_advertised_when_named_explicitly():
 
 @pytest.mark.parametrize("user", [ACCOUNTANT, TEACHER], ids=["accountant", "teacher"])
 def test_smaller_roles_also_benefit_but_keep_their_everyday_tools(user):
-    """Unlike the old trim, deferral applies to every role — but core work stays loaded."""
+    """Unlike the old trim, deferral applies to every role - but core work stays loaded."""
     advertised = _advertised(user)
     authorized = _authorized(user)
     assert advertised <= authorized

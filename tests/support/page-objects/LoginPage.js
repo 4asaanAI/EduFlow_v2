@@ -1,5 +1,5 @@
 /**
- * Page Object: LoginPage — EduFlow
+ * Page Object: LoginPage - EduFlow
  *
  * Encapsulates all interactions with the /login page.
  * Use this in tests instead of raw locators for maintainability.

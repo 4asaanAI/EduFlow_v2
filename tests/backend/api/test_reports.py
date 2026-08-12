@@ -27,7 +27,7 @@ def _login_owner(client):
 
 
 def _seed_principal(fake_db):
-    # Unique username — fake_db is session-wide and other suites also seed a
+    # Unique username - fake_db is session-wide and other suites also seed a
     # "principal" account with a different password.
     fake_db.auth_users.docs.append({
         "id": "principal-rpt",
@@ -43,7 +43,7 @@ def _seed_principal(fake_db):
 
 
 async def test_attendance_trends_requires_owner_or_principal(client, fake_db):
-    # Use a unique username — session-wide fake_db may have a stale "teacher" row
+    # Use a unique username - session-wide fake_db may have a stale "teacher" row
     # from an earlier test with a different password.
     fake_db.auth_users.docs.append({
         "id": "tch-rpt-1",
@@ -187,7 +187,7 @@ async def test_months_param_is_clamped_fees(client):
 async def test_months_param_invalid_string_falls_back(client):
     token = _login_owner(client)
     resp = client.get("/api/reports/attendance-trends?months=abc", headers={"Authorization": f"Bearer {token}"})
-    # FastAPI's int param validation will reject a non-int with 422 — accept either
+    # FastAPI's int param validation will reject a non-int with 422 - accept either
     # 200 (if our clamping receives it) or 422 (if validation fires first).
     assert resp.status_code in (200, 422)
 

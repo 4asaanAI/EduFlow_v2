@@ -345,7 +345,7 @@ C) [option C]
 D) [option D]
 Correct: [A or B or C or D]
 
-Generate exactly 5 questions. Do NOT use the word "Answer" — use only "Correct:" for the correct option.`;
+Generate exactly 5 questions. Do NOT use the word "Answer" - use only "Correct:" for the correct option.`;
 
       const cid = await createConv('Practice Test');
       if (!cid) { setGenerating(false); return; }

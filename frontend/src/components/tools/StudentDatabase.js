@@ -9,6 +9,11 @@ import {
   setStudentEnrolment,
   getAllClasses,
   getStudent,
+  getStudentFeeStatus,
+  explainStudentFee,
+  setStudentConcession,
+  recordAdmissionConcession,
+  setRightToEducation,
   getStudentEnrolmentSummary,
   getStudentStrengthStats,
   getStudents,
@@ -473,7 +478,7 @@ function StudentProfileModal({ classes, initialStudent, onClose, onSaved }) {
               </div>
               <div style={{ gridColumn: '1 / -1' }}>
                 <Field label="Emergency Contact (outside parents)">
-                  <input value={medical.emergency_contact} onChange={setM('emergency_contact')} style={inputStyle} placeholder="Name: Phone — e.g. Uncle Ramesh: 9876543210" />
+                  <input value={medical.emergency_contact} onChange={setM('emergency_contact')} style={inputStyle} placeholder="Name: Phone - e.g. Uncle Ramesh: 9876543210" />
                 </Field>
               </div>
             </div>
@@ -500,13 +505,64 @@ function StudentProfileModal({ classes, initialStudent, onClose, onSaved }) {
 function DetailPanel({ studentId, onClose, onEdit, canManage, canKeepNotes }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  // R2-2 / decision 1, 2026-08-10. The management head chases families about fees and
+  // until now his student screens could not tell him who was behind at all. This is
+  // the flag he was promised: paid or not, and never an amount. The route returns
+  // `{student_id, status}` and nothing else, for every caller, so there is no figure
+  // here to leak.
+  const [feeStatus, setFeeStatus] = useState(null);
+  // R2 audit, 2026-08-12. The concessions, the Right to Education mark and the fee band
+  // existed on the platform and Flo could explain them, while the screens showed none of
+  // it. A rule nobody can see on the record is a rule the office cannot check. The three
+  // finance desks get this row; every other profile is refused the route and simply does
+  // not see it, exactly like the fee status row above.
+  const [feeExplain, setFeeExplain] = useState(null);
+  // R2 audit finding 6, 2026-08-12. Flo could grant a concession and no screen could,
+  // which is backwards for this platform: the screen is where the office works. These
+  // three controls call the same service Flo's tools call, so the two doors cannot give
+  // different answers. Only the three finance desks are allowed the routes; for anyone
+  // else `feeExplain` is null and none of this renders.
+  const [busy, setBusy] = useState('');
+  const [problem, setProblem] = useState('');
+  const [oneTime, setOneTime] = useState({ open: false, amount: '', authorised_by: '' });
+
+  const reloadFees = useCallback(() => {
+    explainStudentFee(studentId)
+      .then(res => { if (res?.success) setFeeExplain(res.data || null); })
+      .catch(() => {});
+  }, [studentId]);
+
+  async function runFeeChange(label, call) {
+    setBusy(label);
+    setProblem('');
+    try {
+      const res = await call();
+      if (res?.success) reloadFees();
+      else setProblem(res?.detail || res?.message || 'That did not go through.');
+    } catch {
+      setProblem('That did not go through.');
+    }
+    setBusy('');
+  }
 
   useEffect(() => {
     setLoading(true);
+    setFeeStatus(null);
+    setFeeExplain(null);
+    setProblem('');
+    setOneTime({ open: false, amount: '', authorised_by: '' });
     getStudent(studentId).then(res => {
       if (res.success) setData(res.data);
       setLoading(false);
     });
+    // Deliberately does not block the panel: a profile that is refused this route
+    // (a teacher, say) still gets the whole record, just without the row.
+    getStudentFeeStatus(studentId)
+      .then(res => { if (res?.success) setFeeStatus(res.data?.status || null); })
+      .catch(() => {});
+    explainStudentFee(studentId)
+      .then(res => { if (res?.success) setFeeExplain(res.data || null); })
+      .catch(() => {});
   }, [studentId]);
 
   if (!studentId) return null;
@@ -558,13 +614,198 @@ function DetailPanel({ studentId, onClose, onEdit, canManage, canKeepNotes }) {
 
             {/* Personal Info */}
             <Section title="Personal">
-              <InfoRow label="Admission No." value={data.admission_number || '—'} mono />
-              <InfoRow label="Date of Birth" value={data.dob ? `${data.dob}${age ? ` (${age}y)` : ''}` : '—'} />
-              <InfoRow label="Gender" value={data.gender ? data.gender.charAt(0).toUpperCase() + data.gender.slice(1) : '—'} />
-              <InfoRow label="Admission Date" value={data.admission_date || '—'} />
+              <InfoRow label="Admission No." value={data.admission_number || '-'} mono />
+              <InfoRow label="Date of Birth" value={data.dob ? `${data.dob}${age ? ` (${age}y)` : ''}` : '-'} />
+              <InfoRow label="Gender" value={data.gender ? data.gender.charAt(0).toUpperCase() + data.gender.slice(1) : '-'} />
+              <InfoRow label="Admission Date" value={data.admission_date || '-'} />
               {/* Owner request 11 (2026-08-06) */}
-              <InfoRow label="Address" value={data.address || '—'} />
+              <InfoRow label="Address" value={data.address || '-'} />
+              {feeStatus && (
+                <InfoRow
+                  label="Fees"
+                  value={feeStatus === 'paid' ? 'Paid' : feeStatus === 'overdue' ? 'Overdue' : 'Unpaid'}
+                />
+              )}
+              {/* R2 step 6, Sonu's request: the brothers and sisters in this school, by
+                  admission number, so the office can see at a glance who is owed the
+                  sibling concession. The links are the school's own, from its payment
+                  remarks; nothing here is inferred from surnames or phone numbers. */}
+              {data.siblings?.length > 0 && (
+                <InfoRow label="Brothers / sisters here" value={data.siblings.join(', ')} mono />
+              )}
             </Section>
+
+            {/* What this family is actually charged, and why. Only the three finance
+                desks are allowed the route behind this, so for everybody else the whole
+                section is simply absent rather than showing a refusal. */}
+            {feeExplain && (
+              <Section title="Fees, and why">
+                {feeExplain.right_to_education ? (
+                  <InfoRow
+                    label="School fee"
+                    value="None. This child holds a government-paid Right to Education place."
+                  />
+                ) : (
+                  <>
+                    <InfoRow
+                      label="Class fee"
+                      value={feeExplain.band?.quarterly_amount
+                        ? `₹${feeExplain.band.quarterly_amount.toLocaleString('en-IN')} a quarter (₹${feeExplain.band.annual_amount.toLocaleString('en-IN')} a year)`
+                        : 'No fee structure is loaded for this class yet'}
+                    />
+                    {feeExplain.concessions?.lines?.length > 0 ? (
+                      feeExplain.concessions.lines.map((line, i) => (
+                        <InfoRow
+                          key={i}
+                          label={line.label}
+                          value={line.amount
+                            ? `-₹${line.amount.toLocaleString('en-IN')} · ${line.why}`
+                            : line.why}
+                        />
+                      ))
+                    ) : (
+                      <InfoRow label="Concessions" value="None" />
+                    )}
+                    {feeExplain.concessions?.total > 0 && (
+                      <InfoRow
+                        label="Payable"
+                        value={`₹${feeExplain.concessions.net.toLocaleString('en-IN')} a quarter`}
+                      />
+                    )}
+                  </>
+                )}
+                {feeExplain.transport?.uses_the_bus && (
+                  <InfoRow
+                    label="School bus"
+                    value={`${feeExplain.transport.route || 'route not recorded'}${
+                      feeExplain.transport.monthly_fare
+                        ? ` · ₹${feeExplain.transport.monthly_fare.toLocaleString('en-IN')} a month, 11 months (no June)`
+                        : ''}`}
+                  />
+                )}
+                <InfoRow
+                  label="Paid so far"
+                  value={`₹${(feeExplain.total_paid || 0).toLocaleString('en-IN')}`}
+                />
+                {/* R2 audit finding, 2026-08-12. The late fine was worked out only when
+                    somebody asked Flo for it, so in practice nobody saw one. It is the
+                    school's own rule: 10 a day from the 16th until the quarter ends,
+                    then 1,000 at each following quarter end, and only one daily fine
+                    ever runs. */}
+                {feeExplain.late_fines?.total > 0 && (
+                  <InfoRow
+                    label="Late fine today"
+                    value={`₹${feeExplain.late_fines.total.toLocaleString('en-IN')}${
+                      feeExplain.late_fines.daily_running
+                        ? ` · ${feeExplain.late_fines.daily_running.toUpperCase()} is still adding ₹10 a day`
+                        : ' · no daily fine is running'}`}
+                  />
+                )}
+
+                {/* The four concessions the school gives, and nothing else. Each button
+                    calls the same service Flo calls. The wording says what the school
+                    says: the youngest child pays full, and the employee one wins. */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                  {[
+                    ['employee_child', "Employee's child (50%)"],
+                    ['sibling', 'Sibling concession'],
+                  ].map(([key, label]) => {
+                    const on = feeExplain.concessions?.lines?.some(
+                      l => l.rule === key && l.amount > 0
+                    );
+                    return (
+                      <Btn
+                        key={key}
+                        variant="secondary"
+                        disabled={!!busy || feeExplain.right_to_education}
+                        title={feeExplain.right_to_education
+                          ? 'This child owes no school fee, so there is nothing to reduce'
+                          : `${on ? 'Remove' : 'Give'} the ${label.toLowerCase()}`}
+                        onClick={() => runFeeChange(key, () => setStudentConcession({
+                          student_id: data.id, concession: key, granted: !on,
+                        }))}
+                      >
+                        {on ? `Remove ${label}` : `Give ${label}`}
+                      </Btn>
+                    );
+                  })}
+                  <Btn
+                    variant="secondary"
+                    disabled={!!busy}
+                    title="A government-paid place. Not a discount: no school fee applies at all."
+                    onClick={() => {
+                      const reason = window.prompt(
+                        feeExplain.right_to_education
+                          ? 'Why is this child no longer on a Right to Education place? They will be billed school fees from the next bill raised.'
+                          : 'Why does this child hold a Right to Education place? (for the record)'
+                      );
+                      if (!reason) return;
+                      runFeeChange('rte', () => setRightToEducation({
+                        student_id: data.id,
+                        holds_place: !feeExplain.right_to_education,
+                        reason,
+                      }));
+                    }}
+                  >
+                    {feeExplain.right_to_education
+                      ? 'Remove Right to Education place'
+                      : 'Mark Right to Education place'}
+                  </Btn>
+                  {!feeExplain.concessions?.lines?.some(l => l.rule === 'admission_one_time') && (
+                    <Btn
+                      variant="secondary"
+                      disabled={!!busy || feeExplain.right_to_education}
+                      onClick={() => setOneTime(o => ({ ...o, open: !o.open }))}
+                    >
+                      One-time amount agreed at admission
+                    </Btn>
+                  )}
+                </div>
+
+                {oneTime.open && (
+                  <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ fontSize: 11, color: 'var(--c-muted)' }}>
+                      The school&apos;s owner or the Principal decide this amount and the
+                      accountant head applies it. It is used by one instalment and never
+                      repeats, so record who agreed to it.
+                    </div>
+                    <input
+                      type="number"
+                      placeholder="Amount in rupees"
+                      value={oneTime.amount}
+                      onChange={e => setOneTime(o => ({ ...o, amount: e.target.value }))}
+                      style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-text)', fontSize: 12 }}
+                    />
+                    <input
+                      placeholder="Who agreed it, by name"
+                      value={oneTime.authorised_by}
+                      onChange={e => setOneTime(o => ({ ...o, authorised_by: e.target.value }))}
+                      style={{ padding: '7px 10px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-text)', fontSize: 12 }}
+                    />
+                    <Btn
+                      disabled={!!busy || !oneTime.amount || !oneTime.authorised_by.trim()}
+                      onClick={() => runFeeChange('one-time', async () => {
+                        const res = await recordAdmissionConcession({
+                          student_id: data.id,
+                          amount: Number(oneTime.amount),
+                          authorised_by: oneTime.authorised_by.trim(),
+                        });
+                        if (res?.success) setOneTime({ open: false, amount: '', authorised_by: '' });
+                        return res;
+                      })}
+                    >
+                      Record it
+                    </Btn>
+                  </div>
+                )}
+
+                {problem && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: 'var(--tool-hex-f87171)' }}>
+                    {problem}
+                  </div>
+                )}
+              </Section>
+            )}
 
             {/* Medical */}
             {(data.blood_group || data.height_cm || data.weight_kg || data.medical_notes || data.emergency_contact) && (
@@ -601,7 +842,7 @@ function DetailPanel({ studentId, onClose, onEdit, canManage, canKeepNotes }) {
             {/* Transport */}
             {data.uses_transport && (
               <Section title="Transport">
-                <InfoRow label="Bus Route" value={data.bus_route || '—'} />
+                <InfoRow label="Bus Route" value={data.bus_route || '-'} />
               </Section>
             )}
 
@@ -698,10 +939,10 @@ export default function StudentDatabase() {
   const [detailId, setDetailId] = useState(null);
   const [eraseTarget, setEraseTarget] = useState(null);
 
-  // Epic 7 — deep-link from the School Directory. A row there opens
+  // Epic 7 - deep-link from the School Directory. A row there opens
   // `?tool=student-database&focus=<id>`; open that student's profile once, then
   // strip the param so closing it (or a reload) does not reopen, and the URL
-  // stays tidy. Applied a single time via the ref — not on every param change.
+  // stays tidy. Applied a single time via the ref - not on every param change.
   const [searchParams, setSearchParams] = useSearchParams();
   const appliedFocusRef = useRef(false);
   useEffect(() => {
@@ -773,7 +1014,7 @@ export default function StudentDatabase() {
     {
       // Owner request 12 (2026-08-06). House was already stored on every student,
       // already editable on the Add and Edit forms, and already shown on the profile
-      // panel in its house colour — it was simply never a column, so the one place
+      // panel in its house colour - it was simply never a column, so the one place
       // you would look to see who is in which house did not say.
       key: 'house', label: 'House', sortKey: 'house',
       render: (s) => {
@@ -799,7 +1040,7 @@ export default function StudentDatabase() {
     {
       // Owner request 9 (2026-08-06): "the buttons at the end of each row don't have
       // any symbols to them". Two of the four were icon-only, drawn at 12px in the
-      // muted grey — on a phone they read as empty boxes, and the third said
+      // muted grey - on a phone they read as empty boxes, and the third said
       // "Deactivate" in words beside them, so the row offered no clue that the blank
       // ones did anything at all.
       //
@@ -819,7 +1060,7 @@ export default function StudentDatabase() {
           )}
           {/* Owner or principal: one button for all three states, in either
               direction. Restore is simply "back on the roll", which is why it stays
-              as its own button on an off-roll row — it is the one move somebody is
+              as its own button on an off-roll row - it is the one move somebody is
               looking for in a hurry when a name has vanished. */}
           {canRestore && (
             <Btn variant="secondary" onClick={() => setStateTarget(student)} title="Change where this student stands" aria-label={`Change status for ${student.name}`}>
@@ -866,7 +1107,7 @@ export default function StudentDatabase() {
     const { key, direction } = strengthSort;
     const factor = direction === 'descending' ? -1 : 1;
     rows.sort((a, b) => {
-      // Class is ordered the way the school reads it — NUR, LKG, UKG, 1st … 12th —
+      // Class is ordered the way the school reads it - NUR, LKG, UKG, 1st … 12th -
       // never alphabetically, which would put 10th above 1st (owner item 5).
       if (key === 'class_label') {
         return factor * compareClassLabels(a.class_label, b.class_label);
@@ -878,7 +1119,7 @@ export default function StudentDatabase() {
 
   // Gender was never captured for any of the 1,802 students, so every one of them
   // lands in "not recorded". Boys 0 / Girls 0 are therefore NOT counts of zero
-  // children — they are the absence of a record, and must not read as a figure.
+  // children - they are the absence of a record, and must not read as a figure.
   const genderEverRecorded = useMemo(
     () => strengthStats.some(r => (r.boys || 0) + (r.girls || 0) + (r.other || 0) > 0),
     [strengthStats],
@@ -980,8 +1221,8 @@ export default function StudentDatabase() {
    * Put a student back on the roll (owner request 9, 2026-08-06).
    *
    * The button this sits behind is the answer to "a student was deleted during a demo
-   * and we cannot get them back". They were never deleted — deactivating only switches
-   * a student off — but until the enrolment endpoint existed nothing in the product
+   * and we cannot get them back". They were never deleted - deactivating only switches
+   * a student off - but until the enrolment endpoint existed nothing in the product
    * could switch one back on, so a mistake was permanent in practice.
    *
    * Owner and principal only, which is why the button is gated on `canRestore` rather
@@ -1038,8 +1279,8 @@ export default function StudentDatabase() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <div>
           {/* Renamed on the owner's instruction, 2026-08-07. There used to be two
-              screens listing every student — this one, and a read-only "School
-              Directory" — and the owner reported them as "two views of the student
+              screens listing every student - this one, and a read-only "School
+              Directory" - and the owner reported them as "two views of the student
               database for some reason". They are one screen now, under the name that
               says what it is: everyone in the school, in one place. */}
           <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--c-text)', margin: 0 }}>School Directory</h1>
@@ -1097,7 +1338,7 @@ export default function StudentDatabase() {
                   { label: 'Total Students', value: strengthStats.reduce((a, r) => a + r.total, 0), color: '#4f8ff7', real: true },
                   { label: 'Classes', value: strengthStats.length, color: '#34d399', real: true },
                   // "Boys 0" when nobody's gender was ever captured is the same lie
-                  // this epic exists to remove — it reads as "this school has no
+                  // this epic exists to remove - it reads as "this school has no
                   // boys" rather than "we never wrote it down".
                   { label: 'Boys', value: strengthStats.reduce((a, r) => a + r.boys, 0), color: '#60a5fa', real: genderEverRecorded },
                   { label: 'Girls', value: strengthStats.reduce((a, r) => a + r.girls, 0), color: '#f472b6', real: genderEverRecorded },
@@ -1124,7 +1365,7 @@ export default function StudentDatabase() {
                 ))}
               </div>
               {/* The shared sortable table (FR82/UX-DR5). Every one of the 48 rows
-                  is already in memory here — this is an aggregate, not a page — so
+                  is already in memory here - this is an aggregate, not a page - so
                   ordering the whole array locally IS ordering the whole result set.
                   That is why sorting is done here and not asked of the server. */}
               <DataTable

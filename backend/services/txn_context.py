@@ -7,13 +7,13 @@ existing write tools (Epic A–C) call their services with **no** explicit sessi
 rather than rewrite every tool/service signature, the executor binds the active session
 into a `contextvars.ContextVar` for the duration of the transaction. Each service's
 ``_session_kwargs(session)`` consults this contextvar when no explicit session is
-passed — so a service called anywhere inside the executor's transaction automatically
+passed - so a service called anywhere inside the executor's transaction automatically
 enlists in it.
 
 Why a contextvar is safe here: it propagates across `await` within the SAME asyncio
 task (the `/confirm` request task), and the executor `reset()`s it in a `finally`, so a
 session never leaks into an unrelated request. Outside a transaction the contextvar is
-``None`` and ``session_kwargs()`` returns ``{}`` — identical to the pre-D.2 behavior.
+``None`` and ``session_kwargs()`` returns ``{}`` - identical to the pre-D.2 behavior.
 """
 
 from __future__ import annotations

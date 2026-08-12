@@ -20,7 +20,7 @@ async def migrate(db) -> None:
     every single read is pinned to one author AND one subject, and the newest note is
     wanted first. `schoolId` leads because every query is school-scoped by
     `ScopedCollection`. The field order mirrors that access pattern exactly, and it
-    mirrors the declaration in `database._create_indexes()` — if you change one, change
+    mirrors the declaration in `database._create_indexes()` - if you change one, change
     both, or prod and dev will disagree about what is indexed.
 
     SAFE TO RUN ON THE LIVE DATABASE, unlike most of the migrations in this folder.

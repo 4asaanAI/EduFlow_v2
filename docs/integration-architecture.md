@@ -1,4 +1,4 @@
-# Integration Architecture — EduFlow
+# Integration Architecture - EduFlow
 
 _Generated: 2026-05-15 | Scan: deep_
 
@@ -50,8 +50,8 @@ EduFlow is a two-part system (frontend SPA + backend API) that communicate exclu
 | `X-SSE-Session-ID` | SSE session tracking | SSE connections |
 
 **HTTP client in frontend:**
-- `fetch()` — used for all non-upload endpoints (see `frontend/src/lib/api.js`)
-- `axios` — used only for multipart file uploads (see `/api/uploads`)
+- `fetch()` - used for all non-upload endpoints (see `frontend/src/lib/api.js`)
+- `axios` - used only for multipart file uploads (see `/api/uploads`)
 
 ---
 
@@ -91,8 +91,8 @@ return StreamingResponse(event_generator(), media_type="text/event-stream")
 **Access pattern:**
 ```python
 db = get_db()           # Returns ScopedDatabase (auto-injects schoolId)
-db.students.find(...)   # Returns ScopedCollection — schoolId filter auto-applied
-get_raw_db()            # Unscoped access — system collections only
+db.students.find(...)   # Returns ScopedCollection - schoolId filter auto-applied
+get_raw_db()            # Unscoped access - system collections only
 ```
 
 **Tenancy enforcement:** `ScopedCollection` wraps all CRUD operations. `scoped_query()` in `tenant.py` adds `branch_id` when callers pass it.
@@ -109,9 +109,9 @@ get_raw_db()            # Unscoped access — system collections only
 **Operations:** upload file, generate presigned URL, delete file.
 
 **Used by:**
-- `routes/upload.py` — general file uploads
-- `routes/image_gen.py` — AI-generated certificate/ID card images
-- `routes/students.py` — student/guardian photos
+- `routes/upload.py` - general file uploads
+- `routes/image_gen.py` - AI-generated certificate/ID card images
+- `routes/students.py` - student/guardian photos
 
 ---
 
@@ -123,9 +123,9 @@ get_raw_db()            # Unscoped access — system collections only
 **Deployment:** `gpt-5.3-chat`  
 
 **Used by:**
-- `ai/tool_functions_v2.py` — all AI tool implementations
-- `routes/academics.py` — question paper generation
-- `routes/image_gen.py` — image generation (via Gemini)
+- `ai/tool_functions_v2.py` - all AI tool implementations
+- `routes/academics.py` - question paper generation
+- `routes/image_gen.py` - image generation (via Gemini)
 
 ---
 
@@ -229,8 +229,8 @@ In production: only the Amplify domain is listed. No wildcard.
 Admin browser
   → POST /api/students (JSON: name, class_id, ...)
   → Backend validates + auth check (require_role("admin","owner"))
-  → get_db().students.insert_one(doc) — auto-adds schoolId
-  → POST /api/notifications (internal) — notify relevant staff
+  → get_db().students.insert_one(doc) - auto-adds schoolId
+  → POST /api/notifications (internal) - notify relevant staff
   → 201 + student doc returned
 ```
 

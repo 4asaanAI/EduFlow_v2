@@ -5,8 +5,8 @@ regex-matching the `name` field alone::
 
     db.classes.find_one({"name": {"$regex": re.escape(params["class_name"])}})
 
-Class records store the grade and the section in **separate fields** — ``name="4th"``,
-``section="C"`` — while every screen in the product *displays* them joined: "4th-C",
+Class records store the grade and the section in **separate fields** - ``name="4th"``,
+``section="C"`` - while every screen in the product *displays* them joined: "4th-C",
 "1st-B", "UKG-C". So the label a person reads off the screen and types into chat was the
 one form that could never match. Asked "who is in 4-C", the assistant reported nobody,
 and the school was told a class was empty when a child was sitting in it.
@@ -25,7 +25,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional
 
-# "class 4", "grade 4", "std 4", "standard 4" — noise words before the grade.
+# "class 4", "grade 4", "std 4", "standard 4" - noise words before the grade.
 _LEADING_NOISE = re.compile(r"^(?:in\s+)?(?:the\s+)?(?:class|grade|std|standard|section)\s+", re.I)
 # The ordinal tail on a numeral: 1st, 2nd, 3rd, 4th. Dropped so "4" and "4th" agree.
 # Deliberately not anchored to a word boundary: people type "4thc" with no separator,
@@ -92,7 +92,7 @@ def match_classes(classes: List[Dict[str, Any]], label: str) -> List[Dict[str, A
     """Every class the label could mean, most specific first.
 
     A label naming a section ("4-C") matches exactly that class. A label naming only a
-    grade ("4th") matches every section of it, which is a real and useful answer —
+    grade ("4th") matches every section of it, which is a real and useful answer -
     "how many in class 4" spans 4-A, 4-B and 4-C. Callers decide whether more than one
     match is acceptable; :func:`resolve_class` does not.
     """
@@ -112,7 +112,7 @@ def match_classes(classes: List[Dict[str, Any]], label: str) -> List[Dict[str, A
 async def find_classes(db, label: str, base_query: Optional[dict] = None) -> List[Dict[str, Any]]:
     """Load the caller's visible classes and match `label` against them.
 
-    `base_query` is the caller's own scoping — pass the result of ``scoped_query`` or
+    `base_query` is the caller's own scoping - pass the result of ``scoped_query`` or
     ``scoped_filter`` so branch and school isolation is preserved. The previous
     per-tool lookups queried `db.classes` with **no** scoping at all, which is how a
     class name could be resolved across tenants; passing the scope here closes that.
@@ -124,7 +124,7 @@ async def find_classes(db, label: str, base_query: Optional[dict] = None) -> Lis
 async def resolve_class(db, label: str, base_query: Optional[dict] = None) -> Optional[Dict[str, Any]]:
     """The one class this label means, or ``None`` if it names none or several.
 
-    ``None`` means "say you could not find it" — never "carry on without a filter".
+    ``None`` means "say you could not find it" - never "carry on without a filter".
     """
     matches = await find_classes(db, label, base_query)
     return matches[0] if len(matches) == 1 else None

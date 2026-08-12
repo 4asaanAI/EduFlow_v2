@@ -1,4 +1,4 @@
-"""Operator endpoint tests for AI rate limit overrides + counts — Story 7-48 AC#6/#7."""
+"""Operator endpoint tests for AI rate limit overrides + counts - Story 7-48 AC#6/#7."""
 
 from __future__ import annotations
 
@@ -141,7 +141,7 @@ async def test_override_supersedes_previous_active_rows(client, fake_db):
 
     rows = [r for r in fake_db.ai_rate_limit_overrides.docs
             if r.get("school_id") == "school-X" and r.get("role") == "owner"]
-    # Two rows total — both kept for history — but exactly one is active.
+    # Two rows total - both kept for history - but exactly one is active.
     assert len(rows) == 2
     active = [r for r in rows if not r.get("superseded")]
     assert len(active) == 1
@@ -169,7 +169,7 @@ async def test_override_expired_row_is_ignored(client, fake_db):
     from services import ai_rate_limiter
 
     effective = await ai_rate_limiter.resolve_limit(role="owner", school_id="school-expired", db=fake_db)
-    assert effective == 50  # YAML default — expired override ignored.
+    assert effective == 50  # YAML default - expired override ignored.
 
 
 async def test_ai_action_counts_endpoint_owner_only(client, fake_db):

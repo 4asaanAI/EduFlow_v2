@@ -1,5 +1,5 @@
 """
-Unit Tests: Input Validators — EduFlow Backend
+Unit Tests: Input Validators - EduFlow Backend
 
 Tests for pure validation logic that doesn't require a database or server.
 These tests run fast and have no external dependencies.

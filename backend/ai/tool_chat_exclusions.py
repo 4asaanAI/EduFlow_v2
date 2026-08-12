@@ -1,4 +1,4 @@
-"""NEW-12 / T8 — which tools are ADVERTISED to the model in chat.
+"""NEW-12 / T8 - which tools are ADVERTISED to the model in chat.
 
 **Superseded for cost purposes on 2026-08-08.** This file used to also carry a
 role-based exclusion list (`EXCLUDE_FOR_ROLE`) that dropped structural/configuration
@@ -7,7 +7,7 @@ a real cost of its own: a hidden tool is indistinguishable, to the model, from a
 that does not exist, which is how the school's owner once got told an operation "is not
 available to me" about something they were fully authorised to do.
 
-`ai/tool_search.py` now solves the same token problem without that failure mode —
+`ai/tool_search.py` now solves the same token problem without that failure mode -
 non-core tools are listed by NAME and their schemas fetched on demand, so nothing is
 ever invisible and Flo can never deny a capability it has. The exclusion list is gone.
 
@@ -25,8 +25,8 @@ from typing import Any, Dict
 from school_identity import default_branch_id
 
 # Deliberately empty: the cost-motivated trim moved to ai/tool_search.py (2026-08-08).
-# Kept as a named, empty mapping rather than deleted so the seam — and the reason it is
-# empty — stays visible to the next person tempted to re-add a hide-by-role list.
+# Kept as a named, empty mapping rather than deleted so the seam - and the reason it is
+# empty - stays visible to the next person tempted to re-add a hide-by-role list.
 EXCLUDE_FOR_ROLE: Dict[str, frozenset] = {}
 
 
@@ -41,7 +41,7 @@ def _role_key(user: Dict[str, Any] | None) -> str:
 def is_chat_advertised(user: Dict[str, Any] | None, tool_name: str) -> bool:
     """True if this tool should appear in the chat `tools` list for this caller.
 
-    NOT an authorization check. Never call this at dispatch — `is_tool_authorized`
+    NOT an authorization check. Never call this at dispatch - `is_tool_authorized`
     is the gate, and it is unchanged.
     """
     caller = user or {}

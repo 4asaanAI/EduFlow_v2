@@ -1,4 +1,4 @@
-"""Story A.1 — characterization + actor_ctx contract for the attendance service.
+"""Story A.1 - characterization + actor_ctx contract for the attendance service.
 
 Pins the REST `POST /api/attendance/student/bulk` blast radius (records + the
 single bulk audit row + idempotency) so the service extraction is provably

@@ -1,4 +1,4 @@
-"""D.2 — tenant-safe transaction sessions.
+"""D.2 - tenant-safe transaction sessions.
 
 Covers the FakeDb-tier guarantees:
 - `txn_context.session_kwargs` resolves the AMBIENT session when none is passed.

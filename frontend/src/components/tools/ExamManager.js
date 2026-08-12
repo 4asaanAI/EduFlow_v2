@@ -76,7 +76,7 @@ function FormField({ label, value, onChange, type = 'text', options, required, p
       </label>
       {type === 'select' ? (
         <select value={value} onChange={e => onChange(e.target.value)} style={inputStyle}>
-          {!required && <option value="">— Select —</option>}
+          {!required && <option value="">- Select -</option>}
           {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       ) : (
@@ -153,8 +153,8 @@ export default function ExamManager() {
   const [scheduleDraft, setScheduleDraft] = useState({});
 
   // D-24: the datesheet and the marks grid were hand-rolled <table>s with no sorting.
-  // They keep their own markup — the marks grid has one live input per subject per
-  // student and a sticky first column, which the shared DataTable cannot express — and
+  // They keep their own markup - the marks grid has one live input per subject per
+  // student and a sticky first column, which the shared DataTable cannot express - and
   // take their sorting from the shared hook so it behaves identically everywhere.
   //
   // The hooks live here, at the top of the component, because the tables themselves are
@@ -179,7 +179,7 @@ export default function ExamManager() {
   const [error, setError] = useState(null);
   const [resultsLoading, setResultsLoading] = useState(false);
 
-  // Teaching scope — drives class/subject visibility for teachers
+  // Teaching scope - drives class/subject visibility for teachers
   const [teachingScope, setTeachingScope] = useState(null);
 
   useEffect(() => {
@@ -385,8 +385,8 @@ export default function ExamManager() {
     try {
       const res = await bulkEnterResults(results);
       if (res.success === true) setSaveMsg(`Saved marks for ${res.data?.saved ?? results.length} entries`);
-      else if (res.success === 'partial') setSaveMsg(`Saved ${res.saved}; ${res.errors?.length || 0} skipped — check values don't exceed max marks`);
-      else setSaveMsg(res.detail || "Save failed — marks may exceed max marks");
+      else if (res.success === 'partial') setSaveMsg(`Saved ${res.saved}; ${res.errors?.length || 0} skipped - check values don't exceed max marks`);
+      else setSaveMsg(res.detail || "Save failed - marks may exceed max marks");
       await loadSheet(sheet.exam.id, selectedClass.id);
     } catch {
       setSaveMsg('Network error');
@@ -588,7 +588,7 @@ export default function ExamManager() {
         </>
       )}
 
-      {/* Marks sheet view — subjects + students auto-fetched from Academic Structure */}
+      {/* Marks sheet view - subjects + students auto-fetched from Academic Structure */}
       {view === 'students' && (
         <>
           {resultsLoading ? (
@@ -605,7 +605,7 @@ export default function ExamManager() {
             for (const r of sheet.results || []) resultMap[`${r.student_id}|${r.subject_id}`] = r;
 
             // Privacy: a subject-only teacher (not the class teacher) sees and edits
-            // only their own subjects — never a colleague's columns. Class teachers,
+            // only their own subjects - never a colleague's columns. Class teachers,
             // admins and the owner see every subject (owner read-only). The Total
             // column is shown only on the full-subject view.
             let restrictToOwn = false;
@@ -641,7 +641,7 @@ export default function ExamManager() {
                 {/* View-only banner for owner / non-editors */}
                 {!canEdit && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: isDark ? 'rgba(167,139,250,0.08)' : 'rgba(167,139,250,0.1)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: 10, color: '#a78bfa', fontSize: 12, fontWeight: 600 }}>
-                    <Eye size={14} /> View only — marks and dates are managed by teachers and admins.
+                    <Eye size={14} /> View only - marks and dates are managed by teachers and admins.
                   </div>
                 )}
 
@@ -679,7 +679,7 @@ export default function ExamManager() {
                                   <input type="date" value={draft.exam_date || ''} onChange={e => updateSchedule(sub.id, 'exam_date', e.target.value)}
                                     style={{ ...cellInput, width: 150, textAlign: 'left' }} />
                                 ) : (
-                                  <span style={{ color: sub.exam_date ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}>{sub.exam_date || '—'}</span>
+                                  <span style={{ color: sub.exam_date ? 'var(--color-text-primary)' : 'var(--color-text-secondary)' }}>{sub.exam_date || '-'}</span>
                                 )}
                               </td>
                               <td style={{ padding: '8px 10px' }}>
@@ -702,7 +702,7 @@ export default function ExamManager() {
                 <div style={{ background: surface, border: '1px solid var(--color-border)', borderRadius: 12, padding: 16 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <BarChart2 size={14} color="#34d399" /> Marks — {students.length} student{students.length === 1 ? '' : 's'}
+                      <BarChart2 size={14} color="#34d399" /> Marks - {students.length} student{students.length === 1 ? '' : 's'}
                     </span>
                     {canEdit && (
                       <Btn label={savingMarks ? 'Saving…' : 'Save Marks'} icon={<Save size={13} />} size="sm" onClick={handleSaveMarks} disabled={savingMarks} />
@@ -720,7 +720,7 @@ export default function ExamManager() {
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                         <thead>
                           <tr style={{ borderBottom: '2px solid var(--color-border)' }}>
-                            {/* D-24: only this heading is a sort control — see the note
+                            {/* D-24: only this heading is a sort control - see the note
                                 on studentSortAccessors at the top of the component. */}
                             <th scope="col" aria-sort={studentSort.index === 0 ? studentSort.direction : 'none'}
                               style={{ textAlign: 'left', padding: '8px 12px', color: 'var(--color-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', position: 'sticky', left: 0, background: surface }}>
@@ -759,14 +759,14 @@ export default function ExamManager() {
                                   <td key={sub.id} style={{ textAlign: 'center', padding: '6px 8px' }}>
                                     <input
                                       value={draftVal ?? ''} onChange={e => updateMark(st.id, sub.id, e.target.value)}
-                                      placeholder="—" inputMode="decimal"
+                                      placeholder="-" inputMode="decimal"
                                       style={{ ...cellInput, borderColor: over ? '#f87171' : 'var(--color-border)' }}
                                     />
                                   </td>
                                 );
                               }
                               if (!existing || existing.marks_obtained === null || existing.marks_obtained === undefined) {
-                                return <td key={sub.id} style={{ textAlign: 'center', padding: '9px 12px', color: 'var(--color-text-secondary)' }}>—</td>;
+                                return <td key={sub.id} style={{ textAlign: 'center', padding: '9px 12px', color: 'var(--color-text-secondary)' }}>-</td>;
                               }
                               const pct = max ? Math.round(existing.marks_obtained / max * 100) : null;
                               const color = pct === null ? '#737373' : pct >= 75 ? '#34d399' : pct >= 50 ? '#fbbf24' : '#f87171';
@@ -800,7 +800,7 @@ export default function ExamManager() {
                                 {cells}
                                 {showTotal && (
                                   <td style={{ textAlign: 'center', padding: '9px 12px', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                                    {hasAny ? <>{totalObtained}<span style={{ fontWeight: 400, color: 'var(--color-text-secondary)', fontSize: 11 }}>/{totalMax}</span></> : '—'}
+                                    {hasAny ? <>{totalObtained}<span style={{ fontWeight: 400, color: 'var(--color-text-secondary)', fontSize: 11 }}>/{totalMax}</span></> : '-'}
                                   </td>
                                 )}
                               </tr>
@@ -820,7 +820,7 @@ export default function ExamManager() {
       {/* Create/Edit exam modal */}
       {showForm && (
         <Modal title={editingExam ? 'Edit Exam' : 'Schedule Exam'} onClose={() => setShowForm(false)}>
-          <FormField label="Exam Name" value={form.name} onChange={v => setForm(f => ({ ...f, name: v }))} required placeholder="e.g. Unit Test 1 — Mathematics" />
+          <FormField label="Exam Name" value={form.name} onChange={v => setForm(f => ({ ...f, name: v }))} required placeholder="e.g. Unit Test 1 - Mathematics" />
           <FormField label="Type" type="select" value={form.exam_type} onChange={v => setForm(f => ({ ...f, exam_type: v }))} options={EXAM_TYPES} required />
           <FormField
             label="Class (optional)"

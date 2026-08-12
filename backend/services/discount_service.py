@@ -1,4 +1,4 @@
-"""Fee-discount domain service — the single shared write path for applying a fee
+"""Fee-discount domain service - the single shared write path for applying a fee
 discount (AI Layer Hardening, AD7 / Epic B, Story B.2).
 
 Both `POST /api/fees/discounts/apply` (REST) and the AI `apply_discount` tool call
@@ -9,7 +9,7 @@ immediately.
 
 **Parity decision (case-by-case, canonical = REST):** the old AI `tool_apply_discount`
 applied every discount directly, bypassing owner approval on children's fees (found
-defect B.2 — a live authority hole). The threshold gate is now centralized here and
+defect B.2 - a live authority hole). The threshold gate is now centralized here and
 enforced for the AI path too.
 
 Services raise domain exceptions, never `HTTPException`. The adapters map them.
@@ -94,7 +94,7 @@ async def apply_discount(db, actor_ctx: ActorContext, params: dict, *, session=N
             ),
         }
 
-    # Below threshold — apply immediately.
+    # Below threshold - apply immediately.
     original_amount = params.get("original_amount")
     effective_from = params.get("effective_from")
     if original_amount is None or effective_from is None:

@@ -16,7 +16,7 @@ const { loginViaApi, createAuthenticatedApi } = require('../support/fixtures/api
 
 const PRIMARY_API = process.env.API_URL || 'http://localhost:8000';
 
-test.describe('AI Write Rate Limiting — operator endpoints', () => {
+test.describe('AI Write Rate Limiting - operator endpoints', () => {
   let api;
   let backendSupportsFeature = false;
 
@@ -93,11 +93,11 @@ test.describe('AI Write Rate Limiting — operator endpoints', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// UI behavior — verifies the frontend's 429 handling using Playwright route
+// UI behavior - verifies the frontend's 429 handling using Playwright route
 // interception. Independent of backend support: we stub the network reply.
 // ────────────────────────────────────────────────────────────────────────────
 
-test.describe('AI Write Rate Limiting — frontend 429 handling', () => {
+test.describe('AI Write Rate Limiting - frontend 429 handling', () => {
   test('ConfirmActionCard transitions to rate_limited state on 429', async ({ page }) => {
     // Intercept every confirm POST and return the rate-limit shape.
     await page.route('**/api/chat/conversations/*/confirm', async route => {
@@ -125,7 +125,7 @@ test.describe('AI Write Rate Limiting — frontend 429 handling', () => {
     // For now, document the manual reproduction:
     //   1. Set rate limit to 0 for the owner role (PATCH operator endpoint).
     //   2. Ask the AI to perform a write action.
-    //   3. Click Confirm — expect the card to show amber notice + locked button.
+    //   3. Click Confirm - expect the card to show amber notice + locked button.
     //
     // The Python integration tests already cover the 429 server response.
     // This Playwright test asserts the route interceptor at least produces

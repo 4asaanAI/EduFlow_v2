@@ -36,7 +36,7 @@ const blankForm = {
 };
 
 // The canonical sub_category list, mirroring backend middleware/auth.py
-// VALID_SUB_CATEGORIES. The backend GATES ACCESS on these exact strings —
+// VALID_SUB_CATEGORIES. The backend GATES ACCESS on these exact strings -
 // require_access(..., sub_category="accountant") and the AI tool registry both
 // match them literally. A typo here silently grants nothing, which is why this
 // is a fixed list and not the free-text box it used to be.
@@ -80,15 +80,15 @@ const inputStyle = {
 
 // A person's job title as a human would say it.
 //
-// Every staff record already carries a readable `designation` — "Class Teacher",
-// "Teacher", "Principal" — populated for all 89 records. The table used to print
+// Every staff record already carries a readable `designation` - "Class Teacher",
+// "Teacher", "Principal" - populated for all 89 records. The table used to print
 // `role / sub_category` instead ("teacher / subject_teacher"), which reads as
 // machine output and duplicates the Type column beside it. Prefer the real
 // designation; fall back to a tidied sub_category, then role.
 function designationOf(profile) {
   if (profile.designation) return profile.designation;
   const raw = profile.sub_category || profile.role || profile.staff_type;
-  if (!raw) return '—';
+  if (!raw) return '-';
   return String(raw).split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
@@ -144,7 +144,7 @@ function StaffModal({ initialStaff, canEditLeaveBalances, onClose, onSaved }) {
     setForm((current) => {
       const next = { ...current, [key]: value };
       // Sub-categories are role-specific. Switching role must clear a now-invalid
-      // one, otherwise an admin could be saved carrying "class_teacher" — which
+      // one, otherwise an admin could be saved carrying "class_teacher" - which
       // matches no permission rule and silently grants nothing.
       if (key === 'role') {
         const allowed = (SUB_CATEGORIES[value] || []).map((s) => s.value);
@@ -203,7 +203,7 @@ function StaffModal({ initialStaff, canEditLeaveBalances, onClose, onSaved }) {
               </select>
             </label>
             {/* Owner is deliberately NOT offered. It is the highest privilege in
-                the platform and must never be grantable from the staff screen —
+                the platform and must never be grantable from the staff screen -
                 anyone who can add a staff member could otherwise mint a full
                 owner account. Owner is assigned out of band. */}
             <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Role
@@ -304,7 +304,7 @@ function ResetPasswordModal({ profile, onClose }) {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 220, padding: 16 }}>
       <div style={{ background: 'var(--c-input)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 24, width: 420, maxWidth: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-          <h3 style={{ margin: 0, color: 'var(--c-text)', fontSize: 16 }}>Reset Password — {profile.name}</h3>
+          <h3 style={{ margin: 0, color: 'var(--c-text)', fontSize: 16 }}>Reset Password - {profile.name}</h3>
           <button aria-label="Close" onClick={onClose} style={{ width: 36, height: 36, border: 0, background: 'transparent', color: 'var(--c-faint)', cursor: 'pointer' }}><X size={18} /></button>
         </div>
         {success ? (
@@ -342,7 +342,7 @@ export default function StaffTracker() {
   const { currentUser } = useUser();
   const [staff, setStaff] = useState([]);
   const [pendingLeaves, setPendingLeaves] = useState([]);
-  // Epic 8 — corrections people have asked for. Only the Owner and the
+  // Epic 8 - corrections people have asked for. Only the Owner and the
   // Principal may see or decide these, so nobody else even fetches them.
   const [changeRequests, setChangeRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -358,7 +358,7 @@ export default function StaffTracker() {
   // Owner request 10 decision 2 (2026-08-06): staff and teachers get the same three
   // states as students, the same recycle bin, and the same compulsory reason before
   // anything is destroyed. The controls are shared with the student screen for that
-  // reason — two copies of these words is how the two would drift apart.
+  // reason - two copies of these words is how the two would drift apart.
   const [enrolmentView, setEnrolmentView] = useState(ON_ROLL_VIEW);
   const [enrolmentCounts, setEnrolmentCounts] = useState(null);
   const [stateTarget, setStateTarget] = useState(null);
@@ -371,7 +371,7 @@ export default function StaffTracker() {
   const [attendanceStreamUpdatedAt, setAttendanceStreamUpdatedAt] = useState(null);
   const [, setClockTick] = useState(0);
   const canEditLeaveBalances = currentUser.role === 'owner' || currentUser.sub_category === 'principal';
-  // Mirrors the server's require_owner_or_principal gate. A convenience only —
+  // Mirrors the server's require_owner_or_principal gate. A convenience only -
   // the server refuses regardless of what this says.
   const canReviewChanges = currentUser.role === 'owner'
     || (currentUser.role === 'admin' && currentUser.sub_category === 'principal');
@@ -382,7 +382,7 @@ export default function StaffTracker() {
   const canErase = currentUser.role === 'owner';
   const attendanceLiveLabel = lastUpdatedLabel(attendanceStreamUpdatedAt);
 
-  // D-44 — deep link from the School Directory. A staff row there opens
+  // D-44 - deep link from the School Directory. A staff row there opens
   // `?tool=staff-tracker&focus=<id>`. This opens the SAME editor the row's own Edit
   // button opens; it is not a second way to edit a profile, which is the fork D-44
   // was written to avoid. The record is fetched by id because this list is paginated
@@ -400,7 +400,7 @@ export default function StaffTracker() {
 
     // The parameter is stripped AFTER the record is fetched, not before. Stripping
     // first re-runs this effect, and a cleanup that cancelled the in-flight request
-    // would throw away the answer it was waiting for — the deep link then silently
+    // would throw away the answer it was waiting for - the deep link then silently
     // did nothing, which is exactly the failure mode D-63 was about.
     (async () => {
       try {
@@ -424,7 +424,7 @@ export default function StaffTracker() {
   // UX-DR10: page size, remembered per table. Keyed 'staff', so sizing this
   // list does not resize the student list.
   const [pageSize, setPageSize] = useTablePageSize('staff');
-  // Both reset to page 1 — changing either can shrink the number of pages, and
+  // Both reset to page 1 - changing either can shrink the number of pages, and
   // being left on a page that no longer exists shows an empty list.
   const changePageSize = useCallback((n) => { setPageSize(n); setPage(1); }, [setPageSize]);
   const changeSort = useCallback((next) => { setSort(next); setPage(1); }, []);
@@ -460,7 +460,7 @@ export default function StaffTracker() {
           <ActionButton variant="secondary" onClick={() => setEditing(profile)} aria-label={`Edit ${profile.name}`}><Edit3 size={13} />Edit</ActionButton>
           {canResetPassword && <ActionButton variant="secondary" onClick={() => setResetTarget(profile)} aria-label={`Reset password for ${profile.name}`}><KeyRound size={13} />Password</ActionButton>}
           {/* Owner or principal: one button for all three states, in either
-              direction. This is also the only way back — before it, deactivating a
+              direction. This is also the only way back - before it, deactivating a
               colleague was a one-way door. */}
           {canChangeEnrolment && (
             <ActionButton variant="secondary" onClick={() => setStateTarget(profile)} aria-label={`Change status for ${profile.name}`}>
@@ -544,7 +544,7 @@ export default function StaffTracker() {
   const handleChangeRequest = async (requestId, status) => {
     let reason = '';
     if (status === 'rejected') {
-      // Optional, unlike a leave decision — a correction may simply be wrong,
+      // Optional, unlike a leave decision - a correction may simply be wrong,
       // and forcing a sentence would make people type "no" to get past it.
       reason = window.prompt('Why is this not being approved? (optional)') || '';
     }
@@ -745,7 +745,7 @@ export default function StaffTracker() {
                   <div style={{ fontWeight: 650, color: 'var(--c-text)', fontSize: 14 }}>
                     {req.requested_by_name || 'A member of staff'}
                   </div>
-                  {/* Old beside new — a reviewer should never have to go and
+                  {/* Old beside new - a reviewer should never have to go and
                       look up what the current value was. */}
                   {Object.entries(req.requested || {}).map(([field, value]) => (
                     <div key={field} style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 5, fontSize: 12, flexWrap: 'wrap' }}>

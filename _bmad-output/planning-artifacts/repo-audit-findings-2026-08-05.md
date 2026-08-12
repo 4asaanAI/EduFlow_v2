@@ -193,14 +193,14 @@ without a reason. A warnings gate is optional but keeps this from regrowing.
 
 ### A-9 · Stale baselines still printed in two docs — LOW (recurring D-51 class)
 `AGENTS.md` and `CLAUDE.md` still carry "2012 passed / 286 frontend, measured 2026-08-04";
-today's measured numbers are 2163 / 439. `KNOWN_TEST_FAILURES.md` still opens with a 2026-07-08
+today's measured numbers are 2163 / 439. `_bmad-output/outdated/KNOWN_TEST_FAILURES.md` still opens with a 2026-07-08
 "1278 passed" story. Reword all three to state only "the bar is 0 failures" and point at the
 commands, so counts can never go stale again.
 
 > **✅ DONE 2026-08-05.** Every pass count is out of `CLAUDE.md` and `AGENTS.md`; both now
 > say the bar is ZERO failures and tell the reader to run the command and read what it
 > prints, with a line explaining that written-down counts have gone stale and been reused
-> as targets. `KNOWN_TEST_FAILURES.md` gained a header marking it a closed July 2026
+> as targets. `_bmad-output/outdated/KNOWN_TEST_FAILURES.md` gained a header marking it a closed July 2026
 > post-mortem, explicitly not the current baseline, and its "1278 passed" figure is gone.
 >
 > One genuinely misleading line was found while doing this and is worth naming: `CLAUDE.md`
@@ -216,7 +216,7 @@ Verified against the registers and the code this session. Do NOT re-derive these
 
 **Doable with the owner's approval first:**
 - **Data load (D-06…D-10 / Task 2):** read-only comparison is done (`f82f685`); writing awaits
-  the owner's yes. Non-negotiable rules in `_bmad-output/HANDOFF-2026-08-04-evening.md`: match on
+  the owner's yes. Non-negotiable rules in `_bmad-output/outdated/handoffs/HANDOFF-2026-08-04-evening.md`: match on
   admission number only; never take class/section from the 2025-26 detainees workbook.
 
 **Blocked on credentials / environment, not code:**

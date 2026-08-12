@@ -1,7 +1,7 @@
-"""A–D review — atomicity proofs that need a real transaction (mongo_real tier).
+"""A–D review - atomicity proofs that need a real transaction (mongo_real tier).
 
 Pins the fix for the review's top finding: notification/audit Mongo writes performed
-by a service INSIDE the executor's transaction must roll back with it (AD14 — "a
+by a service INSIDE the executor's transaction must roll back with it (AD14 - "a
 rolled-back plan sends nothing"). FakeDb cannot prove rollback, so it lives here.
 """
 
@@ -35,7 +35,7 @@ async def test_notification_and_audit_roll_back_with_aborted_txn(mongo_real_db, 
         with pytest.raises(RuntimeError):
             await plan_executor.run(plan, db=mongo_real_db)
 
-        # Everything rolled back — no torn state, no phantom notification/audit.
+        # Everything rolled back - no torn state, no phantom notification/audit.
         assert await mongo_real_db.fee_transactions.count_documents({}) == 0
         assert await mongo_real_db.notifications.count_documents({}) == 0
         assert await mongo_real_db.audit_logs.count_documents({}) == 0

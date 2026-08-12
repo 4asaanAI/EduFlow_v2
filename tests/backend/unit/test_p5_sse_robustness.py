@@ -1,4 +1,4 @@
-"""Part 2 Patch P5: SSE generator robustness — module-level invariants.
+"""Part 2 Patch P5: SSE generator robustness - module-level invariants.
 
 Tests the constants and lightweight helpers that protect the SSE generator
 from hangs, infinite loops, and malformed events:
@@ -68,7 +68,7 @@ def test_scope_fallback_is_proper_scope_object():
     """The self_only fallback Scope used in chat.py exception path must be valid.
 
     Verifies that Scope(type='self_only', role='teacher', user_id='u1') has
-    both a .filter() method and a .branch_id attribute — the two things the
+    both a .filter() method and a .branch_id attribute - the two things the
     downstream code expects.
     """
     scope = Scope(type="self_only", role="teacher", user_id="u1")

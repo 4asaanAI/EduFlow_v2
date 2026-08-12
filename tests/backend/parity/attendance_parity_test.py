@@ -1,8 +1,8 @@
-"""Story A.1 — dual-entrypoint parity for attendance.
+"""Story A.1 - dual-entrypoint parity for attendance.
 
-Drives the SAME seed through both write entrypoints — the REST route via
+Drives the SAME seed through both write entrypoints - the REST route via
 TestClient (full middleware/auth) and the AI `tool_mark_attendance` via its
-real dispatch fn — and asserts the DB blast radius (records + audit) is
+real dispatch fn - and asserts the DB blast radius (records + audit) is
 byte-identical except a volatile allowlist (`id`, `_id`, `created_at`,
 `timestamp`). This is the AD10 dual-entrypoint gate (a direct service call from
 both sides would be a tautology); the full normalizer/corpus harness lands in Epic F.

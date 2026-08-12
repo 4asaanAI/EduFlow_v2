@@ -1,4 +1,4 @@
-"""Epic R10.4 — "What I've learned" transparency & control surface.
+"""Epic R10.4 - "What I've learned" transparency & control surface.
 
 Owner/Principal-only endpoints that expose (and let the owner control) everything the
 assistant has learned about them: active memories, saved routines (skills), and
@@ -51,7 +51,7 @@ async def overview(request: Request, user: dict = Depends(require_owner_or_princ
         stored = s.get("tool_signature") or ""
         current = skills_store.tools_signature(s.get("tool_names") or [])
         s["needs_update"] = bool(stored and current and stored != current)
-    # Only THIS reviewer's own pending queue — never expose another staff member's
+    # Only THIS reviewer's own pending queue - never expose another staff member's
     # free-text "Improve" notes cross-user (DPDP; owner/principal review what they flagged).
     pending = await feedback_store.list_pending_corrections(db, school_id=get_school_id(), user_id=user.get("id"))
     return {
@@ -105,7 +105,7 @@ async def edit_memory(memory_id: str, request: Request, user: dict = Depends(req
 
 @router.post("/memories/{memory_id}/deactivate")
 async def deactivate_memory(memory_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
-    """AC1: soft-deactivate (or reactivate) a memory — excluded from recall, kept for history."""
+    """AC1: soft-deactivate (or reactivate) a memory - excluded from recall, kept for history."""
     db = get_db()
     try:
         body = await request.json()
@@ -144,7 +144,7 @@ async def bulk_delete_memories(request: Request, user: dict = Depends(require_ow
     ids = [str(i) for i in raw_ids if i]
     if not ids:
         raise HTTPException(400, "ids is required")
-    # No silent truncation (XM10 ethos) — tell the caller if they exceeded the cap.
+    # No silent truncation (XM10 ethos) - tell the caller if they exceeded the cap.
     if len(ids) > _MAX_BULK_DELETE:
         raise HTTPException(400, f"too many ids (max {_MAX_BULK_DELETE} per request)")
     ctx = _ctx(user)

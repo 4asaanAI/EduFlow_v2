@@ -375,7 +375,7 @@ function ClusterAnalysisTab() {
 
   // D-24: this table was hand-rolled with no sorting. It keeps its own markup (each row
   // carries a Reassign control) and takes its sorting from the shared hook. Ordering by
-  // Saving is the point of the screen — biggest wins first.
+  // Saving is the point of the screen - biggest wins first.
   const suboptimalSortAccessors = React.useMemo(() => [
     (r) => r.student_name || '',
     (r) => r.admission_number || '',
@@ -399,10 +399,10 @@ function ClusterAnalysisTab() {
           {result && (
             <div style={{ display: 'flex', gap: 16, marginTop: 10 }}>
               <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>
-                Students with GPS: <strong style={{ color: 'var(--c-text)' }}>{meta.total_with_coords ?? '—'}</strong>
+                Students with GPS: <strong style={{ color: 'var(--c-text)' }}>{meta.total_with_coords ?? '-'}</strong>
               </div>
               <div style={{ fontSize: 12, color: 'var(--tool-hex-fbbf24)' }}>
-                Suboptimal assignments: <strong>{meta.total_suboptimal ?? '—'}</strong>
+                Suboptimal assignments: <strong>{meta.total_suboptimal ?? '-'}</strong>
               </div>
             </div>
           )}
@@ -440,7 +440,7 @@ function ClusterAnalysisTab() {
                   onMouseEnter={e => e.currentTarget.style.background = 'var(--c-deep)'}
                   onMouseLeave={e => e.currentTarget.style.background = ''}>
                   <td style={tdStyle}>{row.student_name}</td>
-                  <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 11, color: 'var(--c-muted)' }}>{row.admission_number || '—'}</td>
+                  <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 11, color: 'var(--c-muted)' }}>{row.admission_number || '-'}</td>
                   <td style={tdStyle}>{row.current_zone_name}</td>
                   <td style={{ ...tdStyle, color: 'var(--tool-hex-f87171)', fontWeight: 600 }}>{row.current_distance_km} km</td>
                   <td style={{ ...tdStyle, color: 'var(--tool-hex-34d399)', fontWeight: 600 }}>{row.nearest_zone_name}</td>

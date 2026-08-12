@@ -1,10 +1,10 @@
-"""Staff-attendance domain service — single shared write path for bulk staff
+"""Staff-attendance domain service - single shared write path for bulk staff
 attendance marking (AI Layer Hardening, AD7).
 
 Both `POST /api/attendance/staff/bulk` (REST) and the AI `mark_staff_attendance`
 tool call `mark_staff_attendance(...)`, so an AI staff-attendance write is
 byte-identical to the panel write: same upsert-per-staff semantics, same SSE
-payload, plus ONE audit row per bulk call (EC-14.1 — matching the student bulk
+payload, plus ONE audit row per bulk call (EC-14.1 - matching the student bulk
 path; the legacy REST handler wrote none, parity decision = add it to both).
 
 Services raise domain exceptions, never `HTTPException`. The adapters map them.
@@ -60,7 +60,7 @@ async def mark_staff_attendance(
             raise StaffAttendanceValidationError("every record needs a staff_id")
         if rec.get("status") not in VALID_STATUSES:
             raise StaffAttendanceValidationError(
-                f"invalid status '{rec.get('status')}' — must be one of {sorted(VALID_STATUSES)}"
+                f"invalid status '{rec.get('status')}' - must be one of {sorted(VALID_STATUSES)}"
             )
 
     school_id = actor_ctx.school_id
@@ -73,7 +73,7 @@ async def mark_staff_attendance(
             check_out=rec.get("check_out"),
         )
         await db.staff_attendance.update_one(
-            # branch-scope: intentional — staff_attendance is keyed (staff_id, date)
+            # branch-scope: intentional - staff_attendance is keyed (staff_id, date)
             # school-wide, matching the legacy REST upsert.
             scoped_filter({"staff_id": rec["staff_id"], "date": target_date}, school_id),
             {"$set": {**_serialize(att), "_id": att.id, "schoolId": school_id}},

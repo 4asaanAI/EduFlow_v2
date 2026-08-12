@@ -1,4 +1,4 @@
-"""Unit + integration tests for require_access() — Part 4 Story P4-2.1.
+"""Unit + integration tests for require_access() - Part 4 Story P4-2.1.
 
 Tests are HTTP integration tests via a tiny in-process FastAPI app with a
 test endpoint wired to Depends(require_access(...)).  The TestClient handles

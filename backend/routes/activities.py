@@ -1,4 +1,4 @@
-"""School activities — houses, student positions, sports teams."""
+"""School activities - houses, student positions, sports teams."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -53,7 +53,7 @@ VALID_SPORTS = {
 
 
 def _scope(extra: dict | None = None) -> dict:
-    return scoped_filter(extra or {}, get_school_id())  # branch-scope: intentional — this file's school-scope helper; it scopes to the school only, and callers pass branch_id through scoped_query where a query is branch-sensitive
+    return scoped_filter(extra or {}, get_school_id())  # branch-scope: intentional - this file's school-scope helper; it scopes to the school only, and callers pass branch_id through scoped_query where a query is branch-sensitive
 
 
 # ─────────────────── Houses ────────────────────────────────────────────────────
@@ -91,7 +91,7 @@ async def list_houses(request: Request, user: dict = Depends(require_role("owner
     return {"success": True, "data": houses}
 
 
-# ── House CRUD (Story K.2) — service-backed parity reference for the AI tools ──
+# ── House CRUD (Story K.2) - service-backed parity reference for the AI tools ──
 # No new UI: these wrap the academic_structure_service single write path. Points
 # changes stay on the dedicated audited award_house_points path, not here.
 @router.post("/houses")

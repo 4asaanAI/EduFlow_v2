@@ -139,7 +139,7 @@ async def test_commit_import_skips_duplicates_without_overwrite(monkeypatch):
 
 def test_import_is_owner_only(monkeypatch):
     # The /api/import routes use Depends(require_owner). Verify that helper
-    # rejects non-owner roles — the same gate FastAPI invokes on every request.
+    # rejects non-owner roles - the same gate FastAPI invokes on every request.
     from backend.middleware import auth as auth_module
 
     class _Req:

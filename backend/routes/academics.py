@@ -39,7 +39,7 @@ def get_user(req: Request):
 
 
 def _academic_query(extra: dict | None = None) -> dict:
-    return scoped_filter(extra or {}, get_school_id())  # branch-scope: intentional — this file's school-scope helper; it scopes to the school only, and callers pass branch_id through scoped_query where a query is branch-sensitive
+    return scoped_filter(extra or {}, get_school_id())  # branch-scope: intentional - this file's school-scope helper; it scopes to the school only, and callers pass branch_id through scoped_query where a query is branch-sensitive
 
 
 async def _map_by_id(collection, ids, projection: dict | None = None) -> dict:
@@ -59,7 +59,7 @@ async def _map_by_id(collection, ids, projection: dict | None = None) -> dict:
 
 async def _teacher_can_access_class(db, user: dict, class_id: str | None) -> bool:
     """A teacher may act on a class only if the Academic Structure assigns it to
-    them — as the class teacher OR by teaching a subject in it. Non-teachers and
+    them - as the class teacher OR by teaching a subject in it. Non-teachers and
     calls without a class_id pass through (their own gates apply)."""
     if user.get("role") != "teacher" or not class_id:
         return True
@@ -266,7 +266,7 @@ async def get_results(request: Request, exam_id: str = None, student_id: str = N
         if own:
             query["student_id"] = own["id"]
     elif user["role"] == "teacher" and not class_id:
-        # No explicit class filter — restrict to students in the teacher's assigned
+        # No explicit class filter - restrict to students in the teacher's assigned
         # classes so the school-wide results set never leaks across classes.
         scope = await compute_teacher_scope(db, user, get_school_id())
         if not scope["all_class_ids"]:
@@ -279,7 +279,7 @@ async def get_results(request: Request, exam_id: str = None, student_id: str = N
         query["published"] = True
     results = await db.exam_results.find(_academic_query(query), {"_id": 0}).to_list(500)
     enriched = []
-    # NEW-04/T7: two batched lookups (were two find_one calls per result row —
+    # NEW-04/T7: two batched lookups (were two find_one calls per result row -
     # up to 1,000 round trips for one screen).
     subject_map = await _map_by_id(db.subjects, [r.get("subject_id") for r in results])
     student_map = await _map_by_id(db.students, [r.get("student_id") for r in results])
@@ -362,7 +362,7 @@ async def bulk_enter_results(request: Request, user: dict = Depends(require_role
             errors.append({"row": i + 1, "student_id": student_id, "reason": "Marks and max_marks must be numeric"})
             continue
 
-        # Validate marks ceiling — collect error, don't abort
+        # Validate marks ceiling - collect error, don't abort
         if max_marks <= 0 or marks < 0 or marks > max_marks:
             errors.append({
                 "row": i + 1,
@@ -411,7 +411,7 @@ async def bulk_enter_results(request: Request, user: dict = Depends(require_role
 @router.patch("/results/{result_id}/publish")
 async def publish_result(result_id: str, request: Request,
                          user: dict = Depends(require_owner_or_principal)):
-    """Admin/owner can publish exam results — makes them visible to students."""
+    """Admin/owner can publish exam results - makes them visible to students."""
     from datetime import timezone
     db = get_db()
     bid = user.get("branch_id")
@@ -540,9 +540,9 @@ async def _exam_editable_subjects(db, user: dict, class_id: str):
     """Which subjects of ``class_id`` the user may edit for an exam.
 
     Returns a tuple ``(editable_all, editable_subject_ids)``:
-      * owner               → (False, set())            — view only
-      * principal/management → (True, None)             — all subjects
-      * class teacher        → (True, None)             — all subjects of their class
+      * owner               → (False, set())            - view only
+      * principal/management → (True, None)             - all subjects
+      * class teacher        → (True, None)             - all subjects of their class
       * subject teacher      → (False, {their subj ids})
     """
     role = user.get("role")
@@ -555,7 +555,7 @@ async def _exam_editable_subjects(db, user: dict, class_id: str):
         if class_id in set(scope["class_teacher_class_ids"]):
             return True, None
         return False, {s["id"] for s in scope["subjects"] if s.get("class_id") == class_id}
-    # any other admin sub-role — no edit
+    # any other admin sub-role - no edit
     return False, set()
 
 
@@ -879,7 +879,7 @@ Make questions appropriate for Classes 9-12 CBSE standard."""
     import uuid
     session_id = f"qp-{uuid.uuid4()}"
     try:
-        # R1.7 AC2: chat() returns an LLMResult — persist/return result.text ONLY
+        # R1.7 AC2: chat() returns an LLMResult - persist/return result.text ONLY
         # (audit X1: the raw tuple/dict was previously saved as paper content),
         # and surface a real 503 when the model was unavailable.
         result = await llm_client.chat(
@@ -895,7 +895,7 @@ Make questions appropriate for Classes 9-12 CBSE standard."""
             session_id
         )
         if not result.ok:
-            raise HTTPException(503, "AI is temporarily unavailable — could not generate the question paper. Please try again.")
+            raise HTTPException(503, "AI is temporarily unavailable - could not generate the question paper. Please try again.")
         paper_text = result.text
         # Save to DB
         db = get_db()
@@ -1133,7 +1133,7 @@ async def delete_timetable_slot(slot_id: str, request: Request, user: dict = Dep
 
 @router.put("/timetable/import")
 async def bulk_import_timetable(request: Request, user: dict = Depends(require_role("admin", "owner"))):
-    """Bulk import timetable entries — duplicates (same class+period+day) are replaced."""
+    """Bulk import timetable entries - duplicates (same class+period+day) are replaced."""
     db = get_db()
     body = await request.json()
     entries = body if isinstance(body, list) else body.get("entries", [])
@@ -1170,7 +1170,7 @@ async def bulk_import_timetable(request: Request, user: dict = Depends(require_r
         if teacher_id and teacher_id not in valid_teacher_ids:
             skipped += 1
             continue
-        # NEW-04/T7 audit: NOT an N+1 to batch away — this is the read-before-write of
+        # NEW-04/T7 audit: NOT an N+1 to batch away - this is the read-before-write of
         # an upsert loop and must see rows written earlier in this same import.
         existing = await db.timetable_slots.find_one({"class_id": class_id, "day_of_week": day, "period_number": period})
         try:

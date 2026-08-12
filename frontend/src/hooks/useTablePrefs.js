@@ -23,7 +23,7 @@ import { useCallback, useState } from 'react';
  * page is 61 pages to walk through.
  *
  * ALL_ROWS is a sentinel, not a count. A screen that supports it asks the server for
- * everything — in batches, because a single request is capped at 500 rows — and then
+ * everything - in batches, because a single request is capped at 500 rows - and then
  * shows the lot on one page. It is deliberately last, and deliberately not the
  * default: on the student list it means holding 1,802 rows in one screen.
  */
@@ -41,7 +41,7 @@ export function pageSizeLabel(size) {
  * The All Chats page lets a person tick a whole page and delete it, and the server
  * refuses a bulk delete of more than CONVERSATION_BULK_DELETE_MAX (100) at once. A
  * page of 250, 500 or All would therefore let someone build a selection the server
- * would reject — so those tables are offered the smaller menu instead. This is the
+ * would reject - so those tables are offered the smaller menu instead. This is the
  * safeguard the existing test in Epic6NothingGetsLost.test.js was written to demand.
  */
 export const BULK_SAFE_PAGE_SIZES = PAGE_SIZES.filter((n) => n !== ALL_ROWS && n <= 100);
@@ -62,7 +62,7 @@ export function readStoredPageSize(tableId, allowed = PAGE_SIZES) {
     const raw = window.localStorage.getItem(keyFor(tableId));
     if (raw === null) return DEFAULT_PAGE_SIZE;
     const n = Number(raw);
-    // Number('') is 0 and Number('abc') is NaN — both are rejected here, as is
+    // Number('') is 0 and Number('abc') is NaN - both are rejected here, as is
     // any size no longer on the menu.
     if (!Number.isInteger(n) || !allowed.includes(n)) return DEFAULT_PAGE_SIZE;
     return n;

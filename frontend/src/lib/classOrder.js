@@ -3,7 +3,7 @@
  *
  * Classes come back from the API in insertion order, which is effectively random
  * ("11th-A, 1st-A, 2nd-C, 2nd-E, 3rd-A, … LKG-A, NUR-D, 11th-B …"). A plain
- * alphabetical sort is no better — it puts 10th, 11th and 12th before 1st, and
+ * alphabetical sort is no better - it puts 10th, 11th and 12th before 1st, and
  * scatters the pre-primary classes.
  *
  * The Aaryans runs NUR → LKG → UKG → 1st … 12th, each with sections A-E.

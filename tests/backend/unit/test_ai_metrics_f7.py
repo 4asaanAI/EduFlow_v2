@@ -1,4 +1,4 @@
-"""Story F.7 — pilot observability metrics (PII-free, queryable)."""
+"""Story F.7 - pilot observability metrics (PII-free, queryable)."""
 
 from __future__ import annotations
 

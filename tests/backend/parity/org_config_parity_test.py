@@ -1,4 +1,4 @@
-"""Story K.3 — dual-entrypoint parity for org-config CRUD.
+"""Story K.3 - dual-entrypoint parity for org-config CRUD.
 
 Same seed + same actor (owner) through the REST routes
 (POST/PUT/DELETE /api/settings/branches, PATCH /api/settings/school,

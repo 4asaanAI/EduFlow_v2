@@ -168,7 +168,7 @@ def test_create_timetable_slot_admin(client, fake_db):
 
 
 def test_teacher_cannot_create_timetable_slot(client):
-    """Teacher cannot create timetable slots — must get 403."""
+    """Teacher cannot create timetable slots - must get 403."""
     resp = client.post(
         "/api/academics/timetable",
         json={

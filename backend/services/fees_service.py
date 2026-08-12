@@ -1,4 +1,4 @@
-"""Fee-payment domain service — the single shared write path for recording a fee
+"""Fee-payment domain service - the single shared write path for recording a fee
 payment (AI Layer Hardening, AD7 / Epic B, Story B.1).
 
 Both `POST /api/fees/transactions` (REST) and the AI `record_fee_payment` tool call
@@ -7,7 +7,7 @@ partial-payment status detection, the same idempotency guard (one transaction pe
 `student_id|fee_period|fee_head` key), the same audit row, and the same SSE update.
 
 **Parity decision (case-by-case, canonical = REST):** the old AI `tool_record_fee_payment`
-had NO idempotency guard (a confirm retry double-charged — found defect B.1), ignored
+had NO idempotency guard (a confirm retry double-charged - found defect B.1), ignored
 partial payments, and emitted no SSE. All three are corrected to match the REST route.
 
 Services raise domain exceptions, never `HTTPException`. The adapters map them.
@@ -33,7 +33,7 @@ class FeeValidationError(Exception):
 
 
 def normalize_fee_key(student_id: Optional[str], fee_period: Optional[str], fee_head: Optional[str]) -> str:
-    """Canonical idempotency key — identical to the REST route's `_normalize_fee_key`."""
+    """Canonical idempotency key - identical to the REST route's `_normalize_fee_key`."""
     return f"{student_id}|{fee_period}|{(fee_head or '').strip().lower()}"
 
 
@@ -187,7 +187,7 @@ async def correct_transaction(
     session=None,
     publish_fn: Optional[Callable[..., Awaitable]] = None,
 ) -> dict:
-    """Correct a fee transaction (shared write path — REST PATCH
+    """Correct a fee transaction (shared write path - REST PATCH
     /transactions/{id}/correct + AI `correct_fee_transaction`).
 
     params: {transaction_id, reason, <any of _CORRECTABLE_FIELDS>}
@@ -286,7 +286,7 @@ async def delete_transaction(
     session=None,
     publish_fn: Optional[Callable[..., Awaitable]] = None,
 ) -> dict:
-    """Soft-delete a fee transaction (shared write path — REST DELETE
+    """Soft-delete a fee transaction (shared write path - REST DELETE
     /transactions/{id} + AI `delete_fee_transaction`). The record is retained
     with deleted=True for the financial trail; never hard-removed.
     """
@@ -314,7 +314,7 @@ async def delete_transaction(
         {"$set": {"deleted": True, "deleted_at": now, "deleted_by": actor_ctx.user_id}},
         **_session_kwargs(session),
     )
-    # F.10: actor-tagged deletion audit — who deleted what, when.
+    # F.10: actor-tagged deletion audit - who deleted what, when.
     await write_audit_doc(
         db,
         {

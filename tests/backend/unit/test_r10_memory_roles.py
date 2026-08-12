@@ -1,4 +1,4 @@
-"""Epic R10.5 — MEMORY_ROLES policy switch (mirrors LOCKDOWN_ENABLED).
+"""Epic R10.5 - MEMORY_ROLES policy switch (mirrors LOCKDOWN_ENABLED).
 
 - AC1: a single config switch controls which roles get memory/skills; widening is a
        config change, not an engine change.

@@ -14,7 +14,7 @@ import { useColumnSort, SortableHeaderRow } from './tools/ToolPage';
  * presigned URL is ~1,200 characters and the model could not reproduce it, so the
  * link is minted server-side when the person taps download. That fresh link cannot
  * be stale, and any failure (missing file, no access) comes back as our own plain
- * message — never a raw S3 error page.
+ * message - never a raw S3 error page.
  *
  * Two things stay true from before. A tap that silently fails is Epic 4's defect in a
  * new place, so a failure always says what to do. And the file name and type are
@@ -22,7 +22,7 @@ import { useColumnSort, SortableHeaderRow } from './tools/ToolPage';
  *
  * Backwards compatibility: conversations from before this change hold a raw
  * `download_url` and no `file_id`. Those links are expired and would render S3's XML
- * error, so the card does not follow them — it says the link has expired and to ask
+ * error, so the card does not follow them - it says the link has expired and to ask
  * again, which is Story 10.3's acceptance criterion.
  */
 export function GeneratedFile({ block }) {
@@ -162,7 +162,7 @@ export function GeneratedFile({ block }) {
 // FL (R8.4 AC3): the previous `FORBID_ATTR: ['style']` stripped the renderer's
 // OWN inline styling, so AI markdown rendered as unstyled plain text. Rather than
 // ALLOW `style` (which would let AI-authored content inject a dangerous style
-// value — DOMPurify does NOT reliably neutralize `url(javascript:...)` under
+// value - DOMPurify does NOT reliably neutralize `url(javascript:...)` under
 // jsdom), the markdown functions below emit BARE tags and rely on the existing
 // `.prose-chat` CSS (theme-aware element selectors in index.css) for styling.
 // The sanitizer stays strict: it drops every style/class/event attr (so AI
@@ -174,7 +174,7 @@ const MARKDOWN_SANITIZE_CONFIG = {
   // a bare <div> so the table can scroll sideways inside its own box (owner request
   // 8, 2026-08-06). Without the wrapper the nearest scrolling ancestor is the reply
   // itself, so dragging a wide table dragged the whole answer with it. A <div> with
-  // no attributes is inert — class, style and every event attribute are still
+  // no attributes is inert - class, style and every event attribute are still
   // stripped below, so this does not widen what AI-authored content can do.
   ALLOWED_TAGS: ['div', 'h2', 'h3', 'h4', 'p', 'ul', 'ol', 'li', 'hr', 'br', 'strong',
     'em', 'code', 'pre', 'a', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
@@ -227,7 +227,7 @@ function renderTable(lines) {
   const bodyRows = rows.filter((_, i) => i > 1);
   // The wrapper is what scrolls, not the reply. See MARKDOWN_SANITIZE_CONFIG above
   // and the `.prose-chat > div:has(> table)` rule in index.css. It must stay a bare
-  // <div> with no attributes — the sanitizer strips class and style, so the CSS finds
+  // <div> with no attributes - the sanitizer strips class and style, so the CSS finds
   // it structurally.
   let html = '<div><table><thead><tr>';
   headers.forEach(h => { html += `<th>${h}</th>`; });
@@ -247,7 +247,7 @@ function processInline(text) {
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/`(.+?)`/g, '<code>$1</code>')
     // FL (R8.4 AC3): emit a real href (was a hrefless, unclickable <a>). Only a
-    // safe protocol survives here — DOMPurify's ALLOWED_URI_REGEXP is the backstop.
+    // safe protocol survives here - DOMPurify's ALLOWED_URI_REGEXP is the backstop.
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label, url) => {
       const clean = String(url).trim();
       const safe = /^(?:https?:\/\/|mailto:|tel:|\/)/i.test(clean);
@@ -443,7 +443,7 @@ function FeedbackButtons({ message, isDark }) {
 function ToolTraceSummary({ calls, recalledMemories, isDark }) {
   const validCalls = (calls || []).filter(call => call?.tool);
   // R10.4 AC2: recalled memories are disclosed in the same "Data used" footer.
-  // Require text — a ref with no text is nothing to disclose to the user.
+  // Require text - a ref with no text is nothing to disclose to the user.
   const memories = (recalledMemories || []).filter(m => m && m.text);
   if (validCalls.length === 0 && memories.length === 0) return null;
 
@@ -488,7 +488,7 @@ function ToolTraceSummary({ calls, recalledMemories, isDark }) {
                 <span style={{ color: '#a78bfa', fontSize: 11, flexShrink: 0, alignSelf: 'flex-start' }}>🧠 remembered</span>
                 {/* Owner request 18 (2026-08-06): this was clamped to one line with an
                     ellipsis, so every note was cut off mid-sentence and there was no
-                    way to read the rest — the panel exists precisely to show what Flo
+                    way to read the rest - the panel exists precisely to show what Flo
                     used, and a truncated note does not show it. It wraps now, and the
                     panel body scrolls if the list gets long. */}
                 <span style={{
@@ -535,7 +535,7 @@ function ToolTraceSummary({ calls, recalledMemories, isDark }) {
 
 // A file the user attached is sent to Flo as `[File attached: NAME]\n\n<the whole
 // file text>` (see InputBar.handleSend) so the model can read it. That full text must
-// NOT be shown back to the person — it turns their own message into a wall of the
+// NOT be shown back to the person - it turns their own message into a wall of the
 // document. Split the marker off so the bubble shows what they typed plus a compact
 // chip, the way every other chat tool shows an attachment. The text still reaches the
 // model unchanged; this only changes what is DISPLAYED.
@@ -595,7 +595,7 @@ export default function MessageRenderer({ message, isStreaming, onActionButton }
 
           HIDDEN ON PHONES (owner request 7, 2026-08-06). Repeated on every single
           reply, the 28px face plus its 14px gutter took 42px off a ~390px screen for
-          the length of the whole conversation — and it says the same thing every
+          the length of the whole conversation - and it says the same thing every
           time, on a screen where only Flo and you are talking. It stays on desktop,
           where the width is there and it keeps a long thread readable.
 

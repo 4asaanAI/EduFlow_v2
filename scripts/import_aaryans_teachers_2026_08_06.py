@@ -129,7 +129,7 @@ async def main(apply: bool) -> int:
         next_num = (max(nums) + 1) if nums else 1
 
         print("=" * 68)
-        print("TEACHER ADDITIONS — source: Teachers-06-08-2026-12-09.xlsx")
+        print("TEACHER ADDITIONS - source: Teachers-06-08-2026-12-09.xlsx")
         print("=" * 68)
         print(f"teachers in the export        : {len(export)}")
         print(f"staff already on the platform : {len(staff)}")
@@ -148,7 +148,7 @@ async def main(apply: bool) -> int:
         print("  (names -> aaryans_database/_teachers_to_create.txt)")
 
         if not apply:
-            print("\nDRY RUN — nothing written. Re-run with --apply to write.")
+            print("\nDRY RUN - nothing written. Re-run with --apply to write.")
             return 0
 
         docs = []
@@ -199,7 +199,7 @@ async def main(apply: bool) -> int:
         total = await db.staff.count_documents({"schoolId": SCHOOL_ID})
         print(f"created                       : {len(docs)}")
         print(f"staff on the platform now     : {total}")
-        print("logins created                : 0 (no credentials in the export — deliberate)")
+        print("logins created                : 0 (no credentials in the export - deliberate)")
         return 0
     finally:
         client.close()

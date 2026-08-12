@@ -16,13 +16,13 @@ import pytest
 from ai.content_filter import filter_response, BLOCKED_TOPIC_RESPONSE
 
 
-# ─── test 1: student role — blocked term is replaced ─────────────────────────
+# ─── test 1: student role - blocked term is replaced ─────────────────────────
 
 def test_filter_response_student_blocks_sensitive_terms():
     """filter_response replaces blocked drug terms in student role output."""
     input_text = "the student took cocaine"
     result = filter_response(input_text, "student")
-    # The original text must not be returned unchanged — it's blocked
+    # The original text must not be returned unchanged - it's blocked
     assert result != input_text
     # The replacement should be the standard blocked-topic message
     assert result == BLOCKED_TOPIC_RESPONSE
@@ -43,7 +43,7 @@ def test_filter_response_student_empty_input():
     """filter_response('', 'student') returns empty or safe value without raising."""
     result = filter_response("", "student")
     assert isinstance(result, str)
-    assert len(result) >= 0  # empty string or replacement — either is acceptable
+    assert len(result) >= 0  # empty string or replacement - either is acceptable
 
 
 # ─── test 4: filtering clean JSON does not break JSON parsability ─────────────
@@ -53,7 +53,7 @@ def test_filter_on_json_dumps_is_stable():
     data = [{"value": "normal school data"}, {"value": "attendance report"}]
     json_str = json.dumps(data)
     result = filter_response(json_str, "student")
-    # Clean content should pass through — must still be parseable JSON
+    # Clean content should pass through - must still be parseable JSON
     parsed = json.loads(result)
     assert isinstance(parsed, list)
 
@@ -73,7 +73,7 @@ def test_action_buttons_filtered_same_as_rich_blocks():
     ]
     json_str = json.dumps(action_buttons)
     result = filter_response(json_str, "student")
-    # Clean content — must still parse as a list
+    # Clean content - must still parse as a list
     parsed = json.loads(result)
     assert isinstance(parsed, list)
     assert len(parsed) == 2

@@ -42,7 +42,7 @@ def test_protected_get_routes_require_auth(client):
             continue
         if "GET" not in route.methods:
             continue
-        # Skip parameterised paths that require IDs — use a dummy value
+        # Skip parameterised paths that require IDs - use a dummy value
         test_path = path
         for param in route.param_convertors:
             test_path = test_path.replace("{" + param + "}", "test-id-123")

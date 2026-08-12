@@ -1,4 +1,4 @@
-"""Unit tests for backend/services/ai_rate_limiter.py — Story 7-48."""
+"""Unit tests for backend/services/ai_rate_limiter.py - Story 7-48."""
 
 from __future__ import annotations
 
@@ -147,7 +147,7 @@ async def test_resolve_limit_ignores_expired_override():
 async def test_resolve_limit_falls_back_on_db_error():
     rl = _import_module()
     db = _FakeOverrideDb(raise_on_find=True)
-    # YAML default for owner is 50 — error path must not throw.
+    # YAML default for owner is 50 - error path must not throw.
     assert await rl.resolve_limit(role="owner", school_id="school-1", db=db) == 50
 
 
@@ -214,7 +214,7 @@ async def test_counter_resets_at_next_hour_bucket():
     rl = _import_module()
     db = _build_full_fake_db()
 
-    # 50 calls at 14:30 — owner's full budget for that hour.
+    # 50 calls at 14:30 - owner's full budget for that hour.
     for _ in range(50):
         await rl.increment_and_check(
             user_id="owner-1",
@@ -224,7 +224,7 @@ async def test_counter_resets_at_next_hour_bucket():
             now_fn=lambda: _now_at(14, 30, 0),
         )
 
-    # Next call at 15:01 should be allowed — new bucket, fresh count.
+    # Next call at 15:01 should be allowed - new bucket, fresh count.
     result = await rl.increment_and_check(
         user_id="owner-1",
         role="owner",
@@ -238,7 +238,7 @@ async def test_counter_resets_at_next_hour_bucket():
 
 
 async def test_sessions_share_a_single_counter_per_user_hour():
-    """Counter is per-(user_id, hour_bucket) — session_id rotation must NOT bypass."""
+    """Counter is per-(user_id, hour_bucket) - session_id rotation must NOT bypass."""
     rl = _import_module()
     db = _build_full_fake_db()
     fixed_time = _now_at(14, 0, 0)
@@ -248,7 +248,7 @@ async def test_sessions_share_a_single_counter_per_user_hour():
             user_id="owner-1", role="owner", school_id="school-1",
             db=db, now_fn=lambda: fixed_time,
         )
-    # A 51st request — even after the caller "rotates session" — is rejected.
+    # A 51st request - even after the caller "rotates session" - is rejected.
     result = await rl.increment_and_check(
         user_id="owner-1", role="owner", school_id="school-1",
         db=db, now_fn=lambda: fixed_time,

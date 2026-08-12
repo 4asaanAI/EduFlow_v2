@@ -66,13 +66,13 @@ PROFILE_FIELDS = {
     "department",
     "join_date",
     "salary",
-    # Owner request 11 (2026-08-06) — kept in lockstep with staff_service.PROFILE_FIELDS.
+    # Owner request 11 (2026-08-06) - kept in lockstep with staff_service.PROFILE_FIELDS.
     "address",
     "role",
     "sub_category",
 }
 LEAVE_BALANCE_FIELDS = {"casual_leave_balance", "medical_leave_balance", "earned_leave_balance"}
-# UI-Sweep Story 1.3 — the ONLY fields a person may change on their own record.
+# UI-Sweep Story 1.3 - the ONLY fields a person may change on their own record.
 # An allow-list, never a deny-list: a deny-list silently admits every field
 # someone adds to the schema later.
 # Story 1.3, REVISED by the owner 2026-07-22: nobody edits their own record.
@@ -85,12 +85,12 @@ LEAVE_BALANCE_FIELDS = {"casual_leave_balance", "medical_leave_balance", "earned
 # self-service writes at all. Name, phone and email are changed by the Owner or
 # Principal on the staff screen, which they could already do.
 #
-# This set is deliberately EMPTY rather than deleted — it is the hook the
+# This set is deliberately EMPTY rather than deleted - it is the hook the
 # approval flow will fill, and its emptiness is asserted by a test so the
 # read-only state cannot be lost by accident.
 SELF_SERVICE_FIELDS: set = set()
 
-# Epic 8 — what a person may ASK to have corrected. Deliberately the same three
+# Epic 8 - what a person may ASK to have corrected. Deliberately the same three
 # fields the first version of Story 1.3 let them write directly: the difference
 # is that asking changes nothing until an administrator approves it. Anything
 # wider here would make the request route a side door around the rule.
@@ -102,7 +102,7 @@ def get_user(req: Request):
 
 
 def _staff_query(extra: dict | None = None) -> dict:
-    return scoped_filter(extra or {}, get_school_id())  # branch-scope: intentional — this file's school-scope helper; it scopes to the school only, and callers pass branch_id through scoped_query where a query is branch-sensitive
+    return scoped_filter(extra or {}, get_school_id())  # branch-scope: intentional - this file's school-scope helper; it scopes to the school only, and callers pass branch_id through scoped_query where a query is branch-sensitive
 
 
 def _can_manage(user: dict) -> bool:
@@ -114,15 +114,49 @@ def _public_staff(staff: dict) -> dict:
     return staff
 
 
+# Who may see another person's pay. Decision 9, 2026-08-10: the school's owner AND the
+# principal both see everyone's salary, and so does the accountant head, whose job it
+# is. Nobody else - and that includes the management head, who maintains the staff
+# directory and therefore opens these records all day.
+SALARY_READERS = ("principal", "accountant", "accounts")
+
+
+def _may_read_salary(user: dict) -> bool:
+    if (user or {}).get("role") == "owner":
+        return True
+    return (user or {}).get("role") == "admin" and (user or {}).get("sub_category") in SALARY_READERS
+
+
+def _staff_record_for(user: dict, staff: dict) -> dict:
+    """One person's record, with their pay removed unless the reader may see it.
+
+    R2-2: the staff LIST already stripped `salary` with a query projection. The single
+    record did not, so `GET /api/staff/{id}` handed the management head every
+    teacher's salary. Stripped at the response boundary rather than in the query, for
+    the reason `_own_profile` gives just below: a privacy guarantee should not depend
+    on a database option that a later caller can change without noticing what it
+    protected.
+
+    Your own record always keeps your own salary. Whatever else changes, nobody loses
+    sight of their own pay.
+    """
+    record = _public_staff(staff)
+    if _may_read_salary(user):
+        return record
+    if staff.get("user_id") and staff.get("user_id") == (user or {}).get("id"):
+        return record
+    return {k: v for k, v in record.items() if k != "salary"}
+
+
 def _own_profile(staff: dict) -> dict:
     """The self-service view. Salary is dropped here rather than relying on the
-    query projection alone — a privacy guarantee should not depend on a database
+    query projection alone - a privacy guarantee should not depend on a database
     option that a caller could later change without noticing what it protected."""
     return {k: v for k, v in _public_staff(staff).items() if k != "salary"}
 
 
 def _human_list(items) -> str:
-    """"name, phone and email" — for a message a person reads, not a log line."""
+    """"name, phone and email" - for a message a person reads, not a log line."""
     items = list(items)
     if len(items) <= 1:
         return items[0] if items else ""
@@ -130,14 +164,14 @@ def _human_list(items) -> str:
 
 
 async def _notify_reviewers(db, *, message: str, source_id: str) -> None:
-    """Tell whoever can decide — the Owner and any Principal — that one is waiting.
+    """Tell whoever can decide - the Owner and any Principal - that one is waiting.
 
     Best-effort by design: a notification that fails to send must not lose the
     request itself. The queue on the staff screen is the source of truth; the
     notification is a nudge towards it.
     """
     try:
-        # branch-scope: intentional — a request must reach whoever can decide it,
+        # branch-scope: intentional - a request must reach whoever can decide it,
         # and the Owner and Principal are school-wide rather than per-branch.
         reviewers = await db.staff.find(
             _staff_query({"$or": [{"role": "owner"}, {"sub_category": "principal"}]}),
@@ -159,7 +193,7 @@ async def _notify_reviewers(db, *, message: str, source_id: str) -> None:
                 source_type="profile_change_request",
                 school_id=get_school_id(),
             )
-    except Exception:  # noqa: BLE001 — never lose the request over a notification
+    except Exception:  # noqa: BLE001 - never lose the request over a notification
         import logging
         logging.getLogger(__name__).warning("profile change request notify failed", exc_info=True)
 
@@ -277,7 +311,21 @@ async def list_staff(
             query["$or"] = name_or_id
     sort_field, sort_dir = SORT_FIELDS.get(sort, SORT_FIELDS["name"])
     scoped = _staff_query(query)
-    staff = await db.staff.find(scoped, {"_id": 0, "salary": 0}).sort(sort_field, sort_dir).skip((page - 1) * per_page).limit(per_page).to_list(per_page)
+    # 2026-08-11: the single-record view (`_staff_record_for`) already showed salary to
+    # whoever `_may_read_salary` allows (decision 9, which includes the accountant
+    # head). This list view excluded it from EVERYONE regardless, so the same person's
+    # pay answered differently depending on which door was used - visible if he opened
+    # one colleague's record, invisible in the table listing all of them.
+    #
+    # Stripped in Python rather than with a query projection, on purpose, matching
+    # `_staff_record_for` just above: the comment there already explains why - "a
+    # privacy guarantee should not depend on a database option that a later caller can
+    # change without noticing what it protected."
+    may_see_salary = _may_read_salary(user)
+    staff = await db.staff.find(scoped, {"_id": 0}).sort(sort_field, sort_dir).skip((page - 1) * per_page).limit(per_page).to_list(per_page)
+    if not may_see_salary:
+        for member in staff:
+            member.pop("salary", None)
     total = await db.staff.count_documents(scoped)
     for member in staff:
         state = enrolment_status.normalise(member)
@@ -295,7 +343,7 @@ async def create_staff(request: Request):
     if not _can_manage(user):
         raise HTTPException(403, "Forbidden")
 
-    # Thin adapter over services.staff_service.create_staff — the SAME write path
+    # Thin adapter over services.staff_service.create_staff - the SAME write path
     # as the AI `create_staff` tool (Story J.2 / AD7). Privileged-field gating and
     # the credential-issued audit live in the service.
     body = await request.json()
@@ -319,7 +367,7 @@ async def create_staff(request: Request):
 
 
 # ── Own profile, read-only (Story 1.3, revised) ──────────────────────────────
-# Declared BEFORE "/{staff_id}" — FastAPI matches routes in declaration order,
+# Declared BEFORE "/{staff_id}" - FastAPI matches routes in declaration order,
 # so a path parameter registered first would swallow "/me" and a request about
 # your own profile would instead ask for the staff member whose id is literally
 # "me".
@@ -327,7 +375,7 @@ async def create_staff(request: Request):
 
 @router.get("/me")
 async def get_my_staff_profile(request: Request):
-    """The signed-in person's own staff record. No role gate — everyone has a self."""
+    """The signed-in person's own staff record. No role gate - everyone has a self."""
     db = get_db()
     user = get_user(request)
     staff = await db.staff.find_one(_staff_query({"user_id": user["id"]}), {"_id": 0, "salary": 0})
@@ -345,7 +393,7 @@ async def update_my_staff_profile(request: Request):
     approved by an administrator before it takes effect.
 
     This route exists rather than being deleted for two reasons. It refuses
-    *explicitly* — without it, `PATCH /api/staff/me` would fall through to the
+    *explicitly* - without it, `PATCH /api/staff/me` would fall through to the
     `/{staff_id}` handler and refuse only as a side effect of there being no
     staff member whose id is "me", which is an accident that a future routing
     change could undo silently. And it is where the approval flow (Epic 8) will
@@ -360,7 +408,7 @@ async def update_my_staff_profile(request: Request):
 
 
 # ── Epic 8: ask for a correction, an administrator decides ───────────────────
-# Also declared before "/{staff_id}" — see the routing note above.
+# Also declared before "/{staff_id}" - see the routing note above.
 
 
 @router.post("/me/change-requests")
@@ -369,7 +417,7 @@ async def request_my_profile_change(request: Request):
 
     This route must enforce the SAME field rule as the direct edit it replaces.
     If it accepted a wider set, it would be a side door around the very rule it
-    exists to serve — a person could not change their own role, but could ask
+    exists to serve - a person could not change their own role, but could ask
     for it and have a busy reviewer wave it through.
     """
     db = get_db()
@@ -461,12 +509,12 @@ async def get_my_profile_change_requests(request: Request):
 async def list_profile_change_requests(
     request: Request, status: str = "pending", user: dict = Depends(require_owner_or_principal),
 ):
-    """Owner or Principal only — the queue of corrections waiting on a decision."""
+    """Owner or Principal only - the queue of corrections waiting on a decision."""
     db = get_db()
     if status not in ("pending", "approved", "rejected", "all"):
         raise HTTPException(422, "status must be pending, approved, rejected or all")
     query = {} if status == "all" else {"status": status}
-    # branch-scope: intentional — Owner and Principal are school-wide roles and
+    # branch-scope: intentional - Owner and Principal are school-wide roles and
     # review every branch's requests, exactly as they do pending leaves.
     items = await db.profile_change_requests.find(
         _staff_query(query), {"_id": 0}
@@ -492,7 +540,7 @@ async def decide_profile_change_request(
         raise HTTPException(409, "That request has already been %s" % req.get("status"))
 
     # A Principal is an administrator, so without this they could raise a
-    # request and wave it through themselves — which is precisely the
+    # request and wave it through themselves - which is precisely the
     # self-editing this whole feature exists to prevent. The Owner decides theirs.
     if req.get("user_id") == user.get("id"):
         raise HTTPException(
@@ -562,7 +610,7 @@ async def get_staff(staff_id: str, request: Request):
         raise HTTPException(404, "Staff not found")
     if not _can_manage(user) and staff.get("user_id") != user.get("id"):
         raise HTTPException(403, "Forbidden")
-    return {"success": True, "data": _public_staff(staff)}
+    return {"success": True, "data": _staff_record_for(user, staff)}
 
 
 @router.patch("/{staff_id}")
@@ -571,7 +619,7 @@ async def update_staff(staff_id: str, request: Request):
     user = get_user(request)
     if not _can_manage(user):
         raise HTTPException(403, "Forbidden")
-    # Thin adapter over services.staff_service.update_staff — the SAME write path
+    # Thin adapter over services.staff_service.update_staff - the SAME write path
     # as the AI `update_staff` tool (Story J.2 / AD7). OWNER_ONLY_FIELDS silent-strip,
     # leave-balance/accounts authority, and the auth_users user_info sync live there.
     body = await request.json()
@@ -619,7 +667,7 @@ async def set_staff_enrolment(staff_id: str, request: Request, user: dict = Depe
     """Move a staff member or teacher between on the roll, NSO and TC issued.
 
     Owner request 10 decision 2, 2026-08-06: the three states are not students-only.
-    This is the way back as much as the way out — before it, `DELETE /api/staff/{id}`
+    This is the way back as much as the way out - before it, `DELETE /api/staff/{id}`
     switched a colleague off and nothing in the product could switch them on again,
     the same trap that lost a student during the 2026-08-05 demo.
 
@@ -691,13 +739,13 @@ async def erase_staff(staff_id: str, request: Request, reason: str = Form(defaul
 
     uploads = await db.file_uploads.find(
         scoped_filter({"linked_table": "staff", "linked_id": staff_id}, get_school_id()), {"_id": 0}
-    ).to_list(100)  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+    ).to_list(100)  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     for upload in uploads:
         if upload.get("s3_key"):
             delete_object(upload["s3_key"])
     await db.file_uploads.delete_many(
         scoped_filter({"linked_table": "staff", "linked_id": staff_id}, get_school_id())
-    )  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+    )  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
 
     # Owner request 4: private notes about this person go with the person.
     try:
@@ -734,7 +782,7 @@ async def erase_staff(staff_id: str, request: Request, reason: str = Form(defaul
 @router.get("/{staff_id}/leave-requests")
 async def get_leave_requests(staff_id: str, request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    leaves = await db.leave_requests.find(scoped_filter({"staff_id": staff_id}, get_school_id()), {"_id": 0}).to_list(50)  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+    leaves = await db.leave_requests.find(scoped_filter({"staff_id": staff_id}, get_school_id()), {"_id": 0}).to_list(50)  # branch-scope: intentional - scoped to one named person's own record, not to a branch
     return {"success": True, "data": leaves}
 
 
@@ -742,20 +790,20 @@ async def get_leave_requests(staff_id: str, request: Request, user: dict = Depen
 async def get_my_leaves(request: Request):
     db = get_db()
     user = get_user(request)
-    leaves = await db.leave_requests.find(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0}).sort("applied_at", -1).to_list(20)  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+    leaves = await db.leave_requests.find(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0}).sort("applied_at", -1).to_list(20)  # branch-scope: intentional - scoped to one named person's own record, not to a branch
     if not leaves:
-        staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+        staff = await db.staff.find_one(scoped_filter({"user_id": user["id"]}, get_school_id()), {"_id": 0})  # branch-scope: intentional - scoped to one named person's own record, not to a branch
         if staff:
-            leaves = await db.leave_requests.find(scoped_filter({"staff_id": staff["id"]}, get_school_id()), {"_id": 0}).sort("applied_at", -1).to_list(20)  # branch-scope: intentional — scoped to one named person's own record, not to a branch
+            leaves = await db.leave_requests.find(scoped_filter({"staff_id": staff["id"]}, get_school_id()), {"_id": 0}).sort("applied_at", -1).to_list(20)  # branch-scope: intentional - scoped to one named person's own record, not to a branch
     return {"success": True, "data": leaves}
 
 
 @router.get("/leaves/pending")
 async def get_pending_leaves(request: Request, user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
-    leaves = await db.leave_requests.find(scoped_filter({"status": "pending"}, get_school_id()), {"_id": 0}).to_list(50)  # branch-scope: intentional — the approver queue covers every pending leave in the school, which is what an owner or principal approves against
+    leaves = await db.leave_requests.find(scoped_filter({"status": "pending"}, get_school_id()), {"_id": 0}).to_list(50)  # branch-scope: intentional - the approver queue covers every pending leave in the school, which is what an owner or principal approves against
     s_ids = list({lr["staff_id"] for lr in leaves if lr.get("staff_id")})
-    staff_list = await db.staff.find(scoped_filter({"id": {"$in": s_ids}}, get_school_id()), {"_id": 0, "salary": 0}).to_list(len(s_ids)) if s_ids else []  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+    staff_list = await db.staff.find(scoped_filter({"id": {"$in": s_ids}}, get_school_id()), {"_id": 0, "salary": 0}).to_list(len(s_ids)) if s_ids else []  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     staff_map = {s["id"]: s for s in staff_list}
     enriched = [{**lr, "staff": staff_map.get(lr["staff_id"])} for lr in leaves]
     return {"success": True, "data": enriched}

@@ -27,7 +27,7 @@ def _clean_staff(fake_db):
 
 
 def test_principal_cannot_change_staff_role(client, fake_db):
-    """UI-Sweep Story 1.1 — granting owner is a hard 403, not a silent strip.
+    """UI-Sweep Story 1.1 - granting owner is a hard 403, not a silent strip.
 
     This test previously asserted 200-with-the-field-stripped. Silently dropping
     an escalation attempt leaves the caller believing it worked and leaves no
@@ -46,7 +46,7 @@ def test_principal_cannot_change_staff_role(client, fake_db):
 
 
 def test_principal_can_still_edit_ordinary_fields(client, fake_db):
-    """The 403 above is about owner authority only — ordinary edits still work."""
+    """The 403 above is about owner authority only - ordinary edits still work."""
     fake_db.staff.docs = [{"id": "s1b", "schoolId": "aaryans-joya", "name": "Alice", "role": "teacher"}]
     resp = client.patch("/api/staff/s1b", json={"name": "Alice Updated"}, headers=_principal_headers())
     assert resp.status_code == 200
@@ -55,7 +55,7 @@ def test_principal_can_still_edit_ordinary_fields(client, fake_db):
 
 
 def test_principal_self_update_cannot_escalate(client, fake_db):
-    """Story 1.1 — a principal cannot grant themselves owner via self-PATCH."""
+    """Story 1.1 - a principal cannot grant themselves owner via self-PATCH."""
     fake_db.staff.docs = [{
         "id": "prin-1", "schoolId": "aaryans-joya",
         "name": "P", "role": "admin", "sub_category": "principal",
@@ -85,7 +85,7 @@ def test_owner_can_change_staff_role(client, fake_db):
 
 
 def test_principal_cannot_change_salary(client, fake_db):
-    """Principal PATCH with salary field — salary is silently stripped."""
+    """Principal PATCH with salary field - salary is silently stripped."""
     fake_db.staff.docs = [{"id": "s3", "schoolId": "aaryans-joya", "name": "Carol", "role": "teacher", "salary": 30000}]
     resp = client.patch(
         "/api/staff/s3",
@@ -112,7 +112,7 @@ def test_owner_can_change_salary(client, fake_db):
 
 def test_delete_staff_erases_ai_memories(client, fake_db):
     """R6.4 (XM5, DPDP §12): deactivating a staff account erases that user's
-    AI-learned memories AND skills — proves the erasure hooks are invoked."""
+    AI-learned memories AND skills - proves the erasure hooks are invoked."""
     fake_db.staff.docs = [{
         "id": "s5", "schoolId": "aaryans-joya", "name": "Eve",
         "role": "admin", "sub_category": "principal", "user_id": "u-eve", "is_active": True,

@@ -1,5 +1,5 @@
 /**
- * Data Factories — EduFlow Test Data
+ * Data Factories - EduFlow Test Data
  *
  * Provides factory functions for generating test data objects.
  * All factories accept an optional `overrides` object to customize fields.
@@ -7,7 +7,7 @@
  * Convention:
  *   - Use `build<Entity>()` to get a plain data object (no DB write)
  *   - Factories are deterministic but use counters for uniqueness
- *   - Never use real PII — always synthetic data
+ *   - Never use real PII - always synthetic data
  */
 
 let _counter = 0;

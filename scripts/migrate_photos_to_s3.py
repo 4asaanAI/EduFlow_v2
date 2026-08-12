@@ -3,19 +3,19 @@
     python scripts/migrate_photos_to_s3.py            # report only
     python scripts/migrate_photos_to_s3.py --apply
 
-Why: anomaly D2. Every photo currently lives on cdn.vedmarg.com — the school's PREVIOUS
-software vendor — and opens with no authentication. Two risks: if that CDN is switched
+Why: anomaly D2. Every photo currently lives on cdn.vedmarg.com - the school's PREVIOUS
+software vendor - and opens with no authentication. Two risks: if that CDN is switched
 off every photo on EduFlow breaks at once, and 1,427 children's photographs are publicly
 readable by anyone holding the link.
 
 THIS SCRIPT SOLVES THE FIRST RISK ONLY, and deliberately says so. It takes our own copy
 of every image into `{school_id}/uploads/...` and records the key on the student/staff
 record as `photo_s3_key`. It does NOT repoint `photo_url`, because serving through the
-app needs a `file_uploads` record per image (see routes/upload.py serve_file) — that is
+app needs a `file_uploads` record per image (see routes/upload.py serve_file) - that is
 a second, small step. Until it is done the photos are still SERVED from the public CDN.
 
 Never deletes. Never overwrites an existing photo_s3_key. Skips anything already copied,
-so it is safe to re-run after an interruption — the same property that saved the student
+so it is safe to re-run after an interruption - the same property that saved the student
 load when it timed out.
 """
 from __future__ import annotations

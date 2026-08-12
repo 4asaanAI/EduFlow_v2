@@ -1,6 +1,6 @@
 # Real-Mongo replica-set test tier (`@pytest.mark.mongo_real`)
 
-AI Layer Hardening — Architecture Decision **AD12** (Story D.1).
+AI Layer Hardening - Architecture Decision **AD12** (Story D.1).
 
 FakeDb (`tests/backend/conftest.py`) has **no** sessions, transactions, or unique-index
 enforcement, so the integrity guarantees introduced by Epic D cannot be honestly
@@ -19,7 +19,7 @@ These tests therefore live here and carry `@pytest.mark.mongo_real`.
 ## Running locally
 
 **The one-liner that is known to work on Windows (T10/NEW-06, first real run 2026-08-04).**
-No Docker needed. MongoDB **7.0** — the 8.3 build from `winget` will not start on
+No Docker needed. MongoDB **7.0** - the 8.3 build from `winget` will not start on
 Windows 10 19045 (it exits with `STATUS_ENTRYPOINT_NOT_FOUND` before printing anything).
 Download `mongodb-windows-x86_64-7.0.16.zip` from fastdl.mongodb.org, unzip it, then:
 
@@ -37,17 +37,17 @@ MONGO_TEST_URL='mongodb://127.0.0.1:27099/?replicaSet=rs0' MONGO_URL=mongodb://1
 Expected: **13 passed**. (The register said 14; the tier collects 13.)
 
 ```bash
-# Option A — point at a replica set you already run
+# Option A - point at a replica set you already run
 mongod --replSet rs0 --dbpath /tmp/rs0 &
 mongosh --eval 'rs.initiate()'
 MONGO_TEST_URL='mongodb://localhost:27017/?replicaSet=rs0' pytest -m mongo_real
 
-# Option B — let testcontainers spin one up (requires Docker + `pip install testcontainers`)
+# Option B - let testcontainers spin one up (requires Docker + `pip install testcontainers`)
 pytest -m mongo_real
 ```
 
 If neither a `MONGO_TEST_URL` nor `testcontainers`+Docker is available, the tier
-**skips cleanly** — it never fails the default suite.
+**skips cleanly** - it never fails the default suite.
 
 ## CI policy (do NOT disable for being slow)
 

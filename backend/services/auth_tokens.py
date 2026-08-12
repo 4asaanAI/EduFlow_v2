@@ -39,7 +39,7 @@ def cookie_samesite() -> str:
 
     ⚠️  READ THIS BEFORE CHANGING IT BACK TO "strict".
 
-    This cookie was SameSite=Strict, and that meant it never worked in production —
+    This cookie was SameSite=Strict, and that meant it never worked in production -
     not once. The site is served from `main.ddxpej151tf13.amplifyapp.com` and the API
     from `dapbq24rsje5g.cloudfront.net`. Those are different registrable domains, so
     every call to /api/auth/refresh is a cross-site request, and a Strict cookie is by
@@ -47,7 +47,7 @@ def cookie_samesite() -> str:
     declined to send it.
 
     What that looked like to the school (owner request 3, 2026-08-06): everyone was
-    signed out exactly one hour after signing in — JWT_EXPIRY_MINUTES — no matter how
+    signed out exactly one hour after signing in - JWT_EXPIRY_MINUTES - no matter how
     hard they were working at the time. It read as an inactivity timeout set to an
     hour. It was not a timeout at all: the silent renewal that is supposed to keep a
     session alive could not run, so the access token simply reached its expiry and
@@ -55,7 +55,7 @@ def cookie_samesite() -> str:
     front of him.
 
     "none" requires "secure", which is why this pairs with cookie_secure(). Outside
-    production the front end and the API are both on localhost — same site — so
+    production the front end and the API are both on localhost - same site - so
     "strict" is both correct and the stronger choice, and Secure would break plain
     http://localhost.
 
@@ -188,7 +188,7 @@ async def revoke_refresh_token(db, raw_token: str, reason: str = "logout") -> in
     """Revoke a refresh token by raw value. Returns modified_count (0 or 1).
 
     Part 1.5 Patch L: callers can now distinguish "revoked successfully" from
-    "token unknown / already revoked" — useful for logout audit, and for
+    "token unknown / already revoked" - useful for logout audit, and for
     surfacing password-reset misroutes that previously absorbed silently.
     """
     result = await db.refresh_tokens.update_one(

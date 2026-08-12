@@ -1,5 +1,5 @@
 /**
- * The shared sortable table — Epic 3, Stories 3.1 and 3.2.
+ * The shared sortable table - Epic 3, Stories 3.1 and 3.2.
  *
  * These trace the acceptance criteria that automated tests can actually decide.
  * The one that matters most is the FIRST block: sorting must be delegated to the
@@ -47,7 +47,7 @@ describe('sorting is delegated to the server', () => {
   });
 
   it('renders rows in the order given, never re-sorted locally', () => {
-    // Zara before Aarav — alphabetically "wrong", which is the point: the
+    // Zara before Aarav - alphabetically "wrong", which is the point: the
     // server decided this order and the table must not second-guess it.
     setup();
     const names = screen.getAllByRole('row').slice(1).map(r => within(r).getAllByRole('cell')[0].textContent);

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Issue tracker — facility requests (Maintenance Admin) and tech requests (IT/Tech Admin)"""
+"""Issue tracker - facility requests (Maintenance Admin) and tech requests (IT/Tech Admin)"""
 import calendar
 import logging
 import uuid
@@ -131,8 +131,8 @@ async def _notification_targets(db, query: dict, projection: dict, limit: int = 
     users = getattr(db, "users", None)
     if users is None:
         return []
-    # branch-scope: intentional — user records are school-wide; notifications fan out to all admins/owners regardless of branch
-    scoped_q = scoped_filter(query, get_school_id())  # branch-scope: intentional — see the note directly above this line
+    # branch-scope: intentional - user records are school-wide; notifications fan out to all admins/owners regardless of branch
+    scoped_q = scoped_filter(query, get_school_id())  # branch-scope: intentional - see the note directly above this line
     return await users.find(scoped_q, projection).to_list(limit)
 
 
@@ -181,7 +181,7 @@ async def create_facility_request(request: Request):
     await db.facility_requests.insert_one(req_doc)
     await _write_audit(db, "facility_request_create", "facility_requests", req_doc["id"], user, {"created": req_doc["description"]})
 
-    msg = f"New maintenance request [{priority.upper()}]: {req_doc['description'][:80]} @ {req_doc['location']} — raised by {user.get('name', 'Staff')}."
+    msg = f"New maintenance request [{priority.upper()}]: {req_doc['description'][:80]} @ {req_doc['location']} - raised by {user.get('name', 'Staff')}."
     # Notify maintenance admins, owners, and principals (flat users collection schema)
     notify_targets = await _notification_targets(db,
         {"role": {"$in": ["owner", "admin"]}, "is_active": {"$ne": False}},
@@ -277,7 +277,7 @@ async def get_facility_request(request_id: str, request: Request, user: dict = D
     """Single facility request by ID. Fix 12.5."""
     db = get_db()
     bid = user.get("branch_id")
-    # NEW-07/T13: this document IS the response body — exclude the internal id.
+    # NEW-07/T13: this document IS the response body - exclude the internal id.
     rec = await db.facility_requests.find_one(
         scoped_query({"id": request_id}, branch_id=bid), {"_id": 0}
     )
@@ -307,7 +307,7 @@ async def update_facility_request(request_id: str, request: Request):
             new_photos = [new_photos]
         current_photos = existing.get("photos", [])
         if len(current_photos) >= PHOTO_LIMIT:
-            raise HTTPException(409, f"Maximum {PHOTO_LIMIT} photos allowed — limit reached")
+            raise HTTPException(409, f"Maximum {PHOTO_LIMIT} photos allowed - limit reached")
         for photo in new_photos:
             await db.facility_requests.update_one(
                 scoped_query({"id": request_id}, branch_id=bid),
@@ -357,11 +357,11 @@ async def escalate_facility_request(request_id: str, request: Request):
     if not existing:
         raise HTTPException(404, "Facility request not found")
 
-    # Fix 12.2a: status guard — cannot escalate closed/done requests
+    # Fix 12.2a: status guard - cannot escalate closed/done requests
     if existing.get("status") in {"closed", "done"}:
         raise HTTPException(400, "Cannot escalate a closed or done request")
 
-    # Fix 12.2b: rate-limit — 1 hour between escalations
+    # Fix 12.2b: rate-limit - 1 hour between escalations
     escalated_at_str = existing.get("escalated_at")
     if escalated_at_str:
         try:
@@ -369,12 +369,12 @@ async def escalate_facility_request(request_id: str, request: Request):
             now_utc = datetime.now(timezone.utc)
             if escalated_at > now_utc:
                 logger.warning(
-                    "escalated_at in future for request %s — treating as never-escalated", request_id
+                    "escalated_at in future for request %s - treating as never-escalated", request_id
                 )
             elif (now_utc - escalated_at).total_seconds() < ESCALATION_COOLDOWN_SECONDS:
-                raise HTTPException(429, "Request was escalated recently — wait 1 hour before re-escalating")
+                raise HTTPException(429, "Request was escalated recently - wait 1 hour before re-escalating")
         except ValueError:
-            pass  # malformed date — allow escalation
+            pass  # malformed date - allow escalation
 
     body = await request.json()
     update = {
@@ -415,7 +415,7 @@ async def escalate_facility_request(request_id: str, request: Request):
 
 @router.post("/facility/{request_id}/confirm-resolution")
 async def confirm_facility_resolution(request_id: str, request: Request, user: dict = Depends(require_owner)):
-    # Story C.3: delegate to services.incident_service.confirm_resolution — the SAME
+    # Story C.3: delegate to services.incident_service.confirm_resolution - the SAME
     # write path as the AI `confirm_resolution` tool (close + audit + submitter notify).
     db = get_db()
     try:
@@ -485,7 +485,7 @@ async def list_tech_requests(
     limit: int = 20,
     user: dict = Depends(_require_it_tech_access),
 ):
-    # rbac: intentional — only it_tech admin and owner can view tech tickets
+    # rbac: intentional - only it_tech admin and owner can view tech tickets
     db = get_db()
     bid = user.get("branch_id")
     query = {}
@@ -552,7 +552,7 @@ async def list_all_issues(request: Request, type: str = "all", status: str = Non
     limit = min(max(limit, 1), 50)
     skip = max(page - 1, 0) * limit
     results = []
-    # branch-scope: intentional — owner has cross-branch visibility (bid=None falls back to school-only); principal is branch-scoped via bid
+    # branch-scope: intentional - owner has cross-branch visibility (bid=None falls back to school-only); principal is branch-scoped via bid
     scoped = scoped_query(query, branch_id=bid)
     if type in ("all", "facility"):
         fac = await db.facility_requests.find(scoped, {"_id": 0}).sort("created_at", -1).to_list(200)
@@ -645,9 +645,9 @@ async def get_request_history(issue_type: str, request_id: str, request: Request
         "is_current": False,
     })
 
-    # 2. Audit log events (sorted ascending — history order)
+    # 2. Audit log events (sorted ascending - history order)
     audit_entries = await db.audit_logs.find(
-        scoped_filter({"entity_id": request_id}, school_id), {"_id": 0}  # branch-scope: intentional — pinned by a unique id, so a branch filter could only turn a real row into a false 404
+        scoped_filter({"entity_id": request_id}, school_id), {"_id": 0}  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     ).sort("created_at", 1).to_list(200)
 
     for entry in audit_entries:
@@ -768,7 +768,7 @@ async def update_maintenance_schedule(entry_id: str, request: Request):
     if not _can_view_all(user) and not _is_maint(user):
         raise HTTPException(403, "Forbidden")
     body = await request.json()
-    # branch-scope: intentional — schedule records are school-wide (branch_id may be None on seeded data)
+    # branch-scope: intentional - schedule records are school-wide (branch_id may be None on seeded data)
     existing = await db.maintenance_schedule.find_one(scoped_query({"id": entry_id}, branch_id=None))
     if not existing:
         raise HTTPException(404, "Schedule entry not found")
@@ -866,7 +866,7 @@ async def update_vendor(vendor_id: str, request: Request):
     if not _can_view_all(user) and not _is_maint(user):
         raise HTTPException(403, "Forbidden")
     body = await request.json()
-    # branch-scope: intentional — vendor records are school-wide (branch_id may be None on seeded data)
+    # branch-scope: intentional - vendor records are school-wide (branch_id may be None on seeded data)
     existing = await db.maintenance_vendors.find_one(scoped_query({"id": vendor_id}, branch_id=None))
     if not existing:
         raise HTTPException(404, "Vendor not found")

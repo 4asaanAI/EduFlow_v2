@@ -76,7 +76,7 @@ export default function Login() {
       <div style={{ width: '100%', maxWidth: 440 }}>
         {/* Flo greets you at the door.
             The mascot takes the top slot the wordmark used to hold, and the
-            wordmark moves down into the card in place of the key icon — so the
+            wordmark moves down into the card in place of the key icon - so the
             first thing anyone sees signing in is the assistant, not a padlock.
             The sign-in screen is one of the three places Flo is allowed: here,
             empty states, and the chat greeting. Never on working screens. */}

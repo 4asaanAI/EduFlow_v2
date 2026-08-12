@@ -1,7 +1,7 @@
 """Shadow / dry-run mode for AI writes (Story F.5 / AD9).
 
 In shadow mode a confirmed plan runs its writes inside a transaction that is
-**always aborted** — committing nothing — and reports the would-be effect (the
+**always aborted** - committing nothing - and reports the would-be effect (the
 step results) so the pilot accumulates parity evidence at zero write-risk before
 live writes are enabled. Post-commit saga/side-effect steps never fire (the txn
 never commits), so SMS/email are not sent.
@@ -37,7 +37,7 @@ def reset_cache() -> None:
 
 
 async def ai_dry_run_enabled(db) -> bool:
-    """Return whether shadow/dry-run mode is on (default: OFF — live writes)."""
+    """Return whether shadow/dry-run mode is on (default: OFF - live writes)."""
     global _cache
     cached_value, expiry = _cache
     now = time.monotonic()
@@ -50,7 +50,7 @@ async def ai_dry_run_enabled(db) -> bool:
         if doc is not None and doc.get("enabled") is True:
             enabled = True
     except Exception:
-        logger.warning("ai_dry_run flag read failed — defaulting to live writes", exc_info=True)
+        logger.warning("ai_dry_run flag read failed - defaulting to live writes", exc_info=True)
         enabled = False
 
     _cache = (enabled, now + CACHE_TTL_SECONDS)

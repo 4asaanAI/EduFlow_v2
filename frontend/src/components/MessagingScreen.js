@@ -95,7 +95,12 @@ function ComposeDialog({ mode, contacts, currentUserId, thread, onClose, onCreat
   ));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const people = contacts.filter((contact) => !contact.is_self);
+  const [personQuery, setPersonQuery] = useState('');
+  const contactQuery = personQuery.trim().toLocaleLowerCase('en-IN');
+  const people = contacts
+    .filter((contact) => !contact.is_self)
+    .filter((contact) => !contactQuery
+      || `${contact.name || ''} ${roleLabel(contact) || ''}`.toLocaleLowerCase('en-IN').includes(contactQuery));
   const editing = dialogMode === 'edit';
 
   const openDirect = async (contact) => {
@@ -154,6 +159,34 @@ function ComposeDialog({ mode, contacts, currentUserId, thread, onClose, onCreat
             <button className={dialogMode === 'group' ? 'is-active' : ''} onClick={() => setDialogMode('group')} role="tab" aria-selected={dialogMode === 'group'}>
               <Users size={16} /> Group
             </button>
+          </div>
+        )}
+
+        {/* R2-10: a search box over the colleague list. With four people a flat list is
+            fine; decision 8 of 2026-08-10 says every employee becomes reachable here as
+            releases land, and a school of 88 teachers plus support staff is not a list
+            anybody scrolls. Same reason the student pickers got one. */}
+        {contacts.filter((c) => !c.is_self).length > 4 && (
+          <label className="message-field">
+            <span>Find a colleague</span>
+            <input
+              value={personQuery}
+              onChange={(event) => setPersonQuery(event.target.value)}
+              placeholder="Search by name or role"
+              aria-label="Search colleagues by name or role"
+            />
+          </label>
+        )}
+
+        {/* An empty list has to say WHY it is empty. Before R2-10 this screen showed
+            nothing at all, because the colleague lookup joined on four hardcoded
+            usernames that do not exist in production, and the reader was left to guess
+            whether the school had no staff or the platform was broken. */}
+        {people.length === 0 && (
+          <div className="message-empty-contacts" data-testid="no-colleagues">
+            {contactQuery
+              ? 'Nobody matches that name.'
+              : 'No colleagues are available to message yet. As each group of staff is given their logins, they appear here.'}
           </div>
         )}
 

@@ -159,7 +159,7 @@ function SubRow({ item, onAssign }) {
         }
       </td>
       <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--tool-hex-aaa)' }}>
-        {assigned?.substitute_teacher_name || candidate?.name || '—'}
+        {assigned?.substitute_teacher_name || candidate?.name || '-'}
       </td>
       <td style={{ padding: '10px 12px' }}>
         {!assigned && candidate && (
@@ -178,14 +178,14 @@ export default function PrincipalDailyOps() {
 
   // D-24: this table was hand-rolled with no sorting. It keeps its own markup because
   // each row is a `<SubRow>` with its own assign control, and takes its sorting from the
-  // shared hook. Ordering by Status matters most here — a principal wants the unfilled
+  // shared hook. Ordering by Status matters most here - a principal wants the unfilled
   // periods together, not scattered through the day.
   const conflictSortAccessors = React.useMemo(() => [
     (it) => it.absent_teacher_name || '',
     (it) => Number(it.period_number) || 0,
     (it) => it.class_name || '',
     (it) => it.subject_name || '',
-    // Status is not a stored field here — it is derived from whether a substitute has
+    // Status is not a stored field here - it is derived from whether a substitute has
     // been assigned, exactly as SubRow renders it. Sort by the same thing the eye reads.
     (it) => (it.assigned_substitute ? 'Assigned' : 'Open'),
     (it) => it.assigned_substitute?.substitute_teacher_name || it.candidate_substitutes?.[0]?.name || '',
@@ -325,7 +325,7 @@ export default function PrincipalDailyOps() {
         <KpiCard value={uncovered} label="Need Substitute" color={uncovered > 0 ? '#fbbf24' : '#22c55e'} icon={UserCheck} />
         <KpiCard value={leaves.length} label="Pending Leaves" color="#a78bfa" icon={ClipboardList} />
         <KpiCard value={certificates.filter(c => c.status === 'pending_approval').length} label="Cert Approvals" color="#4f8ff7" icon={Award} />
-        <KpiCard value={feeSummary ? money(feeSummary.total_collected || 0) : '—'} label="Fee Collected" color="#22c55e" icon={IndianRupee} />
+        <KpiCard value={feeSummary ? money(feeSummary.total_collected || 0) : '-'} label="Fee Collected" color="#22c55e" icon={IndianRupee} />
       </div>
 
       {/* Two-column: leaves + certs */}

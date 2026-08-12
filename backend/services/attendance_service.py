@@ -1,4 +1,4 @@
-"""Attendance domain service — the single shared write path for bulk student
+"""Attendance domain service - the single shared write path for bulk student
 attendance (AI Layer Hardening, AD7 / Epic A reference implementation).
 
 Both `POST /api/attendance/student/bulk` (REST) and the AI `mark_attendance`
@@ -57,7 +57,7 @@ async def validate_attendance_batch(db, actor_ctx: ActorContext, params: dict) -
             raise AttendanceValidationError("every attendance record needs a student_id")
         if status not in VALID_STATUSES:
             raise AttendanceValidationError(
-                f"invalid attendance status '{status}' — must be one of {sorted(VALID_STATUSES)}"
+                f"invalid attendance status '{status}' - must be one of {sorted(VALID_STATUSES)}"
             )
         student_ids.append(student_id)
 
@@ -110,7 +110,7 @@ async def mark_attendance(
     # do not re-write or re-audit. The AI path passes no key (idempotency lands in Epic D).
     if idempotency_key:
         existing = await db.attendance_bulk_keys.find_one(
-            # branch-scope: intentional — attendance_bulk_keys has no branch_id; the
+            # branch-scope: intentional - attendance_bulk_keys has no branch_id; the
             # client-supplied Idempotency-Key is unique within the school.
             scoped_filter({"key": idempotency_key, "class_id": class_id, "date": target_date}, school_id),
             {"_id": 0},
@@ -132,7 +132,7 @@ async def mark_attendance(
         doc = {**att.model_dump(), "_id": att.id, "schoolId": school_id, "source": "bulk"}
         try:
             await db.student_attendance.update_one(
-                # branch-scope: intentional — student_attendance carries no branch_id;
+                # branch-scope: intentional - student_attendance carries no branch_id;
                 # its unique index is (student_id, date) school-wide.
                 scoped_filter({"student_id": record["student_id"], "date": target_date}, school_id),
                 {"$set": doc},
@@ -148,7 +148,7 @@ async def mark_attendance(
             )
             # AI Layer Hardening D-review: under the plan executor's transaction
             # (ambient/explicit session) a per-record failure MUST abort the whole
-            # batch — all-or-nothing (AD4). The REST path (no session) preserves the
+            # batch - all-or-nothing (AD4). The REST path (no session) preserves the
             # original per-record error-reporting so its characterization test holds.
             if _session_kwargs(session):
                 raise

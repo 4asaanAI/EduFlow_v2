@@ -1,4 +1,4 @@
-"""Epic K — adversarial & edge-case regression guards for school-internals CRUD.
+"""Epic K - adversarial & edge-case regression guards for school-internals CRUD.
 
 Covers Phase-1 Owner/Principal lockdown on every new write tool, destructive-flag
 registration, validation/not-found edges, and no-op short-circuits across the
@@ -164,7 +164,7 @@ async def test_create_class_requires_name(fake_db):
 
 async def test_principal_cannot_create_class_in_other_branch(fake_db):
     # NFR5: a branch-scoped principal must NOT escape their branch by passing an
-    # arbitrary branch_id param — the service pins them to their own branch.
+    # arbitrary branch_id param - the service pins them to their own branch.
     ctx = actor_ctx_from_user(
         {"id": "p1", "role": "admin", "sub_category": "principal", "branch_id": "branch-a"},
         school_id="aaryans-joya",
@@ -175,7 +175,7 @@ async def test_principal_cannot_create_class_in_other_branch(fake_db):
 
 
 async def test_owner_may_target_branch_on_create_class(fake_db):
-    # Owner has cross-branch authority — an explicit branch_id is honored.
+    # Owner has cross-branch authority - an explicit branch_id is honored.
     ctx = actor_ctx_from_user(
         {"id": "o1", "role": "owner", "branch_id": None}, school_id="aaryans-joya")
     result = await academic_structure_service.create_class(

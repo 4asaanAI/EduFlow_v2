@@ -19,7 +19,7 @@ number (0 conflicts across 1,362 students), which is why this load is considered
 
 RULES OBSERVED (see _bmad-output/HANDOFF-PROMPT-2026-08-06-evening.md)
   * match on ADMISSION NUMBER only, never on name
-  * fill blanks only — never overwrite an existing house
+  * fill blanks only - never overwrite an existing house
   * never delete; students absent from the sheet are counted, not touched
   * dry-run by default; --apply writes, and always writes a rollback manifest first
   * print counts, never pupil names
@@ -127,7 +127,7 @@ async def main(apply: bool) -> int:
 
     clean, conflicts, junk, sheets = read_sheet_houses()
     print("=" * 68)
-    print("HOUSE RESTORE — source: DETAINEES LIST 2025-26.xlsx")
+    print("HOUSE RESTORE - source: DETAINEES LIST 2025-26.xlsx")
     print("=" * 68)
     print(f"sheets carrying a HOUSE column      : {sheets}")
     print(f"admission numbers with a house      : {len(clean) + len(conflicts)}")
@@ -176,7 +176,7 @@ async def main(apply: bool) -> int:
         print(f"students left with no house         : {total_students - len(to_write)}")
 
         if not apply:
-            print("\nDRY RUN — nothing written. Re-run with --apply to write.")
+            print("\nDRY RUN - nothing written. Re-run with --apply to write.")
             return 0
 
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")

@@ -1,4 +1,4 @@
-"""Parent messaging service — the ONE write path for sending WhatsApp/SMS to families.
+"""Parent messaging service - the ONE write path for sending WhatsApp/SMS to families.
 
 Both the REST panels (`routes/messaging.py`) and Flo's `send_parent_message` tool call
 `send_messages(...)`, so a message Flo sends and a message a staff member sends are
@@ -11,7 +11,7 @@ Three facts drive the design, and each is a real-world constraint, not a prefere
    SID, with only numbered variables filled in. So a WhatsApp template here stores a
    `twilio_template_sid` plus an ordered `variables` list; its `body` is a LOCAL
    PREVIEW of the approved wording, shown on the confirm card so a human can see what
-   will land — editing that body changes the preview, never what Meta sends. This is
+   will land - editing that body changes the preview, never what Meta sends. This is
    surprising enough that `update_message_template` says so out loud.
 
 2. **SMS wording is ours entirely.** Free text, placeholders substituted locally, no
@@ -19,7 +19,7 @@ Three facts drive the design, and each is a real-world constraint, not a prefere
 
 3. **Sending cannot be undone.** Every send is gated on explicit human confirmation,
    bounded by a per-request cap and a per-school daily cap, and written to
-   `message_logs` one row per recipient — so "what did we send that family?" is
+   `message_logs` one row per recipient - so "what did we send that family?" is
    answerable afterwards.
 
 Services raise domain exceptions, never `HTTPException`.
@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 # Per-request recipient cap. Deliberately env-tunable and defaulted ABOVE the school's
 # current roll (1,876 on 2026-08-08) because the owner chose whole-school sends. It is
-# a runaway-guard, not a policy limit — no student count is hardcoded anywhere; the
+# a runaway-guard, not a policy limit - no student count is hardcoded anywhere; the
 # recipient list is always counted live at send time.
 MAX_RECIPIENTS_PER_SEND = int(os.environ.get("MESSAGING_MAX_RECIPIENTS", "2500"))
 
@@ -79,7 +79,7 @@ class MessagingValidationError(Exception):
 class MessagingNotConfiguredError(Exception):
     """The channel's provider credentials are absent → HTTP 503.
 
-    Raised rather than silently recording 'not_configured' and reporting success —
+    Raised rather than silently recording 'not_configured' and reporting success -
     that is exactly the failure mode this service exists to remove.
     """
 
@@ -114,6 +114,16 @@ def sms_config() -> dict:
     }
 
 
+# Twilio's shared WhatsApp sandbox. It can only message people who have texted it a join
+# code, so it can never reach a school's families, whatever the settings say.
+SANDBOX_NUMBER = "14155238886"
+
+
+def _looks_indian(number: str) -> bool:
+    digits = "".join(ch for ch in str(number or "") if ch.isdigit())
+    return digits.startswith("91") and len(digits) >= 12
+
+
 def channel_status(channel: str) -> dict:
     """Report whether a channel can actually send, and what is missing if not.
 
@@ -128,7 +138,40 @@ def channel_status(channel: str) -> dict:
         missing.append("TWILIO_AUTH_TOKEN")
     if not cfg["from_number"]:
         missing.append("TWILIO_WHATSAPP_FROM" if channel == "whatsapp" else "TWILIO_PHONE_NUMBER")
-    return {"channel": channel, "ready": not missing, "missing": missing}
+
+    # R2 audit finding, 2026-08-12. Reporting a missing setting by its variable name
+    # reads as "fill this in and it works", and for both channels that is untrue.
+    # Somebody would have set the variable, pressed send, and found out from a parent.
+    warnings = []
+    if channel == "whatsapp":
+        if missing:
+            warnings.append(
+                "There is no WhatsApp sender for the school yet. The only number on the "
+                "account is Twilio's shared sandbox, which can only message people who "
+                "have themselves texted a join code, so it can never reach families. A "
+                "real sender has to be registered to the school's WhatsApp Business "
+                "Account first."
+            )
+        if cfg["from_number"] and SANDBOX_NUMBER in cfg["from_number"]:
+            warnings.append(
+                "This is Twilio's shared SANDBOX number. It reaches only people who have "
+                "texted a join code, so families will not receive anything."
+            )
+        warnings.append(
+            "WhatsApp wording is not free: Meta must approve each template before it can "
+            "be sent, and fee and attendance reminders are a different category from the "
+            "marketing templates already on the account."
+        )
+    elif not missing and not _looks_indian(cfg["from_number"]):
+        warnings.append(
+            f"Messages would go out from {cfg['from_number']}, which is not an Indian "
+            "number. To parents here that arrives as an international sender, costs more "
+            "per message, and is the kind of number Indian carriers filter. A "
+            "DLT-registered Indian sender is what school SMS needs."
+        )
+
+    return {"channel": channel, "ready": not missing, "missing": missing,
+            "warnings": warnings}
 
 
 def get_twilio_client():
@@ -289,7 +332,7 @@ async def update_template(db, actor_ctx: ActorContext, params: dict, *, session=
     note = ""
     if channel == "whatsapp":
         note = (
-            "Saved — but note this only changes the PREVIEW shown before sending. The "
+            "Saved - but note this only changes the PREVIEW shown before sending. The "
             "wording WhatsApp actually delivers lives in the approved template at Twilio "
             f"({sid or 'no SID set'}) and can only be changed there, with Meta's re-approval."
         )
@@ -316,7 +359,7 @@ async def submit_whatsapp_template_for_approval(
 
     This is the ONLY honest way to "change the WhatsApp wording": new wording is a new
     approved template, not an edit to an existing one. Twilio's Content API does the
-    creation over plain HTTP — no extra automation service is needed — but the wait for
+    creation over plain HTTP - no extra automation service is needed - but the wait for
     Meta's decision is Meta's, and cannot be engineered away. Approval is usually
     minutes and occasionally a day, and Meta can reject wording that looks promotional.
 
@@ -336,7 +379,7 @@ async def submit_whatsapp_template_for_approval(
             "submitted for approval."
         )
 
-    # Twilio numbers its variables {{1}}, {{2}}… — translate our named placeholders.
+    # Twilio numbers its variables {{1}}, {{2}}… - translate our named placeholders.
     twilio_body = body
     for i, var in enumerate(variables):
         twilio_body = twilio_body.replace("{" + var + "}", "{{" + str(i + 1) + "}}")
@@ -395,7 +438,7 @@ async def submit_whatsapp_template_for_approval(
         "template": {k: v for k, v in doc.items() if k != "_id"},
         "message": (
             f"Submitted '{name}' to WhatsApp for approval (status: {approval_state}). "
-            "It cannot be used for sending until Meta approves it — usually minutes, "
+            "It cannot be used for sending until Meta approves it - usually minutes, "
             "sometimes a day. Ask me to check its status."
         ),
     }
@@ -462,7 +505,7 @@ async def _class_map(db, actor_ctx: ActorContext, class_ids: list) -> dict:
     if not ids:
         return {}
     rows = await db.classes.find(
-        # branch-scope: intentional — pinned by unique ids already narrowed to this
+        # branch-scope: intentional - pinned by unique ids already narrowed to this
         # actor's students, so a branch filter could only turn a real row into a miss.
         scoped_filter({"id": {"$in": ids}}, actor_ctx.school_id),
         {"_id": 0, "id": 1, "name": 1, "section": 1},
@@ -551,8 +594,16 @@ async def resolve_recipients(db, actor_ctx: ActorContext, params: dict) -> list:
 
     students = await db.students.find(
         scoped_query({"id": {"$in": student_ids}}, branch_id=bid),
+        # Both spellings of each number, deliberately. Guardian records use
+        # `whatsapp_phone` / `father_phone` / `mother_phone`; the 1,878 student records
+        # loaded from the school's own export on 2026-08-06 use `whatsapp`,
+        # `father_mobile` and `mother_mobile`. Asking for only the first set meant the
+        # WhatsApp number the school actually holds for 1,096 children was never seen,
+        # and the send quietly fell through to the general contact number instead.
+        # Corrected 2026-08-11.
         {"_id": 0, "id": 1, "name": 1, "class_id": 1, "section": 1,
          "phone": 1, "whatsapp_phone": 1, "father_phone": 1, "mother_phone": 1,
+         "whatsapp": 1, "father_mobile": 1, "mother_mobile": 1,
          "guardian_phone": 1},
     ).to_list(MAX_RECIPIENTS_PER_SEND)
     smap = {s["id"]: s for s in students}
@@ -578,8 +629,10 @@ async def resolve_recipients(db, actor_ctx: ActorContext, params: dict) -> list:
         g = gmap.get(sid, {})
         phone = normalize_phone(
             g.get("whatsapp_phone") or g.get("phone")
-            or s.get("whatsapp_phone") or s.get("guardian_phone")
-            or s.get("father_phone") or s.get("mother_phone") or s.get("phone") or ""
+            or s.get("whatsapp_phone") or s.get("whatsapp") or s.get("guardian_phone")
+            or s.get("father_phone") or s.get("father_mobile")
+            or s.get("mother_phone") or s.get("mother_mobile")
+            or s.get("phone") or ""
         )
         if not phone:
             continue
@@ -650,7 +703,7 @@ async def _resolve_body(db, actor_ctx: ActorContext, params: dict, channel: str)
         raise MessagingValidationError("Either template_name or body is required.")
     if channel == "whatsapp":
         raise MessagingValidationError(
-            "WhatsApp cannot send free-typed wording — Meta requires a pre-approved "
+            "WhatsApp cannot send free-typed wording - Meta requires a pre-approved "
             "template. Pick a WhatsApp template by name, or send this as an SMS."
         )
     return body, None
@@ -673,7 +726,7 @@ async def send_messages(db, actor_ctx: ActorContext, params: dict, *, session=No
     """Send to every resolved recipient and write one `message_logs` row each.
 
     Returns counts plus a short per-recipient log. Never raises for an individual
-    delivery failure — one bad number must not abort the other 1,800.
+    delivery failure - one bad number must not abort the other 1,800.
     """
     channel = (params.get("channel") or "sms").strip().lower()
     if channel not in CHANNELS:
@@ -682,7 +735,7 @@ async def send_messages(db, actor_ctx: ActorContext, params: dict, *, session=No
     status = channel_status(channel)
     if not status["ready"]:
         raise MessagingNotConfiguredError(
-            f"{channel.upper()} is not configured on this server — missing "
+            f"{channel.upper()} is not configured on this server - missing "
             f"{', '.join(status['missing'])}. Nothing was sent."
         )
 
@@ -691,7 +744,7 @@ async def send_messages(db, actor_ctx: ActorContext, params: dict, *, session=No
         recipients = await resolve_recipients(db, actor_ctx, params)
     if not recipients:
         return {"sent": 0, "failed": 0, "recipient_count": 0, "logs": [],
-                "message": "No families matched — nothing was sent."}
+                "message": "No families matched - nothing was sent."}
 
     if len(recipients) > MAX_RECIPIENTS_PER_SEND:
         raise MessagingLimitError(
@@ -785,6 +838,6 @@ async def send_messages(db, actor_ctx: ActorContext, params: dict, *, session=No
 
     results["message"] = (
         f"Sent {results['sent']} of {len(recipients)} {channel.upper()} messages"
-        + (f" — {results['failed']} failed." if results["failed"] else ".")
+        + (f" - {results['failed']} failed." if results["failed"] else ".")
     )
     return results

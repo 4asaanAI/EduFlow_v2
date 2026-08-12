@@ -1,5 +1,5 @@
 """
-Integration Tests: Health & Startup — EduFlow Backend
+Integration Tests: Health & Startup - EduFlow Backend
 
 Smoke tests verifying the FastAPI app initializes correctly and
 basic routes are reachable. These hit the real app but don't require
@@ -18,7 +18,7 @@ class TestAppHealth:
         The fixture sets ENVIRONMENT=test, so docs should be available.
         """
         response = client.get("/api/docs")
-        # Docs may redirect or return HTML — just check it's not 404/500
+        # Docs may redirect or return HTML - just check it's not 404/500
         assert response.status_code in (200, 302)
 
     def test_cors_headers_present(self, client):
@@ -43,7 +43,7 @@ class TestAppHealth:
         assert response.status_code == 404
 
     def test_seed_status_endpoint_public(self, client):
-        """GET /api/auth/seed-status is public — no auth needed."""
+        """GET /api/auth/seed-status is public - no auth needed."""
         response = client.get("/api/auth/seed-status")
         # Accept 200 or 404 depending on whether the route exists in this build
         assert response.status_code in (200, 404)

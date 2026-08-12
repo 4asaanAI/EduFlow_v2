@@ -1,10 +1,10 @@
-"""UI Sweep Epic 4 — the tool-panel endpoint.
+"""UI Sweep Epic 4 - the tool-panel endpoint.
 
 Stories 4.1 (one envelope) and 4.5 (the same gate as the assistant).
 
 `POST /api/tools/{tool_id}/execute` is the endpoint behind every tool screen and it
-had **no tests of any kind**. That is why a double result envelope — added when the
-R4 epic made `_env()` the one tool-result shape — survived an entire initiative while
+had **no tests of any kind**. That is why a double result envelope - added when the
+R4 epic made `_env()` the one tool-result shape - survived an entire initiative while
 eleven screens printed 0.
 
 The regression test that matters is `test_response_is_the_tools_own_envelope`: it runs
@@ -22,7 +22,7 @@ TOOL_URL = "/api/tools/{}/execute"
 
 
 def _bearer(payload: dict) -> dict:
-    # NOTE: the claim is `user_id`, not `id` — `decode_jwt` reads `payload["user_id"]`
+    # NOTE: the claim is `user_id`, not `id` - `decode_jwt` reads `payload["user_id"]`
     # and defaults to "". Tests that only exercise role checks never notice; anything
     # that resolves a Scope does, because Scope refuses an empty user_id.
     return {"Authorization": f"Bearer {create_jwt(payload)}"}
@@ -50,7 +50,7 @@ def _receptionist():
 
 
 # The FakeDb is a session-wide singleton, so a blanket `docs[:] = []` would delete
-# rows other test files seeded — that is how this file first broke six parity tests.
+# rows other test files seeded - that is how this file first broke six parity tests.
 # Snapshot and restore instead: these tests get a clean slate and give back exactly
 # what they were handed.
 _TOUCHED = ("students", "staff", "student_attendance", "staff_attendance",
@@ -67,7 +67,7 @@ def _clean(fake_db):
         getattr(fake_db, name).docs[:] = saved[name]
 
 
-# ── Story 4.1 — one envelope ─────────────────────────────────────────────────
+# ── Story 4.1 - one envelope ─────────────────────────────────────────────────
 
 def _is_envelope(value) -> bool:
     return isinstance(value, dict) and {"success", "data", "meta"} <= set(value.keys())
@@ -90,7 +90,7 @@ def test_response_is_the_tools_own_envelope(client, fake_db):
 
     assert _is_envelope(body), "the response body must itself be the tool's envelope"
     assert not _is_envelope(body["data"]), (
-        "data must be the tool's PAYLOAD, never a second envelope — this is owner "
+        "data must be the tool's PAYLOAD, never a second envelope - this is owner "
         "item 7: every screen read r.data.summary and got undefined"
     )
     # And the payload is reachable exactly where the screens look for it.
@@ -101,7 +101,7 @@ def test_response_is_the_tools_own_envelope(client, fake_db):
 def test_no_registry_tool_returns_a_nested_envelope(client, fake_db):
     """Asserted over the registry, not one hand-picked tool.
 
-    This is what stops a third envelope being introduced in 2027 — a future tool that
+    This is what stops a third envelope being introduced in 2027 - a future tool that
     double-wraps fails here rather than showing zeros on a screen nobody opened.
     """
     from ai.tool_functions_v2 import TOOL_REGISTRY
@@ -173,7 +173,7 @@ def test_endpoint_wrong_role_returns_403(client):
     assert resp.json()["detail"] == "Forbidden"
 
 
-# ── Story 4.5 — the same gate as the assistant ───────────────────────────────
+# ── Story 4.5 - the same gate as the assistant ───────────────────────────────
 
 def test_sub_category_is_honoured_like_the_chat_path(client):
     """The endpoint gated on role alone, so 49 registry entries carrying
@@ -219,7 +219,7 @@ def test_every_registry_tool_declares_whether_it_writes(client):
 
     The 14 original v1 tools carry no `dispatch_type` key, so "refuse anything not
     marked read" would refuse every tool panel. The rule is therefore "refuse what is
-    marked write" — which silently admits a NEW tool that forgets the key. This test
+    marked write" - which silently admits a NEW tool that forgets the key. This test
     freezes the inventory of tools lacking the key, so adding one fails here.
     """
     from ai.tool_functions_v2 import TOOL_REGISTRY
@@ -227,7 +227,7 @@ def test_every_registry_tool_declares_whether_it_writes(client):
     # Frozen 2026-07-22. All 46 audited by hand and confirmed read-only.
     KNOWN_WITHOUT_DISPATCH_TYPE = {
         "draft_parent_message", "get_announcements", "get_attendance_overview",
-        # Parent messaging reads (2026-08-08) — audited read-only when added.
+        # Parent messaging reads (2026-08-08) - audited read-only when added.
         "get_messaging_status", "get_message_templates", "get_whatsapp_template_status",
         "search_tools", "preview_data_import",
         "get_branch_comparison", "get_class_list", "get_class_wise_attendance",
@@ -253,7 +253,7 @@ def test_every_registry_tool_declares_whether_it_writes(client):
         f"New tool(s) declare no dispatch_type: {sorted(new_tools)}. The tool-panel "
         "endpoint classifies a tool as a write by its dispatch_type/requires_confirmation "
         "flags, so a tool that omits both is silently callable through a door with no "
-        "confirm token, no kill-switch and no audit. Add dispatch_type explicitly — and "
+        "confirm token, no kill-switch and no audit. Add dispatch_type explicitly - and "
         "if it is a read, add it to this frozen set."
     )
 
@@ -275,7 +275,7 @@ def test_unknown_tool_is_indistinguishable_from_a_forbidden_one(client):
 
 
 def test_branch_bound_caller_does_not_read_another_branch(client, fake_db):
-    """The endpoint called fn(params, user) — no scope — so `_tenant_query` emitted no
+    """The endpoint called fn(params, user) - no scope - so `_tenant_query` emitted no
     branch_id clause and a branch-bound principal read every branch's figures."""
     fake_db.staff.docs.append({
         "id": "st-prin", "schoolId": "aaryans-joya", "branch_id": "branch-a",
@@ -293,7 +293,7 @@ def test_branch_bound_caller_does_not_read_another_branch(client, fake_db):
     assert resp.status_code == 200
     body = resp.json()
     assert body["data"]["summary"]["total_students"] == 1, (
-        "a branch-a principal counted students from branch-b — the scope was never passed"
+        "a branch-a principal counted students from branch-b - the scope was never passed"
     )
 
 
