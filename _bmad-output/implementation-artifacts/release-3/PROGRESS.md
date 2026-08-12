@@ -5,9 +5,25 @@
 Release 3 covers: filters, sorting, a working "All", exports everywhere, a whole-school
 download for the owner and principal, and phone/tablet responsiveness across all 35 tables.
 
-**Release 3 is CODE-COMPLETE and NOT deployed.** All thirteen items are done and green.
-`main` is at `0b74b6e` (Release 2); everything below is in the working tree and
-uncommitted. Nothing ships until Abhimanyu approves, and it ships all together.
+**Release 3 SHIPPED on 2026-08-12 and is LIVE.** All thirteen items went out together, as
+Abhimanyu decided. Commit `810fe43`; backend `eduflow-release3-20260812-810fe43` (Green,
+health all ok); frontend Amplify job 143 SUCCEED. Proof the new server code is really
+running: `POST /api/export/table` answers 401 rather than 404, so it is live and still
+guarded. Gates at ship: backend 3453 passed / 0 failed / 15 credentialed deselected;
+frontend 439 passed at that point; production build and lint clean.
+
+**Rollback target if ever needed: `eduflow-release2-20260812-accfc64`.**
+
+*(These three lines read "CODE-COMPLETE and NOT deployed, main is at 0b74b6e" until the
+moment it shipped. A deploy state written down without a date beside it goes stale within
+hours and is then read as current. Always date it.)*
+
+**`main` has moved past Release 3.** Four owner reports came in once it was live and were
+fixed and deployed the same day: the staff-messaging send failing on every message, no
+inactivity sign-out existing anywhere, the flat tool list on every profile except the
+owner's and the principal's, and a duplicate group icon. **None of that is Release 3
+scope.** It is written up in `CLAUDE.md` under "After Release 3", along with the three
+things still open. Current `main`: `e6f82fb`.
 
 ---
 
@@ -25,7 +41,7 @@ truncation is impossible to mistake for completeness.
 
 ## Done
 
-### 1. "All" actually shows all of it (uncommitted, green)
+### 1. "All" actually shows all of it (SHIPPED 2026-08-12, green)
 
 **This was live and wrong.** The rows-per-page menu has offered "All" on every table since
 2026-08-06, but only the student list ever implemented it. Every other screen passed the
@@ -41,7 +57,7 @@ error, on the School Directory (both tabs), the staff list and the notification 
   AllNotifications. Notifications also counts its unread badge from the rows in hand.
 - New test `frontend/src/lib/__tests__/fetchAllRows.test.js`, 9 tests.
 
-### 2. One page-size rule for every list (uncommitted, green)
+### 2. One page-size rule for every list (SHIPPED 2026-08-12, green)
 
 The server used to carry **eight different ceilings** and a screen had no way to know which
 one applied to it:
@@ -89,7 +105,7 @@ as not there. It fails loudly now.
 **Gates after items 1 and 2:** backend **3,366 passed / 0 failed** / 15 deselected;
 frontend **613 passed / 0 failed**; production build clean including lint.
 
-### 3. The seven server exports: honest, and gated by the permission table (uncommitted, green)
+### 3. The seven server exports: honest, and gated by the permission table (SHIPPED 2026-08-12, green)
 
 Backend half of item 4. The screen buttons followed in items 4 to 6 below.
 
@@ -130,7 +146,7 @@ including the two that pin the truncation fix and one that pins the dormant-prof
 **Gates:** backend **3,369 passed / 0 failed** / 15 deselected. Frontend untouched since
 item 2, so still 613 / 0 with a clean build.
 
-### 4. The download control, and the first five tables wired to it (uncommitted, green)
+### 4. The download control, and the first five tables wired to it (SHIPPED 2026-08-12, green)
 
 Item 4, part one. The machinery and five screens. **The remaining 30 tables are not
 wired yet** - see the list below.
@@ -200,7 +216,7 @@ that changes `MAX_ROWS` was silently ignored, and one existing test failed. It n
 defaults to `None` and resolves at call time. The same trap made the new Excel test
 pass for the wrong reason before the fix.
 
-### 5. The download on every table that renders through a shared component (uncommitted, green)
+### 5. The download on every table that renders through a shared component (SHIPPED 2026-08-12, green)
 
 **The real count is not 35.** Counted rather than estimated: **91 tables**, because a
 tool screen often carries several. 81 of them now have a download.
@@ -237,7 +253,7 @@ that should offer the full list instead can pass `exportRows`.
 by the accessible name `/x/i`, which now also matches the new "Excel" button. It
 targets the sort button by test id instead. The behaviour under test did not move.
 
-### 6. The hand-rolled tables, done one at a time (uncommitted, green)
+### 6. The hand-rolled tables, done one at a time (SHIPPED 2026-08-12, green)
 
 **Item 4 is now COMPLETE.** Every table on the platform has a download. A sweep over
 every file holding a `<table>` or a `DataTable` finds none without one.
@@ -267,7 +283,7 @@ are short by nature, and asking Flo for the same records "in Excel" now gives a
 complete file (item 7). Worth doing if anyone asks; not worth restructuring the chat
 renderer for now.
 
-### 7. Asking Flo for a spreadsheet gives a COMPLETE one (uncommitted, green)
+### 7. Asking Flo for a spreadsheet gives a COMPLETE one (SHIPPED 2026-08-12, green)
 
 **This was the same fault, hiding in the one place it does most damage.** Flo could
 already build an Excel workbook, through `draft_document`. But that tool formats rows
@@ -329,7 +345,7 @@ because there is nothing to say.
 **Gates after item 7:** backend **3,396 passed / 0 failed** / 15 deselected. Frontend
 **635 passed / 0 failed**. Production build clean including lint.
 
-### 8. The timetable generator (uncommitted, green)
+### 8. The timetable generator (SHIPPED 2026-08-12, green)
 
 Added to Release 3 on Abhimanyu instruction, 2026-08-12, from a standalone
 "AI Timetable Builder" he supplied as a zip.
@@ -375,7 +391,7 @@ New tests: `tests/backend/unit/test_timetable_solver.py` (16),
 `tests/backend/api/test_timetable_generation.py` (20),
 `frontend/src/components/__tests__/TimetableGenerator.test.js` (9).
 
-### 9. The nightly CI failure on main, fixed (uncommitted, green)
+### 9. The nightly CI failure on main, fixed (SHIPPED 2026-08-12, green)
 
 Not Release 3 work, but red is red. The scheduled run of `main` failed on 10, 11 and
 12 August with a staff test complaining that a login already belonged to somebody else.
@@ -396,7 +412,7 @@ collide.
 
 ---
 
-### 10. The whole school in one file, for Aman and Adesh only (item B, uncommitted, green)
+### 10. The whole school in one file, for Aman and Adesh only (item B, SHIPPED 2026-08-12, green)
 
 One Excel workbook, nine sheets: children, staff, fees and payments, attendance, exam
 results, classes, transport, expenses, enquiries. On screen at the top of the School
@@ -444,7 +460,7 @@ and the pinned reach counts moved 162 to 163 for the two leadership profiles onl
 New tests: `tests/backend/api/test_whole_school_workbook.py` (20),
 `frontend/src/components/__tests__/WholeSchoolExportButton.test.js` (9).
 
-### 11. Filters on every tab, and the silent people-pickers (item C, uncommitted, green)
+### 11. Filters on every tab, and the silent people-pickers (item C, SHIPPED 2026-08-12, green)
 
 **Filtering, written once for about seventy tables.** It went into `ToolPage.DataTable`,
 exactly as column sorting did in July and the download did in item 5, and for the same
@@ -481,7 +497,7 @@ somebody picks a child who is no longer on it. All 8 call sites across `AdminToo
 
 New test: `ToolTableFiltering.test.js` (11).
 
-### 12. Rows drawn as you scroll (item D, uncommitted, green)
+### 12. Rows drawn as you scroll (item D, SHIPPED 2026-08-12, green)
 
 "All" means ALL THE DATA, drawn as you scroll (Abhimanyu). Every row is still fetched and
 held; what changes is that the browser is not asked to lay out 1,876 table rows at once. In
@@ -501,7 +517,7 @@ would otherwise strand the rest of the list in silence.
 
 New test: `RowsDrawnAsYouScroll.test.js` (6).
 
-### 13. Real phone and tablet profiles, and the pass over every table (item E, uncommitted, green)
+### 13. Real phone and tablet profiles, and the pass over every table (item E, SHIPPED 2026-08-12, green)
 
 **What was missing.** The only "mobile" project was Desktop Chrome with the window made
 narrow: no touch, no device pixel ratio, a desktop user agent. That is a small desktop, not
@@ -555,11 +571,15 @@ tablet on the responsive suite.
 
 ---
 
-## Release 3 is code-complete. Nothing is deployed.
+## Release 3 shipped on 2026-08-12 and is live.
 
-All thirteen items are done, green and **uncommitted**. `main` is still at `0b74b6e`
-(Release 2). Abhimanyu's decision stands that Release 3 ships all together, so the next
-step is his approval to commit and deploy.
+All thirteen items went out together, as Abhimanyu decided. Commit `810fe43`; backend
+`eduflow-release3-20260812-810fe43`; frontend Amplify job 143. Rollback target if ever
+needed: `eduflow-release2-20260812-accfc64`.
+
+`main` has since moved on to `e6f82fb` with four same-day fixes from owner reports found
+once this was live. Those are NOT Release 3 scope; see `CLAUDE.md` under "After Release 3"
+for what they were and for the three things still open.
 
 ## The one gap left open on purpose
 

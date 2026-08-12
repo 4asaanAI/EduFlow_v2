@@ -52,11 +52,17 @@
 > `_bmad-output/planning-artifacts/inspection-findings-2026-08-04.md`.
 > Logs in `_bmad-output/implementation-artifacts/inspection-2026-08-04/`.
 
-> ## 🚧 CURRENT INITIATIVE - Release 3: the whole list, on any device (2026-08-12)
+> ## ✅ SHIPPED - Release 3: the whole list, on any device (2026-08-12)
 >
-> **CODE-COMPLETE, GREEN, AND NOT DEPLOYED.** Thirteen items done, all in the working tree
-> and uncommitted. `main` is still at `0b74b6e` (Release 2). Abhimanyu's decision is that
-> **Release 3 ships all together** - nothing goes out on its own.
+> **LIVE.** All thirteen items shipped together on 2026-08-12, as Abhimanyu decided.
+> Backend `eduflow-release3-20260812-810fe43`, frontend Amplify job 143. *(This banner
+> read "CODE-COMPLETE, GREEN, AND NOT DEPLOYED" until it went out; that was true when
+> written and stale within hours. Do not leave a deploy state written down without a
+> date beside it.)*
+>
+> **`main` has moved past it.** Release 3 is `810fe43`. Two more commits landed the same
+> day from owner reports found once it was live, and they are NOT Release 3 scope - see
+> "After Release 3" below. Current `main`: `e6f82fb`.
 >
 > **Start here:** `_bmad-output/implementation-artifacts/release-3/PROGRESS.md` is the ONLY
 > record of what is done. Read it first, update it last, every run. There is no separate
@@ -96,6 +102,60 @@
 > evaluates it once at import, so the constant stops being live and every test that changes
 > it is silently ignored. This cost a real failure on 12 August. Default to `None` and
 > resolve inside the function.
+
+---
+
+> ## ✅ SHIPPED - After Release 3: four owner reports from the live platform (2026-08-12)
+>
+> Found by Abhimanyu once Release 3 was live, fixed and deployed the same day. These are
+> NOT Release 3 scope. Backend `eduflow-msgfix-20260812-6520aed`; frontend Amplify job 145.
+> Current `main`: `e6f82fb`.
+>
+> **1. Every staff message send was returning a 500, and the message was saved anyway.**
+> `insert_one` writes Mongo's `_id` into the caller's dict IN PLACE, and `send_message`
+> echoed that same dict back. An ObjectId is not JSON, so FastAPI raised AFTER the write
+> committed: the sender was told the opposite of what happened and sent again. **The
+> stand-in DB is what hid it** - `FakeCollection.insert_one` appended without stamping
+> `_id`, so the dict was clean in tests and dirty in production. It now stamps an ObjectId
+> in place, exactly like Mongo, which closes the class rather than the instance. With the
+> route fix reverted, three tests fail; before the conftest change, zero did.
+> **Never return the dict you just inserted.** Read it back with `{"_id": 0}` or strip the key.
+>
+> **2. There was no inactivity sign-out anywhere, for any profile.** The Settings
+> "Session timeout" dropdown offering 30 min / 1 hour / 2 hours **saved nothing and nothing
+> read it**, so a protection that did not exist read as a decision already taken. A sign-in
+> lasted 7 days and renewed itself. Now `frontend/src/lib/idleLogout.js`: **one hour, every
+> profile, the owner included** (Abhimanyu, 2026-08-12), and the Settings control is real
+> and drives it. It stores a **deadline, not a countdown** - a sleeping laptop stops timers,
+> so a countdown would wake with time still on it and leave school records open on an
+> unattended machine. One shared deadline in localStorage across tabs. A missing deadline
+> means "not idle": a late sign-out is a smaller harm than throwing somebody out mid-sentence.
+>
+> **3. Same tab names on every profile.** Only owner and principal menus were clubbed; the
+> accountant head, management head, office desks, teachers and students got one flat list.
+> `groupToolsIntoHubs` in `lib/managementHubs.js` + `getGroupConfig` in `Sidebar.js`.
+> **Two rules, neither may be relaxed:** grouping NEVER grants (each profile's tool list is
+> resolved exactly as before; this only picks a tab, so a layout change can never widen the
+> permission table), and **nothing is dropped** - `staff-tracker` is in the management head's
+> list and in NO hub, so a tabs-only menu would have quietly removed it, which to the person
+> looking is identical to access being withdrawn. Orphans are still listed.
+>
+> **4. The duplicate group icon in Messages is gone.** It opened the same window as the plus,
+> which already carries a Direct/Group switch.
+>
+> ### Still open
+>
+> - **Aman showed "online" in messaging with nobody signed in. UNEXPLAINED - do not guess.**
+>   The light is driven by whether a live stream connection exists right now
+>   (`sse_is_connected`), not a stale timestamp, so it could not be reproduced from the code.
+>   Two candidates: a genuinely open session somewhere (which the missing idle logout made
+>   easy), or a stream registered in `sse_connect` whose `finally` never ran, leaving the
+>   entry until the process restarts. The server has restarted since. **If it is still lit
+>   with nobody signed in, it is the second one.** Ask before fixing.
+> - **The idle sign-out has no "you are about to be signed out" warning**, and unsaved typing
+>   is lost when it fires. Flagged to Abhimanyu; build it if it becomes a nuisance.
+> - **The idle sign-out was proven by tests, not by sitting in a browser for an hour.** The
+>   sleeping-laptop case is covered by a test. Real-device observation is still outstanding.
 
 ---
 
