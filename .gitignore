@@ -105,3 +105,4 @@ entities.json
 
 # R2-11 rollback files: they name live logins. Reconstructible from PROGRESS.md.
 rollback-033-*.json
+.sb
