@@ -18,7 +18,7 @@ reports after it are live.
 | R4-2 | Everything is recorded | **Done** (not deployed) |
 | R4-3 | Two years in full, a summary forever | **Done** (not deployed) |
 | R4-4 | Undo what hurts, guide the rest | **Done** (not deployed) |
-| R4-5 | Flo watches the platform and can reach us | Not started |
+| R4-5 | Flo watches the platform and can reach us | **Built and green** (not deployed; see the four steps below) |
 | R4-6 | Honest menus, one layout | **Done** (not deployed) |
 
 Five of six parts built and green. **Nothing deployed. No live school data has been
@@ -275,3 +275,108 @@ with the reason beside the number.
 
 **Left.** R4-5 only. It reaches outside this repository (LayaaStat, and an n8n workflow),
 so it needs its own run. Nothing in Release 4 is deployed.
+
+---
+
+### 2026-08-12 - R4-5 built and green (Claude, Opus 5)
+
+Backend **3608 passed / 0 failed / 15 deselected** (was 3579). Frontend **777 passed**,
+run three times over because one unrelated chat test failed once under load and then
+passed on every subsequent run; it is timing under a heavier suite, not a defect, and it
+is written down here rather than left as a number nobody could reproduce. Production
+build and lint clean. EduFlow `5474f7e`, LayaaStat `b702c38`. **Nothing is deployed.**
+No live school database was read or changed.
+
+#### The two things the plan said to VERIFY. One of them was wrong.
+
+**The ingest key is fine.** It does NOT point at `layaa-internal`. That risk is closed.
+
+**The registry was not the shape the plan assumed, and this is exactly why it said to
+check.** The Aaryans existed in LayaaStat as **its own PRODUCT** (`eduflow-the-aaryans`),
+sitting BESIDE EduFlow rather than underneath it, and the live key filed everything under
+the EduFlow product's own tenant, which was called "EduFlow". So a ticket today would
+have landed on the product wearing a client's clothes. One level shallower than feared,
+and the same shape of fault.
+
+Abhimanyu chose to make The Aaryans a proper tenant of EduFlow. Done, and done by
+**renaming** the existing tenant rather than minting a new one. A new tenant would have
+been the obvious move and the wrong one: it would have split the school's history in two.
+The rename keeps the live ingest key, 11,342 events, 154 spans, 13 alerts and the email
+alert route all attached and correct, and needed **no key rotation and no restart**.
+
+**Not done, and not to be done blind:** the duplicate `eduflow-the-aaryans` product still
+exists and **holds 376,220 notification rows** plus 4 incidents and its own ingest key, on
+a tenant with no events at all. Deleting the product cascades and takes all of that with
+it. That number also looks like something ran away, and is worth understanding before
+anything is removed. Waiting on Abhimanyu.
+
+Two other corrections to the plan's facts, found by reading rather than assuming.
+**LayaaStat runs on AWS Amplify** (`ddsqdblq9ge74`), not Vercel. And the ingest key prefix
+is `lyk_`, matching the real SDK; the `lsk_live_` in the onboarding document and in
+EduFlow's own client docstring is the stale one.
+
+#### What was built
+
+**One path, not two.** `services/platform_ticket_service.py`; the button and Flo both go
+through it, pinned by `parity/platform_ticket_parity_test.py`. It is a third kind of issue
+in the tracker that already exists, not a second tracker beside it.
+
+**Store first, send second, and that ordering is the design.** The ticket is written down
+and audited BEFORE anything leaves the school. A delivery that fails is a delivery to
+retry, never a report that never existed, and the person is told which of the two happened
+in plain words. "Saved here, but it has not reached Layaa AI yet" is a real outcome and
+wears an amber mark rather than a tick. This platform has told somebody the opposite of
+what happened twice: the bulk messaging route that recorded every recipient as
+`not_configured` and returned success, and the staff message send that answered 500 for a
+message it had already saved.
+
+**No role gate on raising one, and that is a decision.** Owner down to student. The person
+most likely to be first to see a screen that will not load is whoever was using it. Reading
+other people's reports IS gated, and a student gets their own empty list rather than a 403,
+because refusing the whole screen teaches them the feature is not for them.
+
+**The judgement lives where Flo reads it.** `WHEN_NOT_TO_RAISE` is quoted into the tool
+description rather than typed twice, and `tried` is REQUIRED at the chat gate. A report
+that does not say what was already attempted makes us start from the beginning, and
+requiring it is the cheapest way to stop tickets for things the receptionist could have
+fixed in ten seconds.
+
+**The storage watch rides on the heartbeat loop** rather than starting a second one, checks
+once a day against figures MongoDB already keeps, and reports at most once per problem
+rather than once per check. Two things it deliberately will not do: it will not report
+"could not measure" as "fine", and it will not invent a threshold. With no ceiling
+configured it gives the number and says it cannot judge it. Set `STORAGE_CEILING_MB` to
+the plan's real limit and it starts speaking up at seven tenths.
+
+**Nearly nothing new at the LayaaStat end.** The registry, the login, the alert routes, the
+delivery cron, Resend and the storage buckets all existed. A ticket became one more thing a
+notification can be about. The email carries a LINK and never the picture.
+
+**n8n is live**, workflow `zGBva8cGLZybDhEh`, webhook
+`https://qwe123qwe.app.n8n.cloud/webhook/layaastat-ticket`, emailing Abhimanyu and Shubham
+through the Gmail credential that already exists. No new paid service anywhere in R4-5.
+
+#### Guards that fired, each answered rather than silenced
+
+Adding one write tool and one read tool moved five pinned things. `report_platform_problem`
+is `shared`, because a broken fees screen is still a fault and the management head must be
+able to report it. It joined `EXPLICIT_CONFIRMATION_TOOL_NAMES` for a **fifth reason that
+is new in kind**: it is the only tool that sends anything OUT of the school, and somebody
+must be able to tell "Flo helped me" from "Flo told my supplier what I was doing". The read
+tool was renamed from `check_storage_room` to `get_storage_room` because the verb-prefix
+guard was right to object.
+
+**No literal `requires_confirmation` in the registry entry.** The loop at the foot of
+`tool_functions_v2.py` assigns it, so a literal `True` would have been overwritten with
+`False` while still reading as authoritative. That is precisely how `import_data_file` lost
+the confirm card its own description promised.
+
+#### Left, and none of it is code
+
+1. **Run `supabase/migrations/0052_tickets.sql` by hand** in the LayaaStat SQL editor. Every
+   migration there is applied that way; the Supabase connector cannot reach that project.
+2. **Set `LAYAASTAT_PUBLIC_URL`** on the LayaaStat Amplify app, or the email arrives with no
+   link and says so.
+3. **Add a `webhook` alert route** for The Aaryans pointing at the n8n address above.
+4. **Deploy** both, then **watch one real ticket travel the whole way**. Until that has been
+   seen, this is built, not working.
