@@ -98,10 +98,16 @@ test('opens a direct thread, marks it read, and sends a message', async () => {
 });
 
 test('creates a named group from selected leadership profiles', async () => {
+  // Reported 2026-08-12: the separate group icon opened the same window as the
+  // plus and so earned nothing. It is gone, and this proves a group is still
+  // fully reachable through the plus and the Group tab inside it.
   render(<MessagingScreen />);
 
-  fireEvent.click(screen.getByRole('button', { name: 'New group' }));
+  expect(screen.queryByRole('button', { name: 'New group' })).toBeNull();
+
+  fireEvent.click(screen.getByRole('button', { name: 'New message' }));
   const dialog = screen.getByRole('dialog');
+  fireEvent.click(within(dialog).getByRole('tab', { name: /Group/ }));
   fireEvent.change(within(dialog).getByLabelText('Group name'), { target: { value: 'Leadership' } });
   fireEvent.click(within(dialog).getByText('Adesh Singh').closest('label').querySelector('input'));
   fireEvent.click(within(dialog).getByText('Sonu Ruhal').closest('label').querySelector('input'));

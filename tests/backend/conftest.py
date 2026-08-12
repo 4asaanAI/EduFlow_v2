@@ -16,6 +16,7 @@ import asyncio
 import itertools
 import pytest
 import pytest_asyncio
+from bson import ObjectId
 from pathlib import Path
 from typing import AsyncGenerator, Generator
 from pymongo.errors import DuplicateKeyError
@@ -353,6 +354,7 @@ class FakeCollection:
         # Honor unique indexes so idempotency/dedup tests can exercise DuplicateKey
         # on the FakeDb tier too (the real-Mongo tier remains authoritative).
         self._enforce_unique(doc)
+        self._stamp_id(doc)
         self.docs.append(doc)
         return type("Result", (), {"inserted_id": doc.get("_id")})()
 
@@ -360,9 +362,24 @@ class FakeCollection:
         inserted_ids = []
         for doc in docs:
             self._enforce_unique(doc)
+            self._stamp_id(doc)
             self.docs.append(doc)
             inserted_ids.append(doc.get("_id") or doc.get("id"))
         return type("Result", (), {"inserted_ids": inserted_ids})()
+
+    @staticmethod
+    def _stamp_id(doc):
+        """Mimic Mongo: insert writes `_id` back into the caller's dict IN PLACE.
+
+        This stand-in used to leave the dict untouched, so a route that inserted
+        a document and then echoed that same dict back looked clean in every
+        test and returned a non-JSON-serializable ObjectId in production. That
+        is exactly how the staff-messaging send came to 500 for every user on
+        2026-08-12 while the suite stayed green. Stamping it here means the
+        stand-in can fail the same way real Mongo does.
+        """
+        if isinstance(doc, dict) and "_id" not in doc:
+            doc["_id"] = ObjectId()
 
     def _enforce_unique(self, doc):
         for spec in self.indexes.values():

@@ -394,3 +394,47 @@ def test_the_whole_staff_room_fits_and_nobody_is_silently_truncated(client, mess
     data = response.json()["data"]
     assert len(data) == 124
     assert response.json()["meta"]["count"] == 124
+
+
+def test_replying_to_a_colleague_does_not_500_on_mongos_own_id(client, messaging_db):
+    """Reported live on 2026-08-12: Aman replying to Lalit got "An internal error
+    occurred" while the message was in fact saved and delivered.
+
+    `insert_one` writes Mongo's `_id` back into the dict IN PLACE, and the send
+    route echoed that same dict to the sender. An ObjectId cannot be turned into
+    JSON, so the response blew up AFTER the write had already happened - the
+    worst shape of failure, because the sender is told the opposite of what
+    occurred and sends again.
+
+    The stand-in database used to leave `_id` alone, which is why a green suite
+    said nothing. It now stamps `_id` like the real thing, so this test fails
+    without the fix.
+    """
+    owner_headers = _headers("owner-1", role="owner", sub_category="owner")
+    management_headers = _headers("management-1", sub_category="management")
+
+    thread_id = client.post(
+        "/api/messaging/threads/direct",
+        headers=management_headers,
+        json={"user_id": "owner-1"},
+    ).json()["data"]["id"]
+
+    first = client.post(
+        f"/api/messaging/threads/{thread_id}/messages",
+        headers=management_headers,
+        json={"text": "Sir, please check the transport list."},
+    )
+    assert first.status_code == 201, first.text
+
+    reply = client.post(
+        f"/api/messaging/threads/{thread_id}/messages",
+        headers=owner_headers,
+        json={"text": "hello", "reply_to_id": first.json()["data"]["id"]},
+    )
+
+    assert reply.status_code == 201, reply.text
+    assert "_id" not in reply.json()["data"], (
+        "Mongo's internal id must never reach the browser - it is what made the "
+        "send fail while the message had already been written"
+    )
+    assert reply.json()["data"]["text"] == "hello"

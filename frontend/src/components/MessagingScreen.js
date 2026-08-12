@@ -389,8 +389,11 @@ export default function MessagingScreen() {
             <span className={messaging.connected ? 'is-live' : ''}>{messaging.connected ? 'Live' : 'Reconnecting'}</span>
           </div>
           <div>
+            {/* One button, not two. The group icon used to sit here and opened the
+                very same window as the plus, which already carries a Direct/Group
+                switch - so it offered nothing the plus did not, and read as a
+                second, different thing. Reported 2026-08-12. */}
             <button className="message-icon-btn" onClick={() => setDialog('direct')} aria-label="New message" title="New message"><Plus size={19} /></button>
-            <button className="message-icon-btn" onClick={() => setDialog('group')} aria-label="New group" title="New group"><Users size={18} /></button>
           </div>
         </div>
         <label className="message-search">

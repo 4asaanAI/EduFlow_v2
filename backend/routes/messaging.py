@@ -570,6 +570,13 @@ async def send_message(
     receipts = [add_school_id(receipt) for receipt in receipts]
     await db.platform_messages.insert_one(message)
     await db.platform_message_receipts.insert_many(receipts)
+    # insert_one stamps Mongo's own `_id` into the dict IN PLACE. `message` is
+    # echoed back to the sender below, and an ObjectId cannot be turned into
+    # JSON - the send 500'd for everyone while the message itself was saved and
+    # delivered, so the sender saw a failure that had not happened. Every other
+    # response in this file reads back with `{"_id": 0}` or strips the key; this
+    # was the one that returned the dict it had just written.
+    message.pop("_id", None)
     last_message = {
         "id": message["id"],
         "sender_id": user["id"],
