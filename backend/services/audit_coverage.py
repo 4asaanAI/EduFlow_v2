@@ -52,7 +52,7 @@ RECORDS = {
     "services/ai_kill_switch.py", "services/enquiry_service.py",
     "services/campus_ops_service.py", "services/quiz_service.py",
     "services/razorpay_service.py",
-    "services/payroll_service.py",
+    "services/payroll_service.py", "services/platform_ticket_service.py",
     "services/academic_structure_service.py", "services/account_management_service.py",
     "services/accounting_period_service.py", "services/admission_charge_service.py",
     "services/admissions_service.py", "services/announcement_service.py",

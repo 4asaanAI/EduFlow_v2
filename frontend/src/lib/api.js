@@ -1458,6 +1458,31 @@ export async function sendAttendanceAlerts(recipients) {
   return res.json();
 }
 
+// ── R4-5: telling Layaa AI the platform itself is broken ─────────────────────
+// Open to every profile, owner down to student. Anybody who can hit a fault can
+// report one; only reading OTHER people's reports is gated, on the server.
+
+export async function raisePlatformTicket(body) {
+  const res = await apiFetch(`${API}/issues/platform`, {
+    method: 'POST',
+    headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
+export async function listPlatformTickets({ page = 1, limit = 20 } = {}) {
+  const res = await apiFetch(`${API}/issues/platform?page=${page}&limit=${limit}`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function resendPlatformTicket(ticketId) {
+  const res = await apiFetch(`${API}/issues/platform/${ticketId}/resend`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  return res.json();
+}
+
 export async function getMyTokenUsage() {
   const res = await apiFetch(`${API}/tokens/usage/me`, { headers: getHeaders() });
   return res.json();

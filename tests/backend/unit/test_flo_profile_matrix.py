@@ -116,7 +116,17 @@ def test_confirmation_set_is_exactly_destructive_bulk_and_reversals():
         "change_accounting_period_status",
     }
     security_sensitive = {"set_profile_password"}
-    assert EXPLICIT_CONFIRMATION_TOOL_NAMES == destructive | set(BULK_TOOL_NAMES) | reversals | security_sensitive
+    # R4-5, 2026-08-12. A fifth reason joins the four, and it is a new KIND of reason
+    # rather than a new member of an old one: `report_platform_problem` is the only tool
+    # that sends anything OUT OF THE SCHOOL. It is not destructive, not bulk, not a
+    # reversal and not a password, so leaving it out of this list would have been the
+    # correct reading of the old rule and the wrong answer. Somebody must be able to
+    # tell "Flo helped me" from "Flo told my supplier what I was doing", and the confirm
+    # card is how they tell.
+    leaves_the_school = {"report_platform_problem"}
+    assert EXPLICIT_CONFIRMATION_TOOL_NAMES == (
+        destructive | set(BULK_TOOL_NAMES) | reversals | security_sensitive | leaves_the_school
+    )
     assert set(EXPLICIT_CONFIRMATION_TOOL_NAMES) <= set(WRITE_TOOL_NAMES)
     ordinary = set(WRITE_TOOL_NAMES) - set(EXPLICIT_CONFIRMATION_TOOL_NAMES)
     assert ordinary

@@ -19,12 +19,13 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown, LogOut, Moon, Settings, Sun, User, LifeBuoy, Gauge } from 'lucide-react';
+import { ChevronDown, LogOut, Moon, Settings, Sun, User, LifeBuoy, Gauge, Flag } from 'lucide-react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getMyTokenUsage } from '../lib/api';
 import { helpToolsForUser } from '../lib/helpMenu';
 import TokenUpgradeModal from './TokenUpgradeModal';
+import ReportProblemModal from './ReportProblemModal';
 import { userInitials } from '../lib/initials';
 
 const ROLE_COLORS = { owner: '#fb923c', admin: '#4f8ff7', teacher: '#34d399', student: '#a78bfa', parent: '#22d3ee' };
@@ -51,6 +52,7 @@ export default function AccountMenu({ onOpenProfile, onOpenSettings, onSelectToo
   const [showHelp, setShowHelp] = useState(false);
   const [showUsage, setShowUsage] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const [usage, setUsage] = useState(null);
   const ref = useRef(null);
 
@@ -206,6 +208,18 @@ export default function AccountMenu({ onOpenProfile, onOpenSettings, onSelectToo
             <span>{isDark ? 'Light Mode' : 'Dark Mode'}</span>
           </button>
 
+          {/* R4-5: report a problem to Layaa AI. Deliberately NOT inside "Help &
+              Support", which is hidden entirely for roles with nothing under it. This
+              must be there for everybody, owner down to student, because anybody who
+              can hit a fault has to be able to report one. */}
+          <button role="menuitem" data-testid="account-report-problem"
+            style={rowStyle}
+            onClick={() => { setOpen(false); setShowReport(true); }}
+            onMouseEnter={e => e.currentTarget.style.background = hover}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+            <Flag size={14} /><span>Report a problem</span>
+          </button>
+
           <button role="menuitem" style={rowStyle}
             onClick={() => { setOpen(false); onOpenSettings(); }}
             onMouseEnter={e => e.currentTarget.style.background = hover}
@@ -273,6 +287,10 @@ export default function AccountMenu({ onOpenProfile, onOpenSettings, onSelectToo
           canPurchase={currentUser.role !== 'student'}
         />
       )}
+
+      {/* No `canReport` prop and no role check. Every profile may report a problem,
+          which is R4-5's decision and not an omission here. */}
+      {showReport && <ReportProblemModal onClose={() => setShowReport(false)} />}
     </div>
   );
 }

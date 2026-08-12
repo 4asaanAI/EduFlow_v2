@@ -290,19 +290,34 @@ def test_only_leadership_reaches_the_private_leadership_tools():
 # per area. Abhimanyu's decision is that it is Aman's and Adesh's only, so it is in
 # LEADERSHIP_ONLY_TOOL_NAMES, which is the domain that means exactly those two. No write
 # count moved: it reads and formats, and changes no school record.
+# 2026-08-12 (Release 4, R4-5): +1 tool and +1 WRITE for the four live profiles, and
+# nothing at all for the five dormant ones. `report_platform_problem` lets Flo tell Layaa
+# AI that the platform itself is broken. It is classified `shared`, because reporting a
+# fault is neither the school's money nor the school's records and the management head
+# must be able to report a broken fees screen; and it counts as a write because it
+# records a ticket and sends it. The dormant profiles are unchanged because they hold no
+# Flo domains and may not write, which is the same reason they gained a read tool in
+# Release 3 and gained no access with it.
+# 2026-08-12 (Release 4, R4-5, second change): EVERY profile gained exactly ONE READ tool
+# and NO write count moved: `get_storage_room`, which says how much room the school's
+# records are using and whether they are running out. Classified `shared` for the same
+# reason as the tool above: how full the disk is is a fact about the platform, not about
+# the school's money or its children. The five dormant profiles gain it too, exactly as
+# they gained `export_data_file` in Release 3, and gain no access with it: it reads a
+# figure the database already keeps and touches no school record.
 EXPECTED_REACH = {
-    "owner":          (163, 103),
-    "principal":      (163, 103),
+    "owner":          (165, 104),
+    "principal":      (165, 104),
     # 56/31 until 2026-08-11. +1 tool, +1 write: update_staff, named in
     # PROFILE_MATRIX["accountant"]["extra_tools"], scoped by the SERVICE to salary
     # only (Abhimanyu, relaying Aman's and Adesh's instruction).
-    "accountant":     (63, 35),
-    "management":     (99, 59),
-    "transport_head": (29, 0),
-    "receptionist":   (29, 0),
-    "it_tech":        (29, 0),
-    "maintenance":    (29, 0),
-    "support_staff":  (28, 0),
+    "accountant":     (65, 36),
+    "management":     (101, 60),
+    "transport_head": (30, 0),
+    "receptionist":   (30, 0),
+    "it_tech":        (30, 0),
+    "maintenance":    (30, 0),
+    "support_staff":  (29, 0),
 }
 
 

@@ -24,6 +24,13 @@ from ai.tool_functions_v2 import TOOL_REGISTRY, WRITE_TOOL_NAMES
 # tool means adding it here; adding a write tool means giving it write flags. A tool
 # that is on neither list is a classification gap and fails the guard below.
 READ_ONLY_ALLOWLIST = frozenset({
+    # R4-5, 2026-08-12. `get_storage_room` reads one figure MongoDB already keeps
+    # about itself (dbStats). It writes nothing at all, not even a file, and touches no
+    # school record. Note that the storage WATCH can raise a ticket, and that is a
+    # different thing in a different module: it goes through
+    # `platform_ticket_service.raise_ticket`, which is classified as a write, requires
+    # confirmation when Flo calls it, and audits. This tool only answers the question.
+    "get_storage_room",
     # UI Sweep Epic 10. A considered classification, not a convenience.
     # `draft_document` DOES create an S3 object, a `file_uploads` row and an audit
     # row - but it changes NO school record: no student, fee, staff member or

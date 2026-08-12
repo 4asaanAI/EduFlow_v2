@@ -20,6 +20,11 @@ from services import enrolment_status
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
 from services.actor_context import actor_ctx_from_user
+# R4-5: quoted into the tool description below so Flo reads the same words that are
+# written down in the service. One wording, not two that drift.
+from services.platform_ticket_service import (
+    WHEN_NOT_TO_RAISE as _PLATFORM_TICKET_WHEN_NOT_TO_RAISE,
+)
 from services.commercial_service import (
     CommercialConflictError,
     CommercialNotFoundError,
@@ -4477,6 +4482,75 @@ async def tool_set_default_legal_entity(params: dict, user: dict, scope: dict = 
     return {"success": True, "data": row, "message": "Default legal entity updated."}
 
 
+async def tool_get_storage_room(params: dict, user: dict, scope: dict = None) -> dict:
+    """R4-5: how much room the school's records have left.
+
+    A read. It costs one database command against figures the database already keeps,
+    so Flo may answer this whenever it is asked without anybody worrying about the bill.
+    """
+    from services import storage_watch
+
+    result = await storage_watch.check(get_db())
+    # The message is already a plain sentence, including when the answer is "we could
+    # not find out", which is deliberately NOT reported as everything being fine.
+    #
+    # One reading, so `data` is a one-item list rather than a bare object: every read
+    # tool answers in the same envelope, and a tool that quietly answers in its own
+    # shape is how a reader downstream starts guessing.
+    return {
+        "success": True,
+        "denied": False,
+        "data": [result],
+        "meta": {"count": 1, "level": result["level"]},
+        "message": result["message"],
+    }
+
+
+async def tool_report_platform_problem(params: dict, user: dict, scope: dict = None) -> dict:
+    """R4-5: tell Layaa AI the platform itself is broken.
+
+    Goes through the SAME service the button on the screen uses, so a ticket Flo raises
+    and a ticket a person raises are recorded identically and neither can drift.
+
+    `tried` is not decoration. A ticket that does not say what was already attempted
+    makes us start from the beginning, and it is also the honest record of whether Flo
+    did the work before escalating. It is written into the ticket where we will read it.
+    """
+    from services import platform_ticket_service as _pts
+
+    title = (params.get("title") or "").strip()
+    if not title:
+        return _failed("Say in one line what is wrong before reporting it.")
+
+    context = dict(params.get("context") or {})
+    tried = (params.get("tried") or "").strip()
+    if tried:
+        context["what_flo_already_tried"] = tried
+    expected = (params.get("expected") or "").strip()
+    if expected:
+        context["what_they_expected"] = expected
+
+    try:
+        ticket = await _pts.raise_ticket(
+            get_db(),
+            user,
+            title=title,
+            detail=params.get("detail"),
+            kind=params.get("kind", "support"),
+            priority=params.get("priority", "normal"),
+            # Marked as raised by the assistant, always. It is how we count how often
+            # Flo escalates and notice if it starts doing so too readily, which is the
+            # failure that makes everybody ignore tickets.
+            raised_by_assistant=True,
+            context=context,
+        )
+    except _pts.PlatformTicketError as exc:
+        return _failed(str(exc))
+    # The message already says whether it reached us, in plain words, including when it
+    # did not. Flo repeats it rather than inventing a cheerier one.
+    return {"success": True, "data": ticket, "message": ticket.get("message", "Reported.")}
+
+
 async def tool_create_retail_product(params: dict, user: dict, scope: dict = None) -> dict:
     try:
         row = await svc_create_retail_product(get_db(), _commercial_actor(user, scope), params)
@@ -5412,6 +5486,43 @@ TOOL_REGISTRY = {
         "fn": tool_set_default_legal_entity, "roles": ["owner"], "dispatch_type": "write",
         "requires_confirmation": True, "description": "Set the default operating legal entity.",
         "params_schema": {"entity_id": {"type": "string", "description": "Legal entity ID (required)"}},
+    },
+    "get_storage_room": {
+        "fn": tool_get_storage_room, "roles": ["owner", "admin"],
+        "dispatch_type": "read",
+        "description": (
+            "Say how much room the school's records are using and whether they are running "
+            "out. Use it when somebody asks about storage or space, and when a save has just "
+            "failed for no obvious reason. Answer with the number, and if the platform cannot "
+            "measure it, say that rather than saying there is plenty of room."
+        ),
+        "params_schema": {},
+    },
+    "report_platform_problem": {
+        "fn": tool_report_platform_problem, "roles": ["owner", "admin", "teacher", "student"],
+        # No literal `requires_confirmation` here on purpose. The loop at the bottom of
+        # this module ASSIGNS it for every write tool from EXPLICIT_CONFIRMATION_TOOL_NAMES,
+        # so a literal True written here would be silently overwritten with False while
+        # still reading as authoritative. That is exactly how `import_data_file` lost the
+        # confirm card its own description promised. The name is in that set instead.
+        "dispatch_type": "write",
+        # The description is what Flo actually reads, so the judgement lives here and
+        # not in a document nobody loads. WHEN_NOT_TO_RAISE is quoted rather than
+        # re-typed: two copies of a rule are two rules, and they drift.
+        "description": (
+            "Report a problem with the EduFlow platform itself to Layaa AI, the company that "
+            "builds it. Use this only when the platform is not doing what it is supposed to do "
+            "and nobody at the school can put it right. "
+            + _PLATFORM_TICKET_WHEN_NOT_TO_RAISE
+        ),
+        "params_schema": {
+            "title": {"type": "string", "description": "One line saying what is wrong (required)"},
+            "detail": {"type": "string", "description": "What the person was doing and what happened"},
+            "expected": {"type": "string", "description": "What they expected to happen instead"},
+            "tried": {"type": "string", "description": "What you already tried with them before reporting it (required in practice: a ticket without this makes us start from the beginning)"},
+            "kind": {"type": "string", "description": "bug, incident, support or feedback"},
+            "priority": {"type": "string", "description": "low, normal, high or urgent"},
+        },
     },
     "create_retail_product": {
         "fn": tool_create_retail_product, "roles": ["owner", "admin"],
@@ -7295,6 +7406,16 @@ SHARED_LOOKUP_TOOL_NAMES = frozenset({
     # the student list away from management; classifying it as non-finance would hand
     # the ledger to them. Neither is what the table says.
     "export_data_file",
+    # R4-5, 2026-08-12. Reporting that the platform is broken belongs to no domain: it
+    # is not the school's money and it is not the school's records. Anybody who can hit
+    # a fault must be able to say so, including the management head, because a fault on
+    # the fees screen is still a fault and refusing his report would mean we only ever
+    # hear about half the platform. The ticket carries no school data of its own beyond
+    # what the person chose to write and the screen they were on.
+    "report_platform_problem",
+    # Same reasoning: how full the disk is is a fact about the platform, not about the
+    # school's money or its children, so no domain owns it and everyone may ask.
+    "get_storage_room",
     "draft_document", "search_students", "get_student_database",
     "get_student_profile", "query_student_record", "get_staff_list",
     "get_class_list",
@@ -7429,6 +7550,14 @@ EXPLICIT_CONFIRMATION_TOOL_NAMES = frozenset({
 }) | BULK_TOOL_NAMES | frozenset({
     "post_pos_return", "correct_fee_transaction", "correct_salary_disbursement",
     "change_accounting_period_status",
+    # R4-5. Not destructive and not bulk, so it does not qualify under the rule above,
+    # and it is here for a different reason that is written down rather than assumed:
+    # this is the only tool that sends anything OUT OF THE SCHOOL, carrying what the
+    # person was doing when it went wrong. Release 4's test is whether somebody can tell
+    # "nothing happened" from "we did not record it"; the matching test for an outward
+    # message is whether they can tell "Flo helped me" from "Flo told my supplier about
+    # me". A confirm card is how they tell.
+    "report_platform_problem",
 }) | SECURITY_SENSITIVE_TOOL_NAMES
 
 # Release 2 audit, 2026-08-12, recorded because it was nearly decided the other way.

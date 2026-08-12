@@ -275,6 +275,16 @@ app.include_router(parent_messaging_router)
 app.include_router(data_import_router)
 
 
+def _storage_check_every(interval_seconds: int) -> int:
+    """How many heartbeat ticks between storage checks. Once a day, at least once.
+
+    Resolved from the interval at call time rather than bound as a default argument:
+    a module constant bound as a default is evaluated once at import and stops being
+    live, which silently ignored every test that changed it (12 August).
+    """
+    return max(1, int(86_400 / max(1, interval_seconds)))
+
+
 async def _layaastat_heartbeat_loop():
     """Periodically push a PII-free health heartbeat to LayaaStat (env-gated).
 
@@ -284,6 +294,9 @@ async def _layaastat_heartbeat_loop():
     from services import layaastat
 
     interval = max(15, layaastat.heartbeat_seconds())
+    # A one-element list rather than a plain counter because the increment happens
+    # inside the loop body and this reads the same as the assignment it replaces.
+    nonlocal_ticks = [0]
     while True:
         try:
             await asyncio.sleep(interval)
@@ -300,6 +313,23 @@ async def _layaastat_heartbeat_loop():
                 score=100 if db_ok else 50,
             )
             await layaastat.flush()
+
+            # R4-5: the storage watch rides on this loop rather than starting a second
+            # one. It runs at most once a day (`_STORAGE_CHECK_EVERY` ticks), because
+            # a disk does not fill in a minute and Release 4's cost rule is to check on
+            # a schedule against figures the database already keeps. It reports at most
+            # once per problem, not once per check; `maybe_report` owns that and never
+            # raises, so a storage check can never take the heartbeat down with it.
+            nonlocal_ticks[0] += 1
+            if nonlocal_ticks[0] >= _storage_check_every(interval):
+                nonlocal_ticks[0] = 0
+                try:
+                    from database import get_db
+                    from services import storage_watch
+
+                    await storage_watch.maybe_report(get_db())
+                except Exception:
+                    logger.debug("storage watch tick failed", exc_info=True)
         except asyncio.CancelledError:
             raise
         except Exception:
