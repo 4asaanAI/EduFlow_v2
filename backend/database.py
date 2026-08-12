@@ -408,6 +408,12 @@ async def _create_indexes():
     await db.exam_result_corrections.create_index([("result_id", 1), ("revision", -1)], unique=True)
     await db.audit_logs.create_index([("actor_id", 1), ("created_at", -1)])
     await db.audit_logs.create_index([("entity_type", 1), ("entity_id", 1)])
+    # R4-3: the monthly summaries kept forever once detail passes two years. Indexed
+    # by month because that is the only way anybody looks at them - "what happened in
+    # March 2024" - and by school because they outlive everything else in the
+    # collection and must never leak across tenants.
+    await db.audit_summaries.create_index([("schoolId", 1), ("month", -1)])
+    await db.audit_summaries.create_index([("month", 1), ("changed_by", 1)])
     # Owner request 4 (2026-08-06): private notes on a profile. Every read is pinned
     # to one author AND one subject, because a note is private to whoever wrote it,
     # so that is the shape of the index.

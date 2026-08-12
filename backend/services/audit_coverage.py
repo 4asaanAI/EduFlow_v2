@@ -48,6 +48,7 @@ RECORDS = {
     "routes/settings.py", "routes/staff.py", "routes/students.py",
     "routes/upload.py", "routes/messaging.py", "routes/operator.py",
     # Services
+    "services/audit_retention.py",
     "services/ai_kill_switch.py", "services/enquiry_service.py",
     "services/campus_ops_service.py", "services/quiz_service.py",
     "services/razorpay_service.py",
