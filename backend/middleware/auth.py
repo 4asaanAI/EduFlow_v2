@@ -299,6 +299,28 @@ def require_owner_or_admin_subcategories(*sub_categories: str):
     return dependency
 
 
+def require_school_staff(request: Request):
+    """Anybody who works at the school: the owner, any admin profile, any teacher.
+
+    Deliberately NOT students and NOT guardians. This gate exists for the staff
+    messaging tool, where the whole point is that colleagues can reach each other, and
+    where letting a child or a parent in would put them inside the staff room.
+
+    It is written as "everyone who works here" rather than a list of job titles on
+    purpose. A list would have to be edited every time the school creates a profile,
+    and the day somebody forgets is the day a new member of staff cannot be messaged
+    and nobody can see why.
+    """
+    user = get_current_user(request)
+    if user.get("role") in ("owner", "admin", "teacher"):
+        return user
+    logger.info(
+        "school-staff gate failed: role=%s sub=%s path=%s",
+        user.get("role"), user.get("sub_category"), request.url.path,
+    )
+    raise HTTPException(status_code=403, detail="Forbidden")
+
+
 def require_owner_principal_or_management(request: Request):
     """Owner, admin+principal, or admin+management.
 

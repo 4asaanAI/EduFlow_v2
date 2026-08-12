@@ -1873,3 +1873,165 @@ green. The four migrations are applied on the day, one at a time, never through
 **One thing to watch on the day.** The joining charges only fire for children admitted from
 now on. Nobody already on the roll is billed, which is correct and is also the thing to say
 out loud to the school, so nobody expects to see 1,842 registration fees appear.
+
+---
+
+## 2026-08-12: the data actually landed
+
+Everything in this section is **applied to the live school database**. Every step ran a dry
+run first, wrote a rollback file outside the repository, and was recorded in `_migrations`.
+A snapshot of students, staff, school settings and fee transactions was taken before any of
+it, at `E:\Github\Aasaan AI\eduflow-snapshot-2026-08-12\`.
+
+| Step | What it did |
+|---|---|
+| 037 | 377 sibling families, 824 children tagged, 445 concessions copied from the office's own discounts |
+| 038 | The 21 Right to Education children marked, so they are never billed a school fee |
+| 039 | **10,686 payment lines from the ledger of 11 August. 3,55,49,158 collected, 52,43,192 discounted, 3,146 receipts, 1,718 children.** |
+| 040 | The 1,844 unvouched fee figures retired, then removed entirely per Abhimanyu of 12 August, with a standalone copy kept outside the platform |
+| 041 | Seven new office logins, two staff records linked to logins they already had |
+| 042 | 45 staff subjects, 20 staff addresses, 21 towns, 111 student genders, the school logo |
+| 043 | 21 departed staff marked left and signed out; five classes handed to the new teachers the school itself named |
+
+### The three judgements worth reading
+
+**The platform now holds one set of fee numbers, not two.** Before this, 1,844 children
+carried figures whose own label said they were not the fee ledger, and they disagreed with
+what the school actually collected by 26.3 crore in total. Keeping both would have meant
+every screen showing a number nobody stood behind beside a number that was true.
+
+**514 dates of birth were deliberately NOT loaded.** The detainees workbook holds them for
+children whose record is blank, which is tempting. But where that workbook and the platform
+both hold a date they disagree for 119 children out of 925, and 62 of those are the day and
+month reversed. **A wrong birthday follows a child onto every certificate they are ever
+issued.** It is in the handover file as a question instead.
+
+**The five class handovers are the school's own statement, not our inference.** Five of the
+21 departing staff were class teachers of live classes. The school's own new-joiners list,
+the one the 12 teachers were created from, names a class against exactly those five. Had it
+not, the classes would have been left with a departed teacher and reported.
+
+### What could NOT be loaded, and why
+
+**Salary: no source exists.** Not one of the 110 staff has a salary and no file handed over
+contains a salary column. Same for qualification (1 row of 78) and joining date (0 of 78).
+
+**Bus drivers and number plates: no source exists.** 48 routes, all with a blank driver,
+telephone, vehicle number and seat count.
+
+**Student attendance: never recorded, and there is nothing to load.**
+
+**The timetable: the old system's own export is empty.** 60 class sections, and only UKG A
+has a timetable in it.
+
+Everything else outstanding is in
+`QUESTIONS-FOR-THE-SCHOOL-2026-08-11.md`, revised 12 August.
+
+### 2026-08-12, later: the last of it
+
+| Step | What it did |
+|---|---|
+| 044 | **501 dates of birth**, plus the last four contact fields. The workbook holds 514 for blank children and is the ONLY source for them, so agreement between documents could not be tested. Each date was instead tested against the age its own class actually is, calibrated on the 859 children whose two records already agree. 11 were thrown out as impossible and 1 class had too few trusted records to judge by. |
+| 045 | One Sonu Ruhal. The `TCH-0043` subject-teacher label is gone and the record is the accounts head, joined to the login he already uses. |
+
+**Why 045 did not delete anything.** The instruction was to remove the record marked as a
+teacher. That record taught no subject, led no class and its login did not exist, but it
+carried his photograph, his telephone number and **103 days of his attendance**. It was not
+a second person, it was the accounts head wearing the wrong label. Deleting it would have
+destroyed the accounts head's own attendance and left his live login with no staff record
+behind it, which is the exact hole this release set out to close. So the teacher label was
+ended and the person kept. No teacher of that name remains, which is what was asked for.
+
+**The handover is no longer a page of questions.** On Abhimanyu's instruction,
+`QUESTIONS-FOR-THE-SCHOOL-2026-08-11.md` is replaced by
+`HANDOVER-TO-THE-AARYANS-2026-08-12.md`, which states what is finished and lists what the
+school completes itself. Nothing in it comes back to us.
+
+**Sources are now exhausted.** After 044 the student export holds nothing the platform does
+not. The leads file's parent columns are empty at source. The detainees workbook's 64 class
+sheets are lookups into the one table already read. Salary, qualifications, joining dates,
+bus drivers and vehicle numbers appear in no file that was ever handed over.
+
+### 2026-08-12, last: the duplicate that was not in the staff list
+
+| Step | What it did |
+|---|---|
+| 046 | Sonu Ruhal's teacher profile and his **second working login** folded into the accounts head profile and deleted. Three staff records rejoined to the identity the person actually signs in as. |
+| 047 | A profile record for the 12 active logins that had none. |
+
+**Migration 045 did not finish the job and this is worth recording.** It corrected the
+staff record and stopped there, because that is where it looked. His teacher profile also
+existed in `users`, and in `auth_users` as a **second active login named SONU RUHAL with
+role teacher**. The accounts head could sign in as a teacher and be treated as one by every
+permission check, and neither account was doing anything wrong: both were his own name.
+
+**The join was broken, and deleting alone would have made it worse.** Sign-in resolves a
+person from `user_info.id`, and their staff record is found by `staff.user_id`. For Sonu
+those were two different values, so signing in as the accounts head reached no staff record
+at all. His only `users` profile was the teacher one, so deleting it and stopping would
+have left him with no profile, and `users` is what notifications, the daily digest,
+certificate approvers and incident alerts all read. He would have been skipped by every one
+of them, silently. So the details moved first and the duplicate went second.
+
+**Adesh and Lalit had the same broken join, and 041 caused it.** It linked their staff
+records to the login's own id rather than the identity they sign in as. That reads correct
+in the database and does not work in the product, which is the kind of wrong that survives
+review.
+
+**047 came out of the same thread.** Twelve active logins had no profile row, including the
+seven this release created two hours earlier. Being able to sign in and being visible to
+the platform were two different states, and nothing anywhere reported the difference.
+
+Gate after all of it: backend **3,330 passed / 0 failed**.
+
+### 2026-08-12: staff messaging opened to the whole staff room
+
+Abhimanyu asked for the logins we created, plus Aman and Adesh, to be able to message each
+other, make groups and do what people expect of a messaging app.
+
+**Most of that already existed and nobody could reach it.** The tool already has direct
+chats, named groups with editable membership, edit and delete a message, read receipts,
+typing indicators, unread counts and live delivery. What it did not have was people: it was
+gated to four leadership profiles, so everybody else opened it to an empty room.
+
+So the gate changed and nothing else did. Membership is now a fact about the person rather
+than a list of job titles: **you are in if you work here.** `require_school_staff` in
+`middleware/auth.py`, mirrored by `STAFF_ROLES` on the frontend so the button matches.
+
+**The line that did not move: students and guardians.** They hold logins on this platform
+too. Messaging is the staff room, and it is pinned by a test that a child and a parent are
+refused, so widening it again has to be a decision somebody writes down.
+
+#### Three faults this uncovered, and one of them was ours from this morning
+
+| | |
+|---|---|
+| 048 | **The 21 departed staff could still sign in.** Migration 043 reported them signed out. It looked their login up by the wrong id field, matched nothing, and changed nothing. |
+| 049 | **95 of 102 staff logins carried no branch.** The colleague list filters by branch, correctly, so it would have shown 7 people and hidden 89 colleagues. |
+| caps | Contacts were capped at 50 and presence at 20, set when four people could message each other. The school has 96 staff logins. |
+
+**All three are the same shape: a query that quietly returns less than it should.** A
+lookup that matches nobody looks exactly like a lookup with nothing to do. A colleague
+missing because of a cap looks exactly like a colleague who has left. None of the three
+would have reported anything; 043 printed a success line while changing nothing.
+
+The branch fault was fixed in the **data**, not by loosening the filter. Treating "no
+branch" as "everywhere" works today because the school runs one branch, and becomes a
+cross-branch leak the day it runs two.
+
+#### Measured, on the live database
+
+Every member of staff now sees **81 colleagues**: 66 teachers, 14 office and leadership,
+and the owner. Aman, Adesh, Sonu, Lalit and all seven new office logins are among them.
+**No departed member of staff appears, and no student or parent appears.**
+
+| Gate | Result |
+|---|---|
+| Backend | **3,339 passed / 0 failed** / 15 deselected |
+| Frontend | **604 passed / 0 failed** |
+| Build | clean, with lint |
+
+**Not deployed.** The code is written and green; the school will not see it until the
+backend is deployed and the frontend build ships. The data fixes (048, 049) are already
+live, and both are right regardless of messaging: people who left the school should not be
+able to sign in to it.

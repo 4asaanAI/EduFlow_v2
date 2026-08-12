@@ -95,6 +95,20 @@ MIGRATIONS = [
     # Run each one by itself.
     ("039_load_payments_from_ledger", "Release 2 step 8: 10,720 payment lines from the school's ledger of 11 August, 3.56 crore collected across 3,177 receipts (data-changing; run explicitly only)"),
     ("040_supersede_unvouched_fee_snapshots", "Release 2 step 8: retire the fee figures on 1,844 children that their own label says are not the fee ledger; moved, not deleted (data-changing; run explicitly only)"),
+    # 041 issues real passwords to real people and 043 takes 21 people off the roll and
+    # switches their logins off. Both are listed only because every migration file must
+    # be. Run each one by itself, and read what it prints before saying yes.
+    ("041_office_staff_logins", "Seven new office logins, two staff records linked to logins they already had; teachers, the care taker and the office helpers deliberately excluded (data-changing; ALREADY APPLIED 2026-08-12; run explicitly only)"),
+    ("042_fill_blanks_from_school_sources", "Fill only blanks the school's own records answer: 45 staff subjects, 21 staff addresses, 111 student genders, the school logo (data-changing; ALREADY APPLIED 2026-08-12; run explicitly only)"),
+    ("043_staff_departures", "The 21 staff confirmed as departed, marked left and signed out, and five classes handed to the new teachers the school itself named (data-changing; ALREADY APPLIED 2026-08-12; run explicitly only)"),
+    ("044_dates_of_birth_and_last_contact_fields", "501 dates of birth from the detainees workbook, each one tested against the age its own class actually is, plus the last four contact fields (data-changing; ALREADY APPLIED 2026-08-12; run explicitly only)"),
+    ("045_one_sonu_ruhal", "End the SONU RUHAL subject-teacher label: one record, the accounts head, joined to the login he already uses (data-changing; ALREADY APPLIED 2026-08-12; run explicitly only)"),
+    ("046_merge_sonu_teacher_profile", "Fold Sonu Ruhal's teacher profile and his second working login into the accounts head profile and delete them; rejoin three staff records to the identity the person signs in as (data-changing; ALREADY APPLIED 2026-08-12; run explicitly only)"),
+    ("047_profiles_for_logins_that_have_none", "A profile record for the 12 active logins that had none and were therefore skipped by every notification, digest and approval list (data-changing; ALREADY APPLIED 2026-08-12; run explicitly only)"),
+    # 048 and 049 both exist because a lookup that matches nobody looks exactly like a
+    # lookup with nothing to do. 043 believed it had signed 21 leavers out and had not.
+    ("048_actually_sign_out_departed_staff", "Switch off the logins of the 21 departed staff, which migration 043 reported as done and had not done: it matched the wrong id field and silently changed nothing (data-changing; ALREADY APPLIED 2026-08-12; run explicitly only)"),
+    ("049_stamp_branch_on_staff_logins", "Put the branch on the 95 staff logins that carried none, so branch filtering stops hiding colleagues from each other in staff messaging (data-changing; ALREADY APPLIED 2026-08-12; run explicitly only)"),
 ]
 
 

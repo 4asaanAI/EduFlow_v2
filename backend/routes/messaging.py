@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 from pymongo.errors import DuplicateKeyError
 
 from database import get_db
-from middleware.auth import require_owner_or_admin_subcategories
+from middleware.auth import require_school_staff
 from services.sse import (
     KEEPALIVE_COMMENT,
     connect as sse_connect,
@@ -26,16 +26,26 @@ from tenant import add_school_id, get_school_id, scoped_query
 
 
 router = APIRouter(prefix="/api/messaging", tags=["messaging"])
-require_messaging_profile = require_owner_or_admin_subcategories(
-    "principal", "accountant", "management"
-)
+require_messaging_profile = require_school_staff
 
-LEADERSHIP_PROFILES = {
-    ("owner", "owner"),
-    ("admin", "principal"),
-    ("admin", "accountant"),
-    ("admin", "management"),
-}
+# 2026-08-12 - OPENED TO THE WHOLE STAFF ROOM, on Abhimanyu's instruction.
+#
+# This was four profiles: the owner, the principal, the accountant head and the
+# management head. Everybody else who works at the school could see the tool and had
+# nobody in it. The school asked for what people already expect from a messaging app:
+# any colleague can reach any colleague, and they can make groups.
+#
+# So membership is now a fact about the person, not a list of job titles: **you are in
+# if you work here**. The owner, every admin profile and every teacher. A new member of
+# staff appears the moment their login exists, without anybody editing this file, which
+# is the same lesson R2-10 below already paid for once.
+#
+# WHO IS STILL OUT, and this is the line that must not move: **students and guardians.**
+# They hold logins on this platform too. Messaging is the staff room, and a child or a
+# parent inside it is a different product with different consent behind it. Roles are
+# named here rather than "anyone with a login" precisely so that widening it again has
+# to be a decision somebody writes down.
+STAFF_ROLES = ("owner", "admin", "teacher")
 # R2-10, 2026-08-11 - REMOVED, and do not bring it back.
 #
 # This used to be a set of four usernames - aman.litt, adesh.singh, sonu.ruhal,
@@ -48,24 +58,25 @@ LEADERSHIP_PROFILES = {
 # precisely the wrong reason for it to work: the next employee to join would still have
 # been invisible, and nobody would have known why.
 #
-# The lookup now asks the question the code actually wanted, which is the same question
-# `LEADERSHIP_PROFILES` two lines up already answers: WHO HOLDS THIS JOB. A login name is
-# a way of typing your name in, not a statement of who somebody is.
+# The lookup now asks the question the code actually wanted: WHO HOLDS THIS JOB. A login
+# name is a way of typing your name in, not a statement of who somebody is.
 #
 # Both document shapes are matched. `auth_users` normally carries the person inside
 # `user_info`, and `routes/auth.py` falls back to a top-level `role` for older records
 # (see `login`), so a lookup that read only one of the two would drop whoever happens to
-# be stored the other way. Every row is checked against LEADERSHIP_PROFILES afterwards
-# regardless, so a loose query cannot widen who appears.
-_LEADERSHIP_SUBS = ["principal", "accountant", "management"]
-LEADERSHIP_ROLE_FILTER = [
-    {"user_info.role": "owner"},
-    {"user_info.role": "admin", "user_info.sub_category": {"$in": _LEADERSHIP_SUBS}},
-    {"role": "owner"},
-    {"role": "admin", "sub_category": {"$in": _LEADERSHIP_SUBS}},
+# be stored the other way. Every row is checked against STAFF_ROLES afterwards regardless,
+# so a loose query cannot widen who appears.
+STAFF_ROLE_FILTER = [
+    {"user_info.role": {"$in": list(STAFF_ROLES)}},
+    {"role": {"$in": list(STAFF_ROLES)}},
 ]
 MAX_MESSAGE_LENGTH = 4000
 MAX_GROUP_NAME_LENGTH = 80
+# The whole staff room has to fit. There are 96 staff logins today and the old caps of
+# 50 contacts and 20 presence rows were set when four people could message each other.
+# A cap that silently truncates a colleague list is indistinguishable from that person
+# having left, so these are set well above the school's size and the count is returned.
+MAX_STAFF = 1000
 
 
 def _now() -> str:
@@ -167,25 +178,38 @@ def _scope(query: dict, user: dict) -> dict:
     return scoped_query(query, branch_id=user.get("branch_id"))
 
 
-async def _leadership_contacts(db, user: dict) -> list[dict]:
+async def _staff_contacts(db, user: dict) -> list[dict]:
+    """Everyone who works at the school and can sign in.
+
+    Two filters do the work, and neither is a list anybody has to maintain:
+
+    * the login must be active, which is why the 21 staff who left in August drop out
+      by themselves rather than lingering in a colleague list as people to message
+    * the role must be one of :data:`STAFF_ROLES`, which keeps students and guardians
+      out even though they hold logins on this same platform
+    """
     query = {
         "schoolId": get_school_id(),
         "is_active": {"$ne": False},
-        "$or": LEADERSHIP_ROLE_FILTER,
+        "$or": STAFF_ROLE_FILTER,
     }
     if user.get("branch_id"):
         query["user_info.branch_id"] = user["branch_id"]
     rows = await db.auth_users.find(
         query,
-        {"_id": 0, "id": 1, "user_info": 1},
-    ).to_list(50)
+        {"_id": 0, "id": 1, "role": 1, "sub_category": 1, "user_info": 1},
+    ).to_list(MAX_STAFF)
     contacts = []
     for row in rows:
         info = row.get("user_info") or {}
         role = info.get("role") or row.get("role")
-        sub_category = info.get("sub_category") or ("owner" if role == "owner" else None)
+        sub_category = (
+            info.get("sub_category")
+            or row.get("sub_category")
+            or ("owner" if role == "owner" else None)
+        )
         user_id = info.get("id") or row.get("id")
-        if not user_id or (role, sub_category) not in LEADERSHIP_PROFILES:
+        if not user_id or role not in STAFF_ROLES:
             continue
         contacts.append({
             "id": user_id,
@@ -198,7 +222,7 @@ async def _leadership_contacts(db, user: dict) -> list[dict]:
 
 
 async def _contact_map(db, user: dict) -> dict[str, dict]:
-    return {contact["id"]: contact for contact in await _leadership_contacts(db, user)}
+    return {contact["id"]: contact for contact in await _staff_contacts(db, user)}
 
 
 async def _require_contact(db, user_id: str, actor: dict) -> dict:
@@ -268,12 +292,12 @@ async def _serialize_thread(
 @router.get("/contacts")
 async def list_contacts(user: dict = Depends(require_messaging_profile)):
     db = get_db()
-    contacts = await _leadership_contacts(db, user)
+    contacts = await _staff_contacts(db, user)
     if user["id"] not in {contact["id"] for contact in contacts}:
-        raise HTTPException(403, "Messaging is limited to the four leadership profiles")
+        raise HTTPException(403, "Messaging is for school staff")
     presence_rows = await db.platform_message_presence.find(
         _scope({"user_id": {"$in": [contact["id"] for contact in contacts]}}, user), {"_id": 0}
-    ).to_list(20)
+    ).to_list(MAX_STAFF)
     presence = {row["user_id"]: row for row in presence_rows}
     data = []
     for contact in contacts:
@@ -392,7 +416,7 @@ async def create_group_thread(
     db = get_db()
     contacts = await _contact_map(db, user)
     if user["id"] not in contacts:
-        raise HTTPException(403, "Messaging is limited to the four leadership profiles")
+        raise HTTPException(403, "Messaging is for school staff")
     member_ids = list(dict.fromkeys([user["id"], *body.member_ids]))
     if len(member_ids) < 3:
         raise HTTPException(400, "A group needs at least three members; use a direct message for two")
@@ -679,7 +703,7 @@ async def messaging_stream(
     await _require_contact(db, user["id"], user)
     session_id = normalize_session_id(request.headers.get("X-SSE-Session-ID"))
     queue = await sse_connect(_channel(user["id"]), session_id)
-    contacts = await _leadership_contacts(db, user)
+    contacts = await _staff_contacts(db, user)
     contact_ids = [contact["id"] for contact in contacts]
     connected_at = _now()
     await db.platform_message_presence.update_one(
