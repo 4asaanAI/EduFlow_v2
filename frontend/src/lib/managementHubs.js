@@ -38,7 +38,14 @@ export const MANAGEMENT_HUBS = [
       ['accounting-periods', 'Accounting Periods', 'Posting locks and controls', 'owner'],
       ['payroll-manager', 'Payroll & Payslips', 'Salary runs and corrections', 'owner'],
       ['expense-tracker', 'Expenses', 'Track and approve expenditure', 'owner'],
-      ['commercial-operations', 'Commercial Operations', 'Admissions CRM and legal entities', 'both'],
+      // Renamed from "Commercial Operations" on 2026-08-14. With campus retail gone the
+      // old name described nothing the screen does: what is left is the trust's legal
+      // entities and admission leads carrying a value.
+      //
+      // The ID stays `commercial-operations` on purpose. It is what every permission
+      // list, deep link and saved menu entry refers to, so renaming it would silently
+      // take the screen away from whoever holds it. Only the words on screen changed.
+      ['commercial-operations', 'Legal Entities & Admissions', 'Entities and admission leads', 'both'],
     ],
   },
   {

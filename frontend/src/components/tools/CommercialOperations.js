@@ -84,7 +84,7 @@ export default function CommercialOperations() {
   const operatingEntities = entities.filter(item => !item.is_group && item.is_active !== false);
   const availableTabs = [...(canSummary ? ['overview'] : []), ...(canCrm ? ['crm'] : []), 'entities'];
 
-  return <ToolPage title="Commercial Operations" subtitle="Admissions CRM and legal entities in one controlled workspace" loading={loading} onRefresh={refresh}>
+  return <ToolPage title="Legal Entities & Admissions" subtitle="The trust's legal entities, and admission leads with values" loading={loading} onRefresh={refresh}>
     {error && <div role="alert" style={errorStyle}>{error}</div>}
     <div style={toolbar}>
       <label style={{ minWidth: 210, flex: '1 1 240px' }}>

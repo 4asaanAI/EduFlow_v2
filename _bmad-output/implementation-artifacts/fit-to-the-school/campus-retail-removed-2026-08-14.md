@@ -142,3 +142,33 @@ because the plan still reads as though the largest item in the next release is o
 Backend **3,676 passed / 0 failed**. Frontend **793 passed / 0 failed**. Build and lint
 clean. The generated permission mirror regenerated to **no change**, which is the proof that
 none of this moved anybody's access.
+
+---
+
+## Renamed: "Commercial Operations" is now "Legal Entities & Admissions"
+
+With the shop gone the old name described nothing the screen does. What is left is the
+trust's legal entities and admission leads carrying a value.
+
+**The internal id stays `commercial-operations`.** It is what every permission list, deep
+link and saved menu entry points at, so renaming it would quietly take the screen away from
+whoever holds it. Only the words on screen changed, in four places: both sidebar menus, the
+hub tile and the page heading, plus Flo's own description of the tool.
+
+## Found while renaming, and NOT fixed: two screens do the same job
+
+**This screen's admission leads and the Enquiry Register are the same records.** Both read
+and write `db.enquiries`. The hub even labels the Enquiry Register "Admissions CRM", which is
+what the other screen's main tab is called.
+
+The difference is that this screen adds a layer on top: a follow-up activity log, an
+opportunity with a rupee value and a probability, and a weighted pipeline total.
+
+**Not touched, because it is a decision rather than a tidy-up.** The honest options are to
+merge the two, or to keep both and name them so a person can tell which to open. What should
+not stand is today's position, where two menu entries lead to the same children under two
+names, one of them the same name as the other's tab.
+
+This is the same shape as the duplicate student and staff directories the school's owner had
+merged on 2026-08-07: "let's just have a single place with all the information rather than
+3 places."

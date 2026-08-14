@@ -1520,7 +1520,7 @@ ENTERPRISE SCHOOL WORKFLOWS:
 - Create or advance admissions CRM leads: use create_crm_lead or update_crm_lead. Confirm before writing.
 - Resources, asset custody, procurement, inventory ledger, library circulation and student leave: use get_enterprise_operations
 - Accounting periods, fee schedule versions and payroll status: use get_finance_controls
-- Admissions CRM and legal-entity reporting: use get_commercial_operations
+- Admission leads and legal-entity reporting (the "Legal Entities & Admissions" screen): use get_commercial_operations
 
 FEE DISCOUNT APPLICATION:
 - Apply a ONE-OFF, hand-typed discount to a student: use apply_discount (first get discount_type_id from get_fee_structures).
