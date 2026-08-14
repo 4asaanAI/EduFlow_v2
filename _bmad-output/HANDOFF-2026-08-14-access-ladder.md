@@ -155,3 +155,33 @@ whose profiles the school has not yet defined must all wait.
 guessed at: how many server routes let the wrong office desk through. `POST /api/transport`
 is the proven example. Nothing is widened; where a route is wrong it is written down, not
 changed on the spot.
+
+---
+
+## Update, 2026-08-14 later: R3-0 is RETIRED, not parked
+
+**Everything above about R3-0 is now history.** Two places in this file still tell you to do
+R3-0 first ("What to do next, in order", and the earlier update saying it is parked). Both
+are superseded. **R3-0 will not be built.**
+
+**Abhimanyu's decision:** a credential is handed to somebody only once their profile is
+ready, so a lock that refuses a not-ready profile never fires. Sound, and it is the
+deciding factor.
+
+**The consequence, so nobody derives the wrong one.** The earlier update said that because
+R3-0 was parked, no credential could go to anybody new. **That is no longer the rule.** The
+rule is now the sequencing itself: a credential goes out when the profile is ready, and not
+before. **R3-4, handing Chaman his password, is unblocked** and waits on R3-2 alone.
+
+**What is accepted rather than closed.** "Dormant" still means nothing at runtime. The seven
+office logins from migration 041 reach real screens if anybody signs in on one. The control
+moved from the code to the handover process, so the remaining risk is a handover mistake at
+the school rather than a bug. If that ever feels too large, change those seven passwords;
+it removes the same risk in minutes without touching a permission gate.
+
+**The twenty questions R3-0 raised are kept**, enumerated test by test with what each one
+asks, in
+`implementation-artifacts/release-3-access/R3-0-retired-and-the-twenty-questions-2026-08-14.md`.
+
+**Also since that update:** R3-1 (the survey) is done, and R3-1a shipped five narrowings,
+live as `eduflow-r31a-20260814-d571571`.

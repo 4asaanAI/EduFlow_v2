@@ -178,8 +178,25 @@
 >
 > **Current work: `_bmad-output/planning-artifacts/release-3-access-department-heads-2026-08-14.md`,
 > progress in `implementation-artifacts/release-3-access/PROGRESS.md`, handoff
-> `HANDOFF-2026-08-14-access-ladder.md`. R3-0 must land before any credential is handed
-> out.**
+> `HANDOFF-2026-08-14-access-ladder.md`.**
+>
+> **R3-0 is RETIRED by Abhimanyu's decision of 2026-08-14 and will NOT be built.** *(This
+> line previously read "R3-0 must land before any credential is handed out". That was true
+> when written.)* A credential goes out only once that person's profile is ready, so a lock
+> refusing a not-ready profile never fires.
+>
+> **The consequence is ACCEPTED, not closed.** "Dormant" still means nothing at runtime, so
+> the seven office logins created by migration 041 reach real screens and can write if
+> anybody ever signs in on one. The control is now the handover process, not the code, and
+> the remaining risk is a handover mistake at the school rather than a bug. The cheap
+> alternative, if that ever feels too large, is to change those seven passwords to something
+> nobody holds; that removes the same risk without touching a permission gate.
+>
+> The twenty questions R3-0 raised are KEPT, named test by test, in
+> `implementation-artifacts/release-3-access/R3-0-retired-and-the-twenty-questions-2026-08-14.md`.
+> Two of them are not rubber stamps: the eleven transport tests are the map of what Chaman
+> can already do and are R3-2's starting point, and the procurement one may be a genuine
+> narrowing. **R3-4 is no longer blocked**; it was blocked only by R3-0 being parked.
 
 > ## ✅ SHIPPED - Release 3: the whole list, on any device (2026-08-12)
 >
