@@ -24,28 +24,125 @@ Confirm:
 
 ## 2. Backend Deploy Steps
 
-Package the backend from the repository root:
+> **Corrected 2026-08-14 against a real deploy.** This section used to say
+> `make package-backend`, `eb use eduflow-prod`, `eb deploy` and `api.example.com`. **None
+> of those exist here.** There is no Makefile target, no `eb` CLI configured, and the host
+> is not example.com. A runbook that reads as authoritative and is wrong costs a day; the
+> steps below are the ones that were actually run.
+
+**The names.** Application `eduflow`, environment `Eduflow-env-1`, region `ap-south-1`,
+account `210447603820`. Health:
+`http://eduflow.ap-south-1.elasticbeanstalk.com/api/health/ready`.
+
+### Step 0. Use the right AWS login. This is the one that catches people.
+
+Three logins exist for this account and **only `claude-hosting` can complete a deploy**.
+The others can read Elastic Beanstalk and can even create an application version, so
+everything looks fine until `update-environment` fails within seconds on a denied
+`s3:DeleteObject`. That is the wrong-key symptom, not a missing permission: do not widen
+IAM for it.
 
 ```bash
-make package-backend
+export AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID_HOSTING"
+export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY_HOSTING"   # both from the repo-root .env
+aws sts get-caller-identity        # the Arn MUST end in user/claude-hosting
 ```
 
-Deploy with Elastic Beanstalk:
+That failure happens before the running application is touched, so a failed deploy never
+takes the school down.
+
+### Step 1. Build the bundle, and check it before uploading
 
 ```bash
-eb use eduflow-prod
-eb deploy
-eb status
+SHA=$(git rev-parse --short HEAD)
+scripts/package_backend.sh        # zip -qr of application.py, Procfile, requirements.txt,
+                                  # backend/, .ebextensions/, .platform/
 ```
 
-Verify after deploy:
+**On a machine with no `zip`** (Windows workstations), `package_backend.sh` cannot run, and
+**PowerShell `Compress-Archive` produces a bundle the platform rejects** because it writes
+backslash entry separators. Use a small Python `zipfile` packager with the same file list
+and forward-slash entry names.
+
+**Always diff the entry list against the last good bundle in `deploy/` before uploading.**
+An earlier attempt silently dropped `.ebextensions/` (monitoring alarms, SSE timeout, OCR)
+and swept in stray files from `backend/uploads/`, which may hold real people's documents.
 
 ```bash
-curl -fsS https://api.example.com/api/health/ready
-curl -fsS https://api.example.com/api/health/system -H "Authorization: Bearer <owner-or-it-token>"
+python - <<'PY'
+import zipfile
+new = set(zipfile.ZipFile('deploy/eduflow-backend-main-<sha>.zip').namelist())
+old = set(zipfile.ZipFile('deploy/<last-good>.zip').namelist())
+print('added  :', sorted(new - old))     # expect only this release's new files
+print('removed:', sorted(old - new))     # expect nothing
+PY
 ```
 
-Expected result for readiness is HTTP `200` with `db_connected: true` and `school_id_configured: true`.
+### Step 2. Upload, register, deploy
+
+```bash
+LABEL="eduflow-<release>-$(date +%Y%m%d)-$SHA"
+aws s3api put-object --bucket elasticbeanstalk-ap-south-1-210447603820 \
+  --key "$LABEL.zip" --body "deploy/eduflow-backend-main-$SHA.zip" --region ap-south-1
+aws elasticbeanstalk create-application-version --application-name eduflow \
+  --version-label "$LABEL" \
+  --source-bundle S3Bucket=elasticbeanstalk-ap-south-1-210447603820,S3Key="$LABEL.zip" \
+  --region ap-south-1
+aws elasticbeanstalk update-environment --environment-name Eduflow-env-1 \
+  --version-label "$LABEL" --region ap-south-1
+```
+
+A deploy takes roughly 70 to 90 seconds.
+
+### Step 3. Watch it, using the right signal
+
+**`describe-environments` lags.** It kept reporting `Updating` on the OLD version label
+for minutes after the deploy had finished. Trust the events:
+
+```bash
+aws elasticbeanstalk describe-events --environment-name Eduflow-env-1 \
+  --region ap-south-1 --max-items 8 --query "Events[].[EventDate,Severity,Message]" --output text
+```
+
+Wait for `Environment update completed successfully`. Only then confirm the label:
+
+```bash
+aws elasticbeanstalk describe-environments --application-name eduflow \
+  --environment-names Eduflow-env-1 --region ap-south-1 \
+  --query "Environments[0].[Status,Health,VersionLabel]" --output text
+```
+
+Status alone flips to Ready while still on the old version and will fool a naive loop.
+
+### Step 4. Prove it shipped, do not assume it
+
+Readiness must be HTTP `200` with `db_connected: true` and `school_id_configured: true`:
+
+```bash
+BASE=http://eduflow.ap-south-1.elasticbeanstalk.com
+curl -fsS $BASE/api/health/ready
+```
+
+Then hit a route that only exists in the new code, **and a route that exists nowhere**:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" $BASE/api/<brand-new-route>   # 401 = live and guarded
+curl -s -o /dev/null -w "%{http_code}\n" $BASE/api/<made-up-route>     # 404 = the server is answering
+```
+
+**401 on the new route proves the new code is live and still guarded. 404 means it did not
+ship.** The made-up route is the control: without it, a 404 could equally mean the whole
+server is down. Never call a deploy done on a green status alone.
+
+### The frontend deploys itself
+
+Amplify app `ddxpej151tf13` builds on every push to `main`. Confirm the job succeeded **and
+that it ran on your commit**:
+
+```bash
+aws amplify list-jobs --app-id ddxpej151tf13 --branch-name main --region ap-south-1 \
+  --max-results 3 --query "jobSummaries[].{Job:jobId,Status:status,Commit:commitId}"
+```
 
 ## 3. Migration Procedure
 
@@ -76,13 +173,27 @@ production value you intended.
 
 ## 4. Rollback Procedure
 
-Rollback application code first when the database schema remains backward compatible:
+**Know the rollback target BEFORE deploying.** Read the live version label first and write
+it down; that is what you are going back to. Recent ones:
+
+| Released | Version deployed | Rollback target it replaced |
+|---|---|---|
+| 2026-08-14 | `eduflow-admissions-20260814-52dc341` (admissions stage one) | `eduflow-noshop-20260814-484135d` |
+| 2026-08-13 | `eduflow-release4-20260813-fec72a7` (audit, undo, menus) | `eduflow-msgfix-20260812-6520aed` |
+| 2026-08-12 | `eduflow-release3-20260812-810fe43` (tables, downloads, phone sizing) | earlier |
+
+Rollback application code first when the database schema remains backward compatible. Every
+past version is still registered, so this is a re-point rather than a rebuild:
 
 ```bash
-eb use eduflow-prod
-eb appversion
-eb deploy <previous-application-version-label>
+aws elasticbeanstalk describe-application-versions --application-name eduflow \
+  --region ap-south-1 --query "ApplicationVersions[:10].[VersionLabel,DateCreated]" --output text
+aws elasticbeanstalk update-environment --environment-name Eduflow-env-1 \
+  --version-label <previous-label> --region ap-south-1
 ```
+
+Then verify exactly as in section 2 step 4. A failed deploy also rolls back on its own;
+check `describe-events` for the real error rather than guessing from the health colour.
 
 If data rollback is required, follow the Atlas restore procedure in `docs/operations.md`:
 

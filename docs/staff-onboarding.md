@@ -76,7 +76,7 @@ The Principal manages academic and operational oversight.
 **Key capabilities:**
 - **Announcements** - Create school notices.
 - **Incident Tracker** - Log visitor entries and complaints.
-- **Enquiries** - Manage admission enquiry records.
+- **Admissions** - Enquiries, the day's follow-up calls, and applications, on one screen since 2026-08-14. Start an application from an enquiry row and the family carries across. Marking a family "enrolled" is not something anybody does by hand; the child joins the roll through their application. See the Admin Role Guide.
 - **AI Chat** - Quick look-ups and draft announcements.
 
 ---
@@ -117,7 +117,7 @@ The Principal manages academic and operational oversight.
 ## Common Questions
 
 **Q: The AI is not responding. What do I do?**  
-A: Wait 10–15 seconds and try again. If the issue persists, refresh the page. The AI system has automatic fallback - it will inform you if it is temporarily unavailable.
+A: Wait 10 to 15 seconds and try again. If the issue persists, refresh the page. The AI system has automatic fallback - it will inform you if it is temporarily unavailable.
 
 **Q: I made a mistake - can I undo an AI action?**  
 A: AI-executed changes (fee records, attendance corrections, leave approvals) are logged in the **Audit Log**. Contact your Administrator to reverse a mistaken change.
@@ -125,8 +125,13 @@ A: AI-executed changes (fee records, attendance corrections, leave approvals) ar
 **Q: Can I see data from other staff members?**  
 A: Your access is scoped to your role. Teachers can only see their own class data. Admins see their department. Owners see everything.
 
-**Q: The page looks broken on my phone.**  
-A: EduFlow is optimised for desktop. Mobile is supported for Owner and Principal views. For the best experience, use a laptop or desktop browser (Chrome or Safari recommended).
+**Q: Does it work on my phone or a tablet?**  
+A: Yes, for every role, since 12 August 2026. Buttons and form fields are sized for a
+finger, tables scroll rather than squashing, and the app is tested on a real phone and a
+real tablet profile rather than a narrow desktop window. _This answer used to say mobile
+was only supported for the Owner and Principal and that you should use a laptop. That has
+not been true since Release 3._ If a screen still looks wrong on your device, report it,
+because that is a fault and not the expected state.
 
 **Q: How do I change my password?**  
 A: Click your profile avatar in the sidebar → **Settings** → **Change Password**.
@@ -135,10 +140,24 @@ A: Click your profile avatar in the sidebar → **Settings** → **Change Passwo
 
 ## Data & Privacy
 
+_Two statements here were corrected on 14 August 2026 because they were not true, and a
+privacy promise that is not kept is worse than no promise at all._
+
 - All school data is stored on MongoDB Atlas (cloud database) with encryption at rest.
-- File uploads are stored in a private AWS S3 bucket - no file is publicly accessible.
-- The AI chat does not store conversation content beyond your active session.
-- Staff names, phone numbers, and student addresses are never included in AI logs.
+- File uploads are stored in a private AWS S3 bucket. No file is publicly accessible.
+- **Your chat conversations ARE saved.** They are kept against your account so you can
+  reopen an earlier conversation and so the assistant can refer back to what you asked
+  before. _This used to say conversation content was not stored beyond your session, which
+  was simply wrong._ Treat the chat as a record, the same as anything else you type into
+  the platform.
+- **Names and phone numbers DO reach the AI**, because the assistant cannot answer "call
+  Aarav's mother" without them. _This used to claim they never do._ What is held back is
+  narrower and deliberate: home addresses, dates of birth, Aadhaar and other government
+  numbers, health records and anything secret are replaced with "[restricted in chat]"
+  before anything is sent to the AI provider, and are not written into the saved trace
+  either.
+- Every change made through the platform, by a person or by the assistant, is written to
+  the Audit Log with who made it and when.
 
 ---
 

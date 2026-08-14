@@ -120,20 +120,48 @@ Use this for: absence follow-up, disciplinary communication, special requests.
 
 ---
 
-#### Enquiry Register
-When a parent visits or calls to ask about admission, their details are recorded here. Each enquiry has:
-- Parent name and contact
-- Child's age and current class
-- Notes from the conversation
+#### Admissions
+**One screen since 14 August 2026.** "Admission Funnel", "Enquiry Register" and the
+admissions half of "Legal Entities & Admissions" were three screens describing the same
+families, so somebody looking for one child had three places to look and no way of knowing
+which was the real one. They are now three tabs on one screen.
 
-This is the starting point of the admissions process.
+**Enquiries.** Every family who has asked about a place, with the stage counts across the
+top. Each row shows the family's position ONCE, worked out from the enquiry and its
+application together, with a small line saying which of the two decided it.
+
+**Who to call.** The Enquiries tab opens with the day's calls: families missed, families
+due today, and families due this week, each with the number and the last thing anybody
+wrote down. "Log call" records what was said and sets the next date.
+
+> Read the line at the bottom of that block. It says how many open enquiries have **no
+> follow-up date at all**. An empty call list on its own would look like "we are up to
+> date" when it may mean "nobody has planned anything for ninety families", and those are
+> opposite facts.
+
+**Applications.** The second half of the journey: application, documents, entrance
+assessment, offer, acceptance, and the child joining the roll.
+
+**Pipeline value.** The money view of the same leads. Not everyone who reaches this screen
+sees this tab; it keeps the permission it has always had.
 
 ---
 
-#### Admission Pipeline
-Tracks every prospective student from first enquiry through to final admission. Stages typically include: Enquiry → Visit → Application → Docs Submitted → Admitted.
+#### How a family actually becomes enrolled
 
-Use this to know how many students are in each stage and follow up with those who have gone quiet.
+**Nobody can mark a family "enrolled" by hand. Not the office, not the principal, not the
+school's owner.** That stage is not on the buttons.
+
+A family becomes enrolled when their admission application creates the child's record,
+which happens in one step that also creates the guardians and gives the child an admission
+number. So "enrolled" on this screen always means a child exists on the roll.
+
+This changed on 14 August 2026. Before that, moving a row to the last column was an
+ordinary stage change with nothing behind it, so the funnel could report a child who had
+never joined and nobody looking at the screen could tell the difference.
+
+To enrol a family: start an application from their enquiry row, work it through to
+accepted, then enrol from the application.
 
 ---
 
@@ -320,20 +348,35 @@ Look up any student quickly at the front desk. Useful when a parent comes in ask
 
 ---
 
-#### Enquiry Register
-When someone calls or walks in asking about admission, log their details here:
-- Parent's name and phone number
-- Child's name, age, and current school
-- Any notes from the conversation
+#### Admissions
+**One screen since 14 August 2026**, replacing the old Enquiry Register and Admission
+Funnel. Nothing was taken away; the same work is on tabs.
 
-This is step one of the admissions process.
+When someone calls or walks in asking about a place, log them on the Enquiries tab. What
+to take down:
+- The child's name, and the mother's and father's names
+- A phone number
+- The class they are asking about
+- Date of birth, and the school the child is at now
 
----
+> The mother and father are recorded separately, and date of birth, gender and present
+> school are on the enquiry, all added on 14 August 2026. The school's own paper form asks
+> for all of them and the office was writing them down and then typing them again onto the
+> application later.
 
-#### Admission Pipeline
-Track every prospective student through the admissions stages. Move each enquiry along as they progress: visited school, submitted application, submitted documents, payment received, admitted.
+**Start the day on this tab.** It opens with who to call: families missed, families due
+today, families due this week, with the number and the last note beside each. Press "Log
+call", write what was said, and set the date to call again. If you do not set a date, that
+family stops appearing, and the line at the bottom will count them as having nobody
+scheduled to call them.
 
-This gives a clear picture of how many students are close to joining and which ones need a follow-up call.
+Move an enquiry along its stages as things happen: visited the school, documents in,
+payment received.
+
+**You cannot mark anybody "enrolled", and neither can the principal or the owner.** The
+button is not there for anyone. A family joins the roll through their application. Start
+one from the enquiry row with "Start application", and the child's name, the parents and
+the phone number come across on their own.
 
 ---
 
@@ -412,7 +455,7 @@ View the full student list to identify which students are enrolled in transport 
 
 #### Transport Manager
 The main workspace for managing school transport:
-- **Routes** - Create and name routes (e.g., "Route A – Civil Lines"), set stop sequence, and assign a bus
+- **Routes** - Create and name routes (e.g., "Route A, Civil Lines"), set stop sequence, and assign a bus
 - **Buses** - Log each bus with registration number, driver name, and capacity
 - **Student assignments** - Assign each transport student to a route and stop
 - **View roster** - See all students on each route with their pickup points
@@ -553,12 +596,15 @@ Parent / Prospective Student
          │
          ▼
    RECEPTIONIST ──────────────────────────────────────────┐
-   (Enquiry → Admission Pipeline → Student admitted)      │
+   (Enquiry → follow-up calls → Application started)      │
          │                                                │
-         ▼                                               ▼
+         │            the PRINCIPAL offers and enrols;    │
+         │            nobody marks a family enrolled      │
+         ▼            by hand                            ▼
    ACCOUNTANT                                      PRINCIPAL
    (Fee setup → Payment recording → Defaulters)   (Approves leave, oversight,
-         │                                         discipline, academic ops)
+         │                                         discipline, academic ops,
+         │                                         admission offers and enrolment)
          │                                                │
          │              ┌─────────────────────────────────┤
          │              │                                 │
@@ -600,12 +646,30 @@ Some actions require a specific sub-role to approve:
 
 ### New Student Admission
 
-1. Parent enquires → **Receptionist** logs in Enquiry Register
-2. Parent visits and decides to join → **Receptionist** moves to Admission Pipeline
-3. Documents submitted, form filled → **Receptionist** processes admission in Student Database
-4. Student appears in system → **Accountant** records admission fee and creates fee account
-5. Student needs transport → **Receptionist** marks transport required; **Transport Head** assigns route
-6. **Principal** can see the new student in Student Database immediately
+_Rewritten 14 August 2026. The old version had the office creating the child by hand in
+Student Database, which is no longer how a family gets onto the roll._
+
+1. Parent enquires → **Receptionist** logs it on the **Admissions** screen, Enquiries tab
+2. **Receptionist** sets a date to call back. That family then appears on "who to call" on
+   the right day, and if no date is set the screen counts them as nobody's job
+3. Parent visits and decides to join → **Receptionist** moves the enquiry along its stages
+4. **Receptionist** presses "Start application" on that family's row. The child's name,
+   both parents and the phone number carry across on their own. Pressing it twice does not
+   make a second application; it opens the first one
+5. Documents in, entrance assessment recorded if there was one → **Principal** issues the
+   offer, and records it when the family accepts
+6. **Principal** enrols from the application. This one step creates the child's record and
+   the guardians together and gives an admission number. **It is the only way anybody
+   becomes enrolled**, and the enquiry updates itself to match
+7. Student appears in the system → **Accountant** records the admission fee and sets up the
+   fee account
+8. Student needs transport → **Receptionist** marks transport required; **Transport Head**
+   assigns the route
+9. **Principal** can see the new student in Student Database immediately
+
+Direct entry in Student Database and the spreadsheet load both still exist and are still
+correct. They are how most children arrive. The funnel above describes a slice of the
+intake, never all of it.
 
 ---
 

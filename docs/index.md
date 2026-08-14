@@ -1,6 +1,21 @@
 # EduFlow - Project Documentation Index
 
-_Generated: 2026-05-15 | Mode: initial_scan | Scan level: deep_
+_First generated 2026-05-15 by a deep scan. Kept current by hand since; each page below
+says what was last checked against the code and when._
+
+> **Read this before trusting a page here.** These docs were machine-generated from a scan
+> in May and then edited by hand as the platform changed, so age varies page by page. Where
+> a page has been checked against the running code, it says so and gives a date. Where it
+> has not, treat it as a starting point and read the code.
+>
+> **`CLAUDE.md` at the repository root is the live record of what shipped**, and it is
+> ahead of this suite. The per-release detail lives in
+> `_bmad-output/implementation-artifacts/`.
+>
+> Corrected 2026-08-14: the deployment runbook described commands that do not exist in this
+> repository (`make package-backend`, `eb use eduflow-prod`, `api.example.com`), and the
+> data model for enquiries listed a field that has never existed. Both are now written
+> against the real thing. If you find another, fix it rather than working around it.
 
 ---
 
@@ -32,7 +47,7 @@ _Generated: 2026-05-15 | Mode: initial_scan | Scan level: deep_
 ## Generated Documentation
 
 ### Core
-- [Project Overview](./project-overview.md) - Platform summary, capabilities, user roles, quality status
+- [Project Overview](./project-overview.md) - Platform summary, capabilities, user roles, what has shipped _(capabilities and shipped list checked 2026-08-14)_
 - [Source Tree Analysis](./source-tree-analysis.md) - Annotated directory tree + critical entry points
 
 ### Architecture
@@ -40,8 +55,8 @@ _Generated: 2026-05-15 | Mode: initial_scan | Scan level: deep_
 - [Architecture - Backend](./architecture-backend.md) - FastAPI architecture, multi-tenancy, auth, AI layer, security controls
 
 ### API & Data
-- [API Contracts - Backend](./api-contracts-backend.md) - All 180+ endpoints by domain with auth requirements
-- [Data Models - Backend](./data-models-backend.md) - All MongoDB collections, fields, indexes, migration history
+- [API Contracts - Backend](./api-contracts-backend.md) - All 180+ endpoints by domain with auth requirements. **Admissions (`/api/admissions` and `/api/commercial/crm`) documented 2026-08-14**, including who may enrol and the follow-up worklist
+- [Data Models - Backend](./data-models-backend.md) - All MongoDB collections, fields, indexes, migration history. **Admissions collections corrected and expanded 2026-08-14**
 
 ### Integration
 - [Integration Architecture](./integration-architecture.md) - Frontend↔Backend REST+SSE, Backend↔MongoDB/S3/OpenAI/Gemini/Twilio
@@ -50,10 +65,21 @@ _Generated: 2026-05-15 | Mode: initial_scan | Scan level: deep_
 - [Development Guide - Backend](./development-guide-backend.md) - Python setup, env vars, running tests, migrations, code conventions
 - [Development Guide - Frontend](./development-guide-frontend.md) - Node/Yarn setup, path aliases, adding tools/API calls, shadcn/ui usage, and **tables: filters, downloads, "All", and the phone/tablet floors** (Release 3)
 
+### Running It
+_These pages existed but were missing from this index until 2026-08-14._
+- [Deployment Runbook](./deployment-runbook.md) - How a deploy is actually done, the AWS login that catches people out, building and checking the bundle, and proving the new code is live. **Rewritten 2026-08-14 against a real deploy**; the previous version described commands this repository does not have
+- [Operations](./operations.md) - Backups, restore procedure, monitoring
+
+### For the People Using It
+- [Admin Role Guide](./admin-role-guide.md) - Every admin desk, screen by screen, in plain language. **Admissions rewritten 2026-08-14**: one screen, the follow-up call list, and why nobody can mark a family enrolled by hand
+- [Staff Onboarding](./staff-onboarding.md) - Getting a new staff member started
+- [Tools - Student and Teacher](./tools-student-teacher.md) - The student and teacher screens
+
 ---
 
 ## Existing Documentation
 
+- **[CLAUDE.md](../CLAUDE.md) - the live record of what has shipped, and the traps. Ahead of this suite; read it first** ⭐
 - [README.md](../README.md) - Minimal (placeholder only)
 - [DEPLOYMENT_READINESS.md](../DEPLOYMENT_READINESS.md) - AWS EB readiness assessment (dated 2026-04-30; S3 migration since completed)
 - [DEPLOYMENT_AWS_SETUP.md](../DEPLOYMENT_AWS_SETUP.md) - AWS infrastructure setup guide

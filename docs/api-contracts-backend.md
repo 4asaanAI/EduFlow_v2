@@ -180,6 +180,63 @@ JWT payload fields: `user_id`, `role`, `name`, `initials`, `sub_category?`, `bra
 | `GET` | `/api/ops` | `/visitors` | List visitor logs. |
 | `POST` | `/api/ops` | `/visitors` | Log a visitor. |
 | `PATCH` | `/api/ops` | `/visitors/{visitor_id}/checkout` | Check out a visitor. |
+| `GET` | `/api/ops` | `/enquiries` | List admission enquiries. Returns `meta.total` beside `meta.count`, so a page shorter than the register is visible as one. A page size below 1 is refused with a 400, never turned into 1. Each row carries a `journey` block, which is the family's ONE position worked out from the enquiry and its application together. |
+| `POST` | `/api/ops` | `/enquiries` | Log an admission enquiry. |
+| `PATCH` | `/api/ops` | `/enquiries/{enquiry_id}` | Move an enquiry along its stages. **`enrolled` is refused here**, see the Admissions section below. |
+
+### Admissions - `/api/admissions`, `/api/commercial/crm`
+
+Two prefixes, one funnel. `/api/commercial/crm` is the enquiry half (leads, calls,
+opportunity values); `/api/admissions` is the application half, through to a child on the
+roll. Since 2026-08-14 both are shown on ONE screen, "Admissions", with tabs.
+
+**Enrolment has exactly one source: `POST /applications/{id}/enroll`.** It creates the
+student and the guardians in a single transaction and marks the application and the
+enquiry enrolled. No other route, and no AI tool, may set a status of `enrolled`; every
+one of them refuses with the same message. Before 2026-08-14 an enquiry could be moved to
+`enrolled` by hand, so the funnel could report a child who did not exist.
+
+| Method | Prefix | Path | Auth | Description |
+|--------|--------|------|------|-------------|
+| `GET` | `/api/admissions` | `/applications` | Bearer (owner/admin) | List applications, each with its `journey` position. |
+| `GET` | `/api/admissions` | `/applications/{id}` | Bearer (owner/admin) | One application. |
+| `POST` | `/api/admissions` | `/applications` | Bearer (owner/admin) | Start an application. Pass `enquiry_id` to carry the family across (name, both parents, phone, date of birth, gender, previous school). A second attempt for the same enquiry returns the FIRST application with `meta.existing = true` rather than creating a duplicate. |
+| `PATCH` | `/api/admissions` | `/applications/{id}/status` | Bearer (owner/admin) | Move a stage. Refuses submission without a guardian name and phone, `assessed` without an assessment, `accepted` without an offer, and `enrolled` always. |
+| `POST` | `/api/admissions` | `/applications/{id}/documents` | Bearer (owner/admin) | Attach an uploaded document. |
+| `POST` | `/api/admissions` | `/applications/{id}/assessment` | Bearer (owner/admin) | Record an entrance score. |
+| `POST` | `/api/admissions` | `/applications/{id}/offer` | Bearer, **owner or principal** | Issue an offer for a class, valid until a date that cannot be in the past. |
+| `POST` | `/api/admissions` | `/applications/{id}/enroll` | Bearer, **owner or principal** | Create the child and the guardians. The only route that enrols anybody. |
+| `GET` | `/api/commercial` | `/crm/leads` | Bearer (owner/principal/receptionist) | Enquiries as CRM leads, scoped to a legal entity. |
+| `POST` | `/api/commercial` | `/crm/leads` | Bearer (owner/principal/receptionist) | Create a lead. Refuses a phone or email already used by an active enquiry. |
+| `PATCH` | `/api/commercial` | `/crm/leads/{id}` | Bearer (owner/principal/receptionist) | Update a lead. A lost lead needs a reason. |
+| `DELETE` | `/api/commercial` | `/crm/leads/{id}` | Bearer (owner/principal/receptionist) | Delete an enquiry entered in error. Blocked once it has become an application or a student. |
+| `GET` | `/api/commercial` | `/crm/leads/{id}/activities` | Bearer (owner/principal/receptionist) | The call and visit log for one family. |
+| `POST` | `/api/commercial` | `/crm/leads/{id}/activities` | Bearer (owner/principal/receptionist) | Log a call, visit, meeting or note. A `next_follow_up` date on it is written onto the enquiry and is what drives the worklist below. |
+| `GET` | `/api/commercial` | `/crm/follow-ups` | Bearer (owner/principal/receptionist) | **Who to call today.** See below. |
+| `POST` | `/api/commercial` | `/crm/leads/{id}/opportunities` | Bearer, owner or principal | Attach a pipeline value to a lead. |
+| `GET` | `/api/commercial` | `/crm/opportunities` | Bearer (owner/principal/receptionist) | List opportunities. |
+| `PATCH` | `/api/commercial` | `/crm/opportunities/{id}` | Bearer, owner or principal | Move an opportunity's stage. A lost one needs a reason. |
+| `GET` | `/api/commercial` | `/crm/pipeline` | Bearer (owner/principal/receptionist) | Stage counts and weighted values. |
+
+#### `GET /api/commercial/crm/follow-ups`
+
+Optional `entity_id`, `today` (defaults to the real one) and `upcoming_days` (0 to 90,
+default 7). A nonsense value is refused with a 400 rather than quietly adjusted.
+
+Returns three lists, `overdue`, `due_today` and `upcoming`, each row carrying the family,
+the phone, how many days late the call is, and the last activity anybody recorded. It also
+returns `counts`, and **the counts are the point of the endpoint**:
+
+| Count | Why it is there |
+|---|---|
+| `active_enquiries` | How many families are actually open. |
+| `no_follow_up_date_set` | How many of those nobody has scheduled a call with. **Without this an empty worklist reads as "the office is up to date" when the truth may be "nobody has planned anything".** |
+| `scheduled_beyond_the_window` | Families due after the window, so nothing is silently outside the answer. |
+
+A follow-up date that cannot be read is refused at the point of writing, on all three
+entrances (lead create, lead update, activity). Dates already in the records that cannot
+be read are shown in `overdue` with `date_is_readable: false` rather than dropped, because
+a row in no list at all is the same silent short answer this platform keeps fixing.
 
 ### Settings - `/api/settings`
 

@@ -427,16 +427,74 @@ Indexes: `payment_id` (unique)
 
 ## Other Collections
 
+## Admissions Collections
+
+The funnel is two collections joined by `enquiry_id`, plus the two CRM ones. Corrected
+and expanded 2026-08-14; the previous version of this section listed a `name` field that
+does not exist and a status list that was never right.
+
 ### `enquiries`
-Admissions enquiries.
+An admission enquiry, and the same row a CRM lead is stored in. There is one collection,
+not two: `create_enquiry` and `create_crm_lead` both write here, and `delete_enquiry`
+covers both.
+
 | Field | Type | Notes |
 |-------|------|-------|
-| `schoolId` | string | |
-| `name` | string | |
-| `phone` | string | |
-| `status` | string | `new`, `contacted`, `enrolled`, `rejected` |
+| `id`, `schoolId`, `branch_id` | string | |
+| `student_name` | string | Required. |
+| `parent_name` | string? | **The contact the office deals with.** Kept deliberately alongside the two below: it is what messaging and every export read, and 102 live records carry it. |
+| `mother_name`, `father_name` | string? | Added 2026-08-14. The school's own form records both, and carrying only `parent_name` onto an application meant one of the two arrived with no way to tell which. |
+| `dob`, `gender`, `previous_school` | string? | Added 2026-08-14. All three were collected on paper at enquiry time and then retyped onto the application. |
+| `phone` | string? | |
+| `class_applying` | string | Free text such as "Class 3". **Not a class on the roll**, and never guessed into one. |
+| `status` | string | `new`, `contacted`, `visit_scheduled`, `visited`, `documents_submitted`, `fee_paid`, `enrolled`, `lost`, plus `applied`, `admitted`, `closed` on the CRM path. |
+| `source` | string | `walk_in`, `phone`, `referral`, `online`, `ad`. |
+| `next_follow_up` | string? | `YYYY-MM-DD`. Written by an activity carrying a date, and read by the follow-up worklist. Refused at write time if it is not a readable date. |
+| `application_id`, `student_id` | string? | Set when an application is started, and when the child is created. |
+| `entity_id`, `estimated_value_paise`, `probability`, `lead_type`, `campaign`, `lost_reason` | mixed | The CRM half. |
+| `timeline` | array | Every stage change with who made it and any note. |
+| `assigned_to`, `created_at`, `updated_at` | mixed | |
+
+**`enrolled` is never written by a stage change.** It is set only by
+`enroll_application`, in the same transaction that creates the child. Every other path
+refuses it with one shared message. Before 2026-08-14 this was an ordinary stage move, so
+a row could sit in the last column with no child behind it.
 
 Indexes: `status`
+
+### `admission_applications`
+The second half of the funnel. Created from an enquiry or from scratch.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `id`, `schoolId`, `branch_id` | string | |
+| `enquiry_id` | string? | The family this came from. **One application per enquiry**: a second attempt returns the first. |
+| `applicant_name` | string | |
+| `guardian_name`, `guardian_phone`, `guardian_email` | string? | Name and phone are required before the application may be submitted. |
+| `mother_name`, `father_name`, `dob`, `gender`, `previous_school` | string? | Carried from the enquiry when one is named; anything typed here wins. |
+| `class_id`, `class_applying`, `academic_year`, `address` | string? | |
+| `status` | string | `draft`, `submitted`, `under_review`, `assessment_scheduled`, `assessed`, `offered`, `accepted`, `rejected`, `withdrawn`, `enrolled`. |
+| `status_history` | array | Every move, with who and when. |
+| `documents` | array | Attached files with an uploader and a verified flag. |
+| `assessment` | object? | Score, maximum, percentage, date. Required before `assessed`. |
+| `offer` | object? | Class, valid-until date, admission fee, terms. Required before `accepted`. |
+| `student_id`, `enrolled_at`, `enrolled_by` | mixed | Set only by enrolment. |
+
+### `crm_activities`
+One call, visit, meeting or note about a family.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `id`, `schoolId`, `branch_id`, `entity_id` | string | |
+| `enquiry_id` | string | |
+| `activity_type` | string | `note`, `call`, `email`, `meeting`, `visit`, `follow_up`. |
+| `subject`, `notes`, `occurred_at` | mixed | |
+| `next_follow_up` | string? | `YYYY-MM-DD`. Copied onto the enquiry, which is what makes the family appear on the "who to call" worklist. |
+| `created_by`, `created_at` | mixed | |
+
+### `crm_opportunities`
+A money value against a lead. Stages `qualification`, `visit`, `application`, `offer`,
+`won`, `lost`; amounts in integer paise; a lost one needs a reason.
 
 ### `audit_log`
 | Field | Type | Notes |
