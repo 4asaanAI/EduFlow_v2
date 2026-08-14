@@ -158,7 +158,16 @@ def test_commercial_tool_is_advertised_by_profile_domain():
     for who in ("owner", "principal"):
         assert is_tool_authorized(users[who], TOOL_REGISTRY["create_crm_lead"])
     assert not is_tool_authorized(users["accountant"], TOOL_REGISTRY["create_crm_lead"])
-    for finance_tool in ("post_pos_sale", "post_pos_return"):
+    # post_pos_sale and post_pos_return were checked here as the finance-domain example
+    # until 2026-08-14, when campus retail was removed. An expense tool stands in: the
+    # point of these lines is that a FINANCE-classified tool reaches the accountant head
+    # as well as the two leaders, not anything about a till.
+    for finance_tool in ("create_expense", "update_expense"):
         for who in ("owner", "principal", "accountant"):
             assert is_tool_authorized(users[who], TOOL_REGISTRY[finance_tool])
             assert finance_tool in _authorized_tool_names(users[who])
+
+    # And that the six retail tools are gone rather than merely unreachable.
+    for gone in ("post_pos_sale", "post_pos_return", "open_pos_shift", "close_pos_shift",
+                 "create_retail_product", "delete_retail_product"):
+        assert gone not in TOOL_REGISTRY, f"{gone} is back in the registry"

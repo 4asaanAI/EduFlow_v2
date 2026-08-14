@@ -40,7 +40,7 @@ def test_commercial_endpoints_require_auth_and_role(client):
     assert client.get("/api/commercial/entities").status_code == 401
     teacher = _headers("teacher-1", "teacher")
     assert client.get("/api/commercial/entities", headers=teacher).status_code == 403
-    assert client.post("/api/commercial/pos/sales", headers=teacher, json={}).status_code == 403
+    assert client.post("/api/commercial/crm/leads", headers=teacher, json={}).status_code == 403
 
 
 @pytest.mark.parametrize(("method", "path"), [
@@ -57,14 +57,9 @@ def test_commercial_endpoints_require_auth_and_role(client):
     ("get", "/api/commercial/crm/opportunities"),
     ("patch", "/api/commercial/crm/opportunities/opportunity-1"),
     ("get", "/api/commercial/crm/pipeline"),
-    ("get", "/api/commercial/products"),
-    ("post", "/api/commercial/products"),
-    ("get", "/api/commercial/pos/shifts"),
-    ("post", "/api/commercial/pos/shifts"),
-    ("patch", "/api/commercial/pos/shifts/shift-1/close"),
-    ("get", "/api/commercial/pos/sales"),
-    ("post", "/api/commercial/pos/sales"),
-    ("post", "/api/commercial/pos/sales/sale-1/returns"),
+    # Eight campus-retail paths were listed here until 2026-08-14 and are gone with the
+    # feature. They are now covered by the 404 test below, which is a stronger statement:
+    # not merely refused to a teacher, but no longer a route at all.
 ])
 def test_every_commercial_endpoint_rejects_wrong_role(client, method, path):
     response = client.request(method.upper(), path, headers=_headers("teacher-1", "teacher"), json={})
@@ -79,8 +74,12 @@ def test_legal_entity_group_rules_default_and_branch_isolation(client, fake_db):
     assert group.status_code == 200
     child = _entity(client, owner, parent_entity_id=group.json()["data"]["id"])
     assert child["is_default"] is True
-    assert client.post("/api/commercial/pos/shifts", headers=owner, json={
-        "entity_id": group.json()["data"]["id"], "register_name": "Counter 1",
+    # A group entity is a holding record and nothing may be booked to it. Proven on a CRM
+    # lead since 2026-08-14; it used to be proven on a till shift, and the rule is the
+    # entity's, not the till's.
+    assert client.post("/api/commercial/crm/leads", headers=owner, json={
+        "entity_id": group.json()["data"]["id"], "student_name": "Test Child",
+        "guardian_name": "Test Guardian", "guardian_phone": "9000000001",
     }).status_code == 400
     fake_db.legal_entities.docs.append({
         "id": "other-branch", "schoolId": "aaryans-joya", "branch_id": "branch-b",
@@ -140,66 +139,6 @@ def test_school_crm_extends_enquiry_with_activity_opportunity_and_loss_rule(clie
     assert lost.status_code == 200
 
 
-def test_pos_sale_return_idempotency_stock_and_shift_close(client, fake_db):
-    owner = _headers("owner-1", "owner")
-    entity = _entity(client, owner)
-    fake_db.inventory_items.docs.append({
-        "id": "item-1", "schoolId": "aaryans-joya", "branch_id": "branch-a",
-        "sku": "NOTE-A5", "name": "A5 Notebook", "is_active": True,
-        "on_hand": 5, "quantity": 5,
-    })
-    fake_db.students.docs.append({
-        "id": "student-1", "schoolId": "aaryans-joya", "branch_id": "branch-a",
-        "name": "Aarav", "is_active": True,
-    })
-    product = client.post("/api/commercial/products", headers=owner, json={
-        "entity_id": entity["id"], "inventory_item_id": "item-1", "sku": "NOTE-A5",
-        "name": "A5 Notebook", "unit_price": 100, "tax_rate_percent": 0,
-    })
-    assert product.status_code == 200, product.text
-    shift = client.post("/api/commercial/pos/shifts", headers=owner, json={
-        "entity_id": entity["id"], "register_name": "Book Counter", "opening_cash": 10,
-    })
-    assert shift.status_code == 200, shift.text
-    body = {
-        "entity_id": entity["id"], "shift_id": shift.json()["data"]["id"],
-        "customer_type": "student", "customer_id": "student-1", "customer_name": "Aarav",
-        "lines": [{"product_id": product.json()["data"]["id"], "quantity": 2, "unit_price": 100}],
-        "payments": [{"mode": "cash", "amount": 200}],
-    }
-    headers = {**owner, "Idempotency-Key": "sale-one"}
-    first = client.post("/api/commercial/pos/sales", headers=headers, json=body)
-    assert first.status_code == 200, first.text
-    replay = client.post("/api/commercial/pos/sales", headers=headers, json=body)
-    assert replay.status_code == 200
-    assert replay.json()["data"]["id"] == first.json()["data"]["id"]
-    assert fake_db.inventory_items.docs[0]["on_hand"] == 3
-    returned = client.post(
-        f"/api/commercial/pos/sales/{first.json()['data']['id']}/returns",
-        headers={**owner, "Idempotency-Key": "return-one"}, json={
-            "entity_id": entity["id"], "shift_id": shift.json()["data"]["id"],
-            "reason": "Unused", "lines": [{"product_id": product.json()["data"]["id"], "quantity": 1}],
-        },
-    )
-    assert returned.status_code == 200, returned.text
-    assert fake_db.inventory_items.docs[0]["on_hand"] == 4
-    excessive = client.post(
-        f"/api/commercial/pos/sales/{first.json()['data']['id']}/returns",
-        headers={**owner, "Idempotency-Key": "return-too-many"}, json={
-            "entity_id": entity["id"], "shift_id": shift.json()["data"]["id"],
-            "reason": "No", "lines": [{"product_id": product.json()["data"]["id"], "quantity": 2}],
-            "payments": [{"mode": "cash", "amount": 200}],
-        },
-    )
-    assert excessive.status_code == 409
-    close = client.patch(
-        f"/api/commercial/pos/shifts/{shift.json()['data']['id']}/close",
-        headers=owner, json={"counted_cash": 110},
-    )
-    assert close.status_code == 200, close.text
-    assert close.json()["data"]["variance_paise"] == 0
-
-
 def test_entity_accounting_period_and_consolidation_access(client, fake_db):
     owner = _headers("owner-1", "owner")
     accountant = _headers("accountant-1", "admin", "accountant")
@@ -209,23 +148,17 @@ def test_entity_accounting_period_and_consolidation_access(client, fake_db):
         "entity_id": entity["id"], "name": "August", "start_date": "2026-08-01",
         "end_date": "2026-08-31", "status": "closed",
     })
-    fake_db.inventory_items.docs.append({
-        "id": "item-1", "schoolId": "aaryans-joya", "branch_id": "branch-a",
-        "sku": "BOOK", "name": "Book", "is_active": True, "on_hand": 5, "quantity": 5,
+    # The closed-period rule used to be proven here by refusing a till sale. Campus
+    # retail is gone (2026-08-14), so it is proven on an expense instead. The rule belongs
+    # to the accounting period, not to the till, and expenses, fees and campus operations
+    # all still go through `assert_posting_allowed`.
+    blocked = client.post("/api/ops/expenses", headers=owner, json={
+        "category": "stationery", "amount": 500, "description": "Books",
+        "date": "2026-08-05",
     })
-    product = client.post("/api/commercial/products", headers=owner, json={
-        "entity_id": entity["id"], "inventory_item_id": "item-1", "sku": "BOOK",
-        "name": "Book", "unit_price": 50,
-    }).json()["data"]
-    shift = client.post("/api/commercial/pos/shifts", headers=owner, json={
-        "entity_id": entity["id"], "register_name": "Counter",
-    }).json()["data"]
-    blocked = client.post("/api/commercial/pos/sales", headers={**owner, "Idempotency-Key": "closed"}, json={
-        "entity_id": entity["id"], "shift_id": shift["id"], "posting_date": "2026-08-05",
-        "lines": [{"product_id": product["id"], "quantity": 1}],
-        "payments": [{"mode": "cash", "amount": 50}],
-    })
-    assert blocked.status_code == 409
+    assert blocked.status_code == 400, blocked.text
+    assert "period" in blocked.text.lower()
+
     assert client.get("/api/commercial/summary?consolidated=true", headers=accountant).status_code == 403
     assert client.get("/api/commercial/summary?consolidated=true", headers=owner).status_code == 200
 
@@ -247,3 +180,33 @@ async def test_flo_commercial_tool_is_scoped_and_consolidation_is_owner_only(fak
     denied = await fn({"domain": "consolidated"}, accountant, {"branch_id": "branch-a"})
     assert denied["success"] is False
     assert denied["denied"] is True
+
+
+@pytest.mark.parametrize(("method", "path"), [
+    ("get", "/api/commercial/products"),
+    ("post", "/api/commercial/products"),
+    ("delete", "/api/commercial/products/product-1"),
+    ("get", "/api/commercial/pos/shifts"),
+    ("post", "/api/commercial/pos/shifts"),
+    ("patch", "/api/commercial/pos/shifts/shift-1/close"),
+    ("get", "/api/commercial/pos/sales"),
+    ("post", "/api/commercial/pos/sales"),
+    ("post", "/api/commercial/pos/sales/sale-1/returns"),
+])
+def test_campus_retail_routes_no_longer_exist(client, method, path):
+    """The eight shop routes are GONE, not merely refused.
+
+    Abhimanyu, 2026-08-14: The Aaryans runs no shop. The canteen is an outside vendor
+    renting space and running its own business, so the school has a tenant there rather
+    than a counter of its own.
+
+    A 404 rather than a 403 is the point. A refused route still exists and can be widened
+    back by a permission change somebody makes for another reason; a route that is not
+    there cannot. This is asserted rather than left to the old tests simply being deleted,
+    because a feature that quietly returns is exactly the kind of thing nobody notices
+    until real money is typed into it.
+    """
+    response = client.request(method.upper(), path, headers=_headers("owner-1", "owner"), json={})
+    assert response.status_code == 404, (
+        f"{method.upper()} {path} answered {response.status_code}; campus retail should be gone"
+    )

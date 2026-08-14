@@ -30,19 +30,12 @@ from services.commercial_service import (
     CommercialNotFoundError,
     CommercialValidationError,
     commercial_summary,
-    close_shift as svc_close_pos_shift,
     create_crm_lead as svc_create_crm_lead,
     create_entity as svc_create_legal_entity,
-    create_product as svc_create_retail_product,
-    create_return as svc_create_pos_return,
-    create_sale as svc_create_pos_sale,
     crm_pipeline,
     delete_crm_lead as svc_delete_crm_lead,
     delete_legal_entity as svc_delete_legal_entity,
-    delete_product as svc_delete_retail_product,
     list_entities,
-    open_shift as svc_open_pos_shift,
-    replay_retail_request,
     set_default_entity as svc_set_default_legal_entity,
     update_crm_lead as svc_update_crm_lead,
 )
@@ -4391,12 +4384,14 @@ async def tool_get_admissions_pipeline(params: dict, user: dict, scope: dict = N
 async def tool_get_commercial_operations(params: dict, user: dict, scope: dict = None) -> dict:
     """Read-only commercial hub with service-level entity and branch scoping."""
     domain = str(params.get("domain") or "overview").strip().lower()
-    if domain not in {"overview", "crm", "retail", "entities", "consolidated"}:
+    # 'retail' was a domain here until 2026-08-14. It totalled shop sales the school
+    # does not make, so it is gone with the rest of campus retail.
+    if domain not in {"overview", "crm", "entities", "consolidated"}:
         return {"success": False, "denied": False, "data": {}, "meta": {"count": 0},
-                "message": "domain must be overview, crm, retail, entities, or consolidated"}
+                "message": "domain must be overview, crm, entities, or consolidated"}
     if user.get("role") == "admin" and user.get("sub_category") == "accountant" and domain in {"overview", "crm"}:
         return {"success": False, "denied": True, "data": {}, "meta": {"count": 0},
-                "message": "Accounts staff can view campus retail totals and legal-entity structure, not admissions CRM."}
+                "message": "Accounts staff can view the legal-entity structure, not admissions CRM."}
     is_leadership = user.get("role") == "owner" or (
         user.get("role") == "admin" and user.get("sub_category") == "principal"
     )
@@ -4417,13 +4412,8 @@ async def tool_get_commercial_operations(params: dict, user: dict, scope: dict =
             )} for row in rows]
         elif domain == "consolidated":
             data = await commercial_summary(db, actor, consolidated=True)
-        elif domain == "retail":
-            data = await commercial_summary(db, actor, entity_id)
         else:
-            data = {
-                "crm": await crm_pipeline(db, actor, entity_id),
-                "retail": await commercial_summary(db, actor, entity_id),
-            }
+            data = {"crm": await crm_pipeline(db, actor, entity_id)}
     except CommercialNotFoundError as exc:
         return {"success": False, "denied": False, "data": {}, "meta": {"count": 0}, "message": str(exc)}
     except (CommercialConflictError, CommercialValidationError) as exc:
@@ -4549,78 +4539,6 @@ async def tool_report_platform_problem(params: dict, user: dict, scope: dict = N
     # The message already says whether it reached us, in plain words, including when it
     # did not. Flo repeats it rather than inventing a cheerier one.
     return {"success": True, "data": ticket, "message": ticket.get("message", "Reported.")}
-
-
-async def tool_create_retail_product(params: dict, user: dict, scope: dict = None) -> dict:
-    try:
-        row = await svc_create_retail_product(get_db(), _commercial_actor(user, scope), params)
-    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
-        return _failed(str(exc))
-    return {"success": True, "data": row, "message": "Retail product created."}
-
-
-async def tool_open_pos_shift(params: dict, user: dict, scope: dict = None) -> dict:
-    try:
-        row = await svc_open_pos_shift(get_db(), _commercial_actor(user, scope), params)
-    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
-        return _failed(str(exc))
-    return {"success": True, "data": row, "message": "POS shift opened."}
-
-
-async def tool_close_pos_shift(params: dict, user: dict, scope: dict = None) -> dict:
-    if not params.get("shift_id"):
-        return _failed("shift_id is required.")
-    try:
-        row = await svc_close_pos_shift(
-            get_db(), _commercial_actor(user, scope), params["shift_id"], params
-        )
-    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
-        return _failed(str(exc))
-    return {"success": True, "data": row, "message": "POS shift closed."}
-
-
-async def tool_post_pos_sale(params: dict, user: dict, scope: dict = None) -> dict:
-    # The generated default is safe because a confirmed write reaches this tool exactly
-    # once: the confirm token is single-use and a replay is refused with 409 before
-    # dispatch. The key still matters when the model supplies one, so a reused key
-    # replays the original sale instead of surfacing a raw database error in chat
-    # (audit A-2, 2026-08-05 - this mirrors routes/commercial.py's handling).
-    key = str(params.get("idempotency_key") or f"flo-sale-{uuid.uuid4()}")
-    payload = {k: v for k, v in params.items() if k != "idempotency_key"}
-    actor = _commercial_actor(user, scope)
-    try:
-        row = await svc_create_pos_sale(get_db(), actor, payload, idempotency_key=key)
-    except DuplicateKeyError:
-        try:
-            row = await replay_retail_request(get_db(), actor, key, payload)
-        except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
-            return _failed(str(exc))
-        return {"success": True, "data": row, "message": "That sale was already posted; showing it."}
-    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
-        return _failed(str(exc))
-    return {"success": True, "data": row, "message": "POS sale posted."}
-
-
-async def tool_post_pos_return(params: dict, user: dict, scope: dict = None) -> dict:
-    if not params.get("sale_id"):
-        return _failed("sale_id is required.")
-    # Same contract as tool_post_pos_sale above.
-    key = str(params.get("idempotency_key") or f"flo-return-{uuid.uuid4()}")
-    payload = {k: v for k, v in params.items() if k not in {"sale_id", "idempotency_key"}}
-    actor = _commercial_actor(user, scope)
-    try:
-        row = await svc_create_pos_return(
-            get_db(), actor, params["sale_id"], payload, idempotency_key=key,
-        )
-    except DuplicateKeyError:
-        try:
-            row = await replay_retail_request(get_db(), actor, key, payload, sale_id=params["sale_id"])
-        except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
-            return _failed(str(exc))
-        return {"success": True, "data": row, "message": "That return was already posted; showing it."}
-    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
-        return _failed(str(exc))
-    return {"success": True, "data": row, "message": "POS return posted."}
 
 
 async def tool_get_enterprise_operations(params: dict, user: dict, scope: dict = None) -> dict:
@@ -5108,26 +5026,6 @@ async def tool_delete_legal_entity(params: dict, user: dict, scope: dict = None)
     return {"success": True, "data": result, "message": "Legal entity deleted."}
 
 
-async def tool_delete_retail_product(params: dict, user: dict, scope: dict = None) -> dict:
-    # Thin adapter over commercial_service.delete_product.
-    if not params.get("product_id"):
-        return {"success": False, "message": "product_id is required."}
-    db = get_db()
-    # Same actor construction as the REST route: commercial postings must never be
-    # written unscoped, so an owner token with no branch falls back to the default
-    # branch (audit A-4). Without this the audit rows differ between the two doors.
-    actor_ctx = _commercial_actor(user, scope)
-    try:
-        result = await svc_delete_retail_product(db, actor_ctx, params)
-    except CommercialNotFoundError:
-        return _empty_result("Shop product not found.")
-    except CommercialConflictError as e:
-        return {"success": False, "message": str(e)}
-    except CommercialValidationError as e:
-        return {"success": False, "message": str(e)}
-    return {"success": True, "data": result, "message": "Shop product deleted."}
-
-
 #  COMBINED TOOL_REGISTRY
 # =========================================================================
 
@@ -5432,9 +5330,9 @@ TOOL_REGISTRY = {
         "roles": ["owner", "admin"],
         "sub_categories": ["principal", "accountant"],
         "dispatch_type": "read",
-        "description": "School CRM pipeline, campus retail totals, legal entities, and owner-only consolidation.",
+        "description": "School CRM pipeline, legal entities, and owner-only consolidation.",
         "params_schema": {
-            "domain": {"type": "string", "description": "overview, crm, retail, entities, or consolidated"},
+            "domain": {"type": "string", "description": "overview, crm, entities, or consolidated"},
             "entity_id": {"type": "string", "description": "Optional legal entity ID"},
         },
     },
@@ -5522,66 +5420,6 @@ TOOL_REGISTRY = {
             "tried": {"type": "string", "description": "What you already tried with them before reporting it (required in practice: a ticket without this makes us start from the beginning)"},
             "kind": {"type": "string", "description": "bug, incident, support or feedback"},
             "priority": {"type": "string", "description": "low, normal, high or urgent"},
-        },
-    },
-    "create_retail_product": {
-        "fn": tool_create_retail_product, "roles": ["owner", "admin"],
-        "sub_categories": ["principal"], "dispatch_type": "write", "requires_confirmation": True,
-        "description": "Map an inventory item into the campus retail catalog.",
-        "params_schema": {
-            "entity_id": {"type": "string", "description": "Operating entity ID"},
-            "inventory_item_id": {"type": "string", "description": "Inventory item ID (required)"},
-            "sku": {"type": "string", "description": "Retail SKU (required)"},
-            "name": {"type": "string", "description": "Product name (required)"},
-            "unit_price": {"type": "number", "description": "Price in rupees (required)"},
-            "tax_rate_percent": {"type": "number", "description": "Tax percent"},
-        },
-    },
-    "open_pos_shift": {
-        "fn": tool_open_pos_shift, "roles": ["owner", "admin"],
-        "sub_categories": ["principal"], "dispatch_type": "write", "requires_confirmation": True,
-        "description": "Open a campus POS cashier shift.",
-        "params_schema": {
-            "entity_id": {"type": "string", "description": "Operating entity ID"},
-            "register_name": {"type": "string", "description": "Register name (required)"},
-            "opening_cash": {"type": "number", "description": "Opening cash in rupees"},
-        },
-    },
-    "close_pos_shift": {
-        "fn": tool_close_pos_shift, "roles": ["owner", "admin"],
-        "sub_categories": ["principal"], "dispatch_type": "write", "requires_confirmation": True,
-        "description": "Close and reconcile a campus POS shift.",
-        "params_schema": {
-            "shift_id": {"type": "string", "description": "Open shift ID (required)"},
-            "counted_cash": {"type": "number", "description": "Counted cash in rupees (required)"},
-            "variance_reason": {"type": "string", "description": "Reason when cash differs"},
-        },
-    },
-    "post_pos_sale": {
-        "fn": tool_post_pos_sale, "roles": ["owner", "admin"],
-        "sub_categories": ["principal"], "dispatch_type": "write", "requires_confirmation": True,
-        "description": "Post an immutable multi-line campus retail sale.",
-        "params_schema": {
-            "entity_id": {"type": "string", "description": "Operating entity ID"},
-            "shift_id": {"type": "string", "description": "Open shift ID (required)"},
-            "lines": {"type": "array", "description": "Product ID and quantity lines (required)"},
-            "payments": {"type": "array", "description": "Split payments matching the exact total (required)"},
-            "customer_name": {"type": "string", "description": "Walk-in customer name"},
-            "idempotency_key": {"type": "string", "description": "Optional retry key"},
-        },
-    },
-    "post_pos_return": {
-        "fn": tool_post_pos_return, "roles": ["owner", "admin"],
-        "sub_categories": ["principal"], "dispatch_type": "write", "requires_confirmation": True,
-        "description": "Post an immutable return linked to a campus retail sale.",
-        "params_schema": {
-            "sale_id": {"type": "string", "description": "Original sale ID (required)"},
-            "entity_id": {"type": "string", "description": "Operating entity ID"},
-            "shift_id": {"type": "string", "description": "Open shift ID (required)"},
-            "lines": {"type": "array", "description": "Returned product ID and quantity lines (required)"},
-            "reason": {"type": "string", "description": "Return reason (required)"},
-            "payments": {"type": "array", "description": "Optional refund split; defaults to original modes"},
-            "idempotency_key": {"type": "string", "description": "Optional retry key"},
         },
     },
     "get_my_school_hub": {
@@ -7355,21 +7193,6 @@ TOOL_REGISTRY = {
             "entity_id": {"type": "string", "description": "Legal entity ID to delete (required)"},
         },
     },
-    "delete_retail_product": {
-        "fn": tool_delete_retail_product,
-        "roles": ["owner", "admin"],
-        "sub_categories": ["principal", "accountant"],
-        "description": (
-            "Permanently delete a shop product. Destructive - requires a second "
-            "confirmation. Blocked once it appears on any sale; retire it instead."
-        ),
-        "dispatch_type": "write",
-        "requires_confirmation": True,
-        "destructive": True,
-        "params_schema": {
-            "product_id": {"type": "string", "description": "Shop product ID to delete (required)"},
-        },
-    },
 }
 
 # The profile matrix is metadata on the registry entry itself so every invocation
@@ -7387,8 +7210,10 @@ FINANCE_TOOL_NAMES = frozenset({
     "create_discount_type", "update_discount_type", "delete_discount_type",
     "correct_fee_transaction", "delete_fee_transaction", "trigger_fee_sync",
     "get_fee_sync_status", "create_legal_entity", "set_default_legal_entity",
-    "delete_legal_entity", "create_retail_product", "delete_retail_product",
-    "open_pos_shift", "close_pos_shift", "post_pos_sale", "post_pos_return",
+    "delete_legal_entity",
+    # Six campus-retail tools were listed here until 2026-08-14 and are gone with the
+    # feature: create_retail_product, delete_retail_product, open_pos_shift,
+    # close_pos_shift, post_pos_sale, post_pos_return.
     # Release 2 step 10. All five are finance: every one of them either names a rupee
     # figure on a family's bill or decides whether one is owed. Classified here BY NAME
     # rather than left to the `else` at the bottom of this module, which would drop them
@@ -7548,7 +7373,9 @@ SECURITY_SENSITIVE_TOOL_NAMES = frozenset({"set_profile_password"})
 EXPLICIT_CONFIRMATION_TOOL_NAMES = frozenset({
     name for name, tool in TOOL_REGISTRY.items() if tool.get("destructive")
 }) | BULK_TOOL_NAMES | frozenset({
-    "post_pos_return", "correct_fee_transaction", "correct_salary_disbursement",
+    # "post_pos_return" stood at the head of this list until 2026-08-14 and went with
+    # campus retail.
+    "correct_fee_transaction", "correct_salary_disbursement",
     "change_accounting_period_status",
     # R4-5. Not destructive and not bulk, so it does not qualify under the rule above,
     # and it is here for a different reason that is written down rather than assumed:

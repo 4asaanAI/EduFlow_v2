@@ -11,7 +11,7 @@ describe('owner and principal management hubs', () => {
   test('cover the divisions school leaders use to find information', () => {
     const names = MANAGEMENT_HUBS.map(hub => hub.name);
     expect(names).toEqual(expect.arrayContaining([
-      'School Database', 'Finance & Campus Sales', 'Admissions & Communication',
+      'School Database', 'Finance', 'Admissions & Communication',
       'Academics & Activities', 'Campus, Library & Assets', 'Transport',
     ]));
   });

@@ -95,7 +95,8 @@ def test_the_confirm_set_did_not_grow_to_accommodate_them():
 
     destructive = {n for n, t in TOOL_REGISTRY.items() if t.get("destructive")}
     assert EXPLICIT_CONFIRMATION_TOOL_NAMES == destructive | set(BULK_TOOL_NAMES) | {
-        "post_pos_return", "correct_fee_transaction", "correct_salary_disbursement",
+        # "post_pos_return" was here until 2026-08-14 and went with campus retail.
+        "correct_fee_transaction", "correct_salary_disbursement",
         "change_accounting_period_status", "set_profile_password",
         # R4-5, 2026-08-12. The set grew by one, and the Release 2 concern this test
         # guards is unharmed: it was written to stop the confirm set being widened to

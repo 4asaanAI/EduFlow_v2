@@ -26,18 +26,15 @@ export default function CommercialOperations() {
   const subRole = currentUser?.sub_category;
   const canCrm = currentUser?.role === 'owner' || ['principal', 'admission', 'receptionist'].includes(subRole);
   const canSummary = currentUser?.role === 'owner' || ['principal', 'accountant'].includes(subRole);
-  const canRetail = currentUser?.role === 'owner' || ['principal', 'accountant', 'receptionist'].includes(subRole);
+  // Campus retail was removed on 2026-08-14: The Aaryans runs no shop, and the canteen
+  // is an outside vendor renting space rather than a school counter.
   const requestSeq = useRef(0);
-  const [tab, setTab] = useState(canSummary ? 'overview' : canCrm ? 'crm' : 'retail');
+  const [tab, setTab] = useState(canSummary ? 'overview' : canCrm ? 'crm' : 'entities');
   const [entities, setEntities] = useState([]);
   const [entityId, setEntityId] = useState('');
   const [summary, setSummary] = useState(null);
   const [leads, setLeads] = useState([]);
   const [opportunities, setOpportunities] = useState([]);
-  const [products, setProducts] = useState([]);
-  const [inventory, setInventory] = useState([]);
-  const [shifts, setShifts] = useState([]);
-  const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -61,12 +58,6 @@ export default function CommercialOperations() {
           ['leads', request(`/commercial/crm/leads?${query}`)],
           ['opportunities', request(`/commercial/crm/opportunities?${query}`)],
         ] : []),
-        ...(canRetail ? [
-          ['products', request(`/commercial/products?${query}`)],
-          ['shifts', request(`/commercial/pos/shifts?${query}`)],
-          ['sales', request(`/commercial/pos/sales?${query}`)],
-          ['inventory', request('/campus/inventory/items')],
-        ] : []),
       ];
       const results = await Promise.allSettled(tasks.map(([, promise]) => promise));
       if (sequence !== requestSeq.current) return;
@@ -78,28 +69,22 @@ export default function CommercialOperations() {
         if (key === 'summary') setSummary(data);
         if (key === 'leads') setLeads(data || []);
         if (key === 'opportunities') setOpportunities(data || []);
-        if (key === 'products') setProducts(data || []);
-        if (key === 'shifts') setShifts(data || []);
-        if (key === 'sales') setSales(data || []);
-        if (key === 'inventory') setInventory(data || []);
       });
       if (failures.length) setError(failures.join(' '));
     } catch (err) { setError(err.message); }
     finally { if (sequence === requestSeq.current) setLoading(false); }
-  }, [canCrm, canRetail, canSummary, entityId]);
+  }, [canCrm, canSummary, entityId]);
 
   useEffect(() => { loadEntities().catch(err => { setError(err.message); setLoading(false); }); }, [loadEntities]);
   useEffect(() => { loadDomain(); }, [loadDomain]);
 
   const refresh = async () => { await loadEntities(); await loadDomain(); };
   const selected = entities.find(item => item.id === entityId);
-  const openShift = shifts.find(item => item.status === 'open'
-    && (currentUser?.role === 'owner' || item.cashier_id === currentUser?.id));
   const total = summary?.totals || {};
   const operatingEntities = entities.filter(item => !item.is_group && item.is_active !== false);
-  const availableTabs = [...(canSummary ? ['overview'] : []), ...(canCrm ? ['crm'] : []), ...(canRetail ? ['retail'] : []), 'entities'];
+  const availableTabs = [...(canSummary ? ['overview'] : []), ...(canCrm ? ['crm'] : []), 'entities'];
 
-  return <ToolPage title="Commercial Operations" subtitle="Admissions CRM, legal entities and campus retail in one controlled workspace" loading={loading} onRefresh={refresh}>
+  return <ToolPage title="Commercial Operations" subtitle="Admissions CRM and legal entities in one controlled workspace" loading={loading} onRefresh={refresh}>
     {error && <div role="alert" style={errorStyle}>{error}</div>}
     <div style={toolbar}>
       <label style={{ minWidth: 210, flex: '1 1 240px' }}>
@@ -113,23 +98,18 @@ export default function CommercialOperations() {
           onClick={() => setTab(value)} style={{ ...tabButton, ...(tab === value ? activeTab : {}) }}>{value === 'crm' ? 'CRM' : value[0].toUpperCase() + value.slice(1)}</button>)}
       </div>
     </div>
-    {tab === 'overview' && canSummary && <Overview entity={selected} total={total} leads={leads} shifts={shifts} sales={sales} />}
+    {tab === 'overview' && canSummary && <Overview entity={selected} total={total} leads={leads} />}
     {tab === 'crm' && <CrmPanel entityId={entityId} leads={leads} opportunities={opportunities} onChanged={loadDomain} setError={setError} />}
-    {tab === 'retail' && <RetailPanel entityId={entityId} products={products} inventory={inventory} shifts={shifts}
-      openShift={openShift} sales={sales} onChanged={loadDomain} setError={setError} />}
     {tab === 'entities' && <EntitiesPanel currentUser={currentUser} entities={entities} onChanged={refresh} setError={setError} />}
   </ToolPage>;
 }
 
-function Overview({ entity, total, leads, shifts, sales }) {
+function Overview({ entity, total, leads }) {
   return <>
     <div style={stats}>
       <StatCard value={entity?.name || 'Not configured'} label="OPERATING ENTITY" color="var(--tool-hex-4f8ff7)" />
-      <StatCard value={money(total.net_sales_paise)} label="NET CAMPUS SALES" color="var(--tool-hex-34d399)" />
       <StatCard value={money(total.weighted_pipeline_paise)} label="WEIGHTED PIPELINE" color="var(--tool-hex-a78bfa)" />
       <StatCard value={leads.length} label="CRM LEADS" color="var(--tool-hex-fbbf24)" />
-      <StatCard value={shifts.filter(item => item.status === 'open').length} label="OPEN POS SHIFTS" color="var(--tool-hex-f87171)" />
-      <StatCard value={sales.length} label="POSTED SALES" color="var(--tool-hex-22d3ee)" />
     </div>
     <p style={note}>Legacy records without a legal-entity field remain readable through the configured default. EduFlow does not rewrite them.</p>
   </>;
@@ -227,128 +207,6 @@ function CrmPanel({ entityId, leads, opportunities, onChanged, setError }) {
     </div>}
     <DataTable headers={['Opportunity', 'Lead', 'Stage', 'Amount', 'Probability', 'Expected close']}
       rows={opportunities.map(row => [row.title, leads.find(lead => lead.id === row.enquiry_id)?.student_name || row.enquiry_id, row.stage, money(row.amount_paise), `${row.probability || 0}%`, row.expected_close_date || '-'])} emptyMsg="No CRM opportunities" />
-  </>;
-}
-
-function RetailPanel({ entityId, products, inventory, shifts, openShift, sales, onChanged, setError }) {
-  const [product, setProduct] = useState({ inventory_item_id: '', sku: '', name: '', unit_price: '', tax_rate_percent: 0 });
-  const [shift, setShift] = useState({ register_name: 'Campus Counter', opening_cash: 0 });
-  const [sale, setSale] = useState({ product_id: '', quantity: 1, customer_name: '' });
-  const [cart, setCart] = useState([]);
-  const [payments, setPayments] = useState([]);
-  const [paymentDraft, setPaymentDraft] = useState({ mode: 'cash', amount: '' });
-  const [posting, setPosting] = useState(false);
-  const pendingSale = useRef(null);
-  const pendingReturn = useRef(null);
-  const selectedProduct = products.find(item => item.id === sale.product_id);
-  useEffect(() => {
-    setProduct(row => ({ ...row, inventory_item_id: row.inventory_item_id || inventory[0]?.id || '' }));
-    setSale(row => ({ ...row, product_id: row.product_id || products[0]?.id || '' }));
-  }, [inventory, products]);
-  const cartTotalPaise = cart.reduce((sum, line) => sum + line.total_paise, 0);
-  const paidPaise = payments.reduce((sum, row) => sum + Math.round(Number(row.amount || 0) * 100), 0);
-  function addLine() {
-    if (!selectedProduct || Number(sale.quantity) <= 0) return;
-    const quantity = Number(sale.quantity);
-    const total = (selectedProduct.unit_price_paise * quantity)
-      + Math.round(selectedProduct.unit_price_paise * quantity * (selectedProduct.tax_rate_bps || 0) / 10000);
-    setCart(rows => [...rows, { product_id: selectedProduct.id, name: selectedProduct.name, quantity,
-      unit_price: selectedProduct.unit_price_paise / 100, total_paise: total }]);
-  }
-  function addPayment() {
-    if (Number(paymentDraft.amount) <= 0) return;
-    setPayments(rows => [...rows, { mode: paymentDraft.mode, amount: Number(paymentDraft.amount) }]);
-    setPaymentDraft(row => ({ ...row, amount: '' }));
-  }
-  async function addProduct(event) {
-    event.preventDefault();
-    try { await request('/commercial/products', { method: 'POST', body: JSON.stringify({ ...product, entity_id: entityId, unit_price: Number(product.unit_price), tax_rate_percent: Number(product.tax_rate_percent) }) }); await onChanged(); }
-    catch (err) { setError(err.message); }
-  }
-  async function open(event) {
-    event.preventDefault();
-    try { await request('/commercial/pos/shifts', { method: 'POST', body: JSON.stringify({ ...shift, entity_id: entityId, opening_cash: Number(shift.opening_cash) }) }); await onChanged(); }
-    catch (err) { setError(err.message); }
-  }
-  async function postSale(event) {
-    event.preventDefault();
-    if (posting || !openShift || !cart.length) return;
-    const effectivePayments = payments.length ? payments : [{ mode: 'cash', amount: cartTotalPaise / 100 }];
-    const payload = {
-        entity_id: entityId, shift_id: openShift.id, customer_type: sale.customer_name ? 'walk_in' : 'walk_in', customer_name: sale.customer_name,
-        lines: cart.map(({ product_id, quantity, unit_price }) => ({ product_id, quantity, unit_price })),
-        payments: effectivePayments,
-      };
-    const signature = JSON.stringify(payload);
-    if (pendingSale.current?.signature !== signature) pendingSale.current = { signature, key: uniqueKey('sale') };
-    setPosting(true);
-    try {
-      await request('/commercial/pos/sales', { method: 'POST', headers: { 'Idempotency-Key': pendingSale.current.key }, body: signature });
-      pendingSale.current = null;
-      setCart([]); setPayments([]);
-      await onChanged();
-    } catch (err) { setError(err.message); }
-    finally { setPosting(false); }
-  }
-  async function close() {
-    const counted = window.prompt('Counted cash at the register');
-    if (counted === null) return;
-    try { await request(`/commercial/pos/shifts/${openShift.id}/close`, { method: 'PATCH', body: JSON.stringify({ counted_cash: Number(counted), variance_reason: 'Counted at close' }) }); await onChanged(); }
-    catch (err) { setError(err.message); }
-  }
-  async function returnOne(row) {
-    const line = row.lines?.[0];
-    if (posting || !line || !openShift) return;
-    const reason = window.prompt('Reason for return');
-    if (!reason) return;
-    const payload = { entity_id: entityId, shift_id: openShift.id, reason,
-      lines: [{ product_id: line.product_id, quantity: 1 }] };
-    const signature = JSON.stringify({ sale_id: row.id, ...payload });
-    if (pendingReturn.current?.signature !== signature) pendingReturn.current = { signature, key: uniqueKey('return') };
-    setPosting(true);
-    try {
-      await request(`/commercial/pos/sales/${row.id}/returns`, { method: 'POST',
-        headers: { 'Idempotency-Key': pendingReturn.current.key }, body: JSON.stringify(payload) });
-      pendingReturn.current = null;
-      await onChanged();
-    } catch (err) { setError(err.message); }
-    finally { setPosting(false); }
-  }
-  return <>
-    <div className="responsive-form-grid" style={twoPanels}>
-      <form onSubmit={addProduct} style={formPanel}>
-        <h3 style={heading}>Retail product</h3>
-        <FormField label="Inventory item" type="select" value={product.inventory_item_id} onChange={value => { const item = inventory.find(row => row.id === value); setProduct(row => ({ ...row, inventory_item_id: value, sku: item?.sku || row.sku, name: item?.name || row.name })); }} options={inventory.map(item => ({ value: item.id, label: `${item.name} (${item.on_hand ?? item.quantity ?? 0})` }))} />
-        <FormField label="SKU" value={product.sku} onChange={value => setProduct(row => ({ ...row, sku: value }))} required />
-        <FormField label="Product name" value={product.name} onChange={value => setProduct(row => ({ ...row, name: value }))} required />
-        <FormField label="Price (₹)" type="number" value={product.unit_price} onChange={value => setProduct(row => ({ ...row, unit_price: value }))} required />
-        <FormField label="Tax %" type="number" value={product.tax_rate_percent} onChange={value => setProduct(row => ({ ...row, tax_rate_percent: value }))} />
-        <ActionBtn label="Add product" type="submit" />
-      </form>
-      {!openShift ? <form onSubmit={open} style={formPanel}>
-        <h3 style={heading}>Open POS shift</h3>
-        <FormField label="Register" value={shift.register_name} onChange={value => setShift(row => ({ ...row, register_name: value }))} required />
-        <FormField label="Opening cash (₹)" type="number" value={shift.opening_cash} onChange={value => setShift(row => ({ ...row, opening_cash: value }))} />
-        <ActionBtn label="Open shift" type="submit" />
-      </form> : <form onSubmit={postSale} style={formPanel}>
-        <h3 style={heading}>New sale · {openShift.shift_number}</h3>
-        <FormField label="Product" type="select" value={sale.product_id} onChange={value => setSale(row => ({ ...row, product_id: value }))} options={products.map(item => ({ value: item.id, label: `${item.name} · ${money(item.unit_price_paise)}` }))} />
-        <FormField label="Quantity" type="number" value={sale.quantity} onChange={value => setSale(row => ({ ...row, quantity: value }))} />
-        <div style={{ alignSelf: 'end' }}><ActionBtn label="Add line" onClick={addLine} variant="secondary" /></div>
-        <FormField label="Customer name" value={sale.customer_name} onChange={value => setSale(row => ({ ...row, customer_name: value }))} />
-        <FormField label="Payment mode" type="select" value={paymentDraft.mode} onChange={value => setPaymentDraft(row => ({ ...row, mode: value }))} options={['cash', 'upi', 'card', 'bank_transfer'].map(value => ({ value, label: value }))} />
-        <FormField label="Payment amount (₹)" type="number" value={paymentDraft.amount} onChange={value => setPaymentDraft(row => ({ ...row, amount: value }))} />
-        <div style={{ alignSelf: 'end' }}><ActionBtn label="Add split payment" onClick={addPayment} variant="secondary" /></div>
-        <div style={{ gridColumn: '1 / -1', ...note }} data-testid="pos-sale-composer">
-          {cart.map((line, index) => <div key={`${line.product_id}-${index}`}>{line.name} × {line.quantity}: {money(line.total_paise)}</div>)}
-          <strong>Total: {money(cartTotalPaise)}</strong> · Payments: {money(paidPaise || cartTotalPaise)}
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><ActionBtn label={posting ? 'Posting...' : 'Post sale'} type="submit" disabled={posting} /><ActionBtn label="Close shift" onClick={close} variant="secondary" disabled={posting} /></div>
-      </form>}
-    </div>
-    <DataTable headers={['Receipt', 'Customer', 'Items', 'Total', 'Payment', 'Posted', 'Return']}
-      rows={sales.map(row => [row.receipt_number, row.customer_name, row.lines?.length || 0, money(row.total_paise), row.payments?.map(item => item.mode).join(', '), row.created_at?.slice(0, 10),
-        <button type="button" disabled={!openShift || posting} onClick={() => returnOne(row)} style={linkButton}>Return one item</button>])} emptyMsg="No campus retail sales" />
   </>;
 }
 

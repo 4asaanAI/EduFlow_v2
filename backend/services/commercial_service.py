@@ -1,10 +1,24 @@
 from __future__ import annotations
 
-"""School CRM, campus retail, and legal-entity domain rules.
+"""Admissions CRM and legal-entity domain rules.
 
-This adapts useful ERPNext concepts without importing its framework or accounting
-model. Money is stored in integer paise, posted documents are immutable, and every
-write is scoped to the current school, branch, and operating legal entity.
+Money is stored in integer paise, posted documents are immutable, and every write is
+scoped to the current school, branch, and operating legal entity.
+
+**Campus retail was removed on 2026-08-14, on Abhimanyu's instruction.** The till, the
+product catalogue, the cashier shifts, the sales and the returns described a shop that
+The Aaryans does not run. The school does have a canteen, but it is an outside vendor
+renting space on the premises and running its own business, so the school's interest in
+it is rent from a tenant, not a counter of its own to operate.
+
+The rule that decided it, and that governs anything else found in here: **this platform
+carries what The Aaryans actually needs, not what a general-purpose school ERP ships
+with.** A screen for a business the school does not run is not neutral. It is a menu
+entry people have to learn to ignore, and a surface somebody may one day type real
+numbers into.
+
+The rows the shop wrote were NOT deleted. Removing a feature must never remove a
+school's records; see the guard in `delete_legal_entity`.
 """
 
 import hashlib
@@ -143,22 +157,6 @@ async def _assert_unique_active_contacts(db, actor: ActorContext, enquiry_id: st
     )
     if duplicate:
         raise CommercialConflictError("Another active enquiry already uses this phone or email")
-
-
-async def replay_retail_request(db, actor: ActorContext, key: str, params: dict,
-                                *, sale_id: Optional[str] = None) -> dict:
-    collection = db.retail_return_idempotency if sale_id else db.retail_idempotency
-    record = await collection.find_one(_scope(actor, {"key": key}), {"_id": 0})
-    if not record:
-        raise CommercialConflictError("A concurrent retail request conflicted; retry safely with the same key")
-    payload = {"sale_id": sale_id, **params} if sale_id else params
-    _assert_replay_matches(record, payload)
-    target = db.retail_returns if sale_id else db.retail_sales
-    record_id = record["return_id"] if sale_id else record["sale_id"]
-    row = await target.find_one(_scope(actor, {"id": record_id}), {"_id": 0})
-    if not row:
-        raise CommercialConflictError("Idempotent retail result is not available yet; retry with the same key")
-    return row
 
 
 def _public(doc: dict) -> dict:
@@ -541,431 +539,6 @@ async def crm_pipeline(db, actor: ActorContext, entity_id: Optional[str] = None)
     return {"entity": entity, "lead_count": len(leads), "follow_ups_due": len(due), "stages": stages}
 
 
-async def create_product(db, actor: ActorContext, params: dict, *, session=None) -> dict:
-    kwargs = session_kwargs(session)
-    entity = await resolve_entity(db, actor, params.get("entity_id"), session=session)
-    sku = _required(params, "sku").upper()
-    if await db.commercial_products.find_one(
-        _scope(actor, {"entity_id": entity["id"], "sku": sku}), {"_id": 0}, **kwargs
-    ):
-        raise CommercialConflictError("Retail SKU already exists for this legal entity")
-    inventory_item_id = _required(params, "inventory_item_id")
-    item = await db.inventory_items.find_one(
-        _scope(actor, entity_record_filter(entity, {"id": inventory_item_id, "is_active": True})),
-        {"_id": 0}, **kwargs
-    )
-    if not item:
-        raise CommercialNotFoundError("Inventory item not found")
-    try:
-        tax_rate_bps = int(round(float(params.get("tax_rate_percent") or 0) * 100))
-    except (TypeError, ValueError):
-        raise CommercialValidationError("tax_rate_percent must be between 0 and 100")
-    if not 0 <= tax_rate_bps <= 10000:
-        raise CommercialValidationError("tax_rate_percent must be between 0 and 100")
-    if item.get("on_hand") is None:
-        legacy_quantity = item.get("quantity") or 0
-        try:
-            whole_quantity = int(legacy_quantity)
-        except (TypeError, ValueError):
-            raise CommercialValidationError("Retail inventory quantity must be a whole number")
-        if isinstance(legacy_quantity, bool) or whole_quantity < 0 or whole_quantity != float(legacy_quantity):
-            raise CommercialValidationError("Retail inventory quantity must be a non-negative whole number")
-        await db.inventory_items.update_one(
-            _scope(actor, entity_record_filter(entity, {"id": inventory_item_id, "on_hand": {"$exists": False}})),
-            {"$set": {"on_hand": whole_quantity, "updated_at": actor.now_iso()}}, **kwargs,
-        )
-    product_id = str(uuid.uuid4())
-    doc = {
-        "_id": product_id, "id": product_id, "schoolId": actor.school_id,
-        "branch_id": actor.branch_id, "entity_id": entity["id"], "sku": sku,
-        "name": _required(params, "name"), "category": _clean(params.get("category")) or "general",
-        "inventory_item_id": inventory_item_id,
-        "unit_price_paise": _paise(params.get("unit_price"), "unit_price", allow_zero=False),
-        "tax_rate_bps": tax_rate_bps, "is_active": True,
-        "created_by": actor.user_id, "created_at": actor.now_iso(), "updated_at": actor.now_iso(),
-    }
-    await db.commercial_products.insert_one(doc, **kwargs)
-    await _audit(db, actor, "retail_product_create", "commercial_products", product_id,
-                 {"sku": sku, "entity_id": entity["id"]})
-    return _public(doc)
-
-
-async def open_shift(db, actor: ActorContext, params: dict) -> dict:
-    entity = await resolve_entity(db, actor, params.get("entity_id"))
-    requested_cashier = _clean(params.get("cashier_id")) or actor.user_id
-    if actor.role != "owner" and requested_cashier != actor.user_id:
-        raise CommercialValidationError("Only the school owner can open a shift for another cashier")
-    cashier_id = requested_cashier
-    existing = await db.pos_shifts.find_one(
-        _scope(actor, {"entity_id": entity["id"], "cashier_id": cashier_id, "status": "open"}), {"_id": 0}
-    )
-    if existing:
-        raise CommercialConflictError("This cashier already has an open shift for the legal entity")
-    shift_id = str(uuid.uuid4())
-    doc = {
-        "_id": shift_id, "id": shift_id, "schoolId": actor.school_id, "branch_id": actor.branch_id,
-        "entity_id": entity["id"], "shift_number": await _next_number(db, actor, entity, "shift"),
-        "cashier_id": cashier_id, "register_name": _required(params, "register_name"),
-        "opening_cash_paise": _paise(params.get("opening_cash") or 0, "opening_cash"),
-        "status": "open", "opened_by": actor.user_id, "opened_at": actor.now_iso(),
-    }
-    try:
-        await db.pos_shifts.insert_one(doc)
-    except DuplicateKeyError:
-        raise CommercialConflictError("This cashier already has an open shift for the legal entity")
-    await _audit(db, actor, "pos_shift_open", "pos_shifts", shift_id, {"entity_id": entity["id"]})
-    return _public(doc)
-
-
-async def _open_shift(db, actor: ActorContext, shift_id: str, entity_id: str, *, session=None) -> dict:
-    shift = await db.pos_shifts.find_one(
-        _scope(actor, {"id": shift_id, "entity_id": entity_id, "status": "open"}),
-        {"_id": 0}, **session_kwargs(session),
-    )
-    if not shift:
-        raise CommercialConflictError("POS shift is not open for this legal entity")
-    if actor.role != "owner" and shift.get("cashier_id") != actor.user_id:
-        raise CommercialConflictError("This POS shift belongs to another cashier")
-    return shift
-
-
-def _normalise_payments(payments, total_paise: int) -> list[dict]:
-    if not isinstance(payments, list) or not payments:
-        raise CommercialValidationError("payments must contain at least one payment")
-    rows = []
-    for index, payment in enumerate(payments):
-        if not isinstance(payment, dict):
-            raise CommercialValidationError(f"payments[{index}] must be an object")
-        mode = _clean(payment.get("mode")).lower()
-        if mode not in PAYMENT_MODES:
-            raise CommercialValidationError(f"payments[{index}].mode is invalid")
-        rows.append({"mode": mode, "amount_paise": _paise(payment.get("amount"), f"payments[{index}].amount"),
-                     "reference": _clean(payment.get("reference")) or None})
-    if sum(row["amount_paise"] for row in rows) != total_paise:
-        raise CommercialValidationError("Payment total must exactly match the sale total")
-    return rows
-
-
-def _normalise_refund_payments(payments, total_paise: int, sale: dict,
-                               previous_returns: list[dict]) -> list[dict]:
-    sold_by_mode = {}
-    for payment in sale.get("payments") or []:
-        sold_by_mode[payment.get("mode")] = sold_by_mode.get(payment.get("mode"), 0) + int(payment.get("amount_paise") or 0)
-    already_refunded = {}
-    for prior in previous_returns:
-        for payment in prior.get("payments") or []:
-            already_refunded[payment.get("mode")] = already_refunded.get(payment.get("mode"), 0) + int(payment.get("amount_paise") or 0)
-    if not payments:
-        remaining = total_paise
-        rows = []
-        for mode, sold_amount in sold_by_mode.items():
-            available = max(0, sold_amount - already_refunded.get(mode, 0))
-            allocated = min(remaining, available)
-            if allocated:
-                rows.append({"mode": mode, "amount_paise": allocated, "reference": None})
-                remaining -= allocated
-            if remaining == 0:
-                break
-        if remaining:
-            raise CommercialConflictError("Refund exceeds the remaining original payments")
-        return rows
-    rows = _normalise_payments(payments, total_paise)
-    requested = {}
-    for payment in rows:
-        mode = payment["mode"]
-        requested[mode] = requested.get(mode, 0) + payment["amount_paise"]
-    for mode, amount in requested.items():
-        if mode not in sold_by_mode:
-            raise CommercialValidationError(f"Refund mode {mode} was not used on the original sale")
-        if already_refunded.get(mode, 0) + amount > sold_by_mode[mode]:
-            raise CommercialConflictError(f"Refund exceeds the original {mode} payment")
-    return rows
-
-
-async def create_sale(db, actor: ActorContext, params: dict, *, idempotency_key: str,
-                      session=None) -> dict:
-    key = _clean(idempotency_key)
-    if not key:
-        raise CommercialValidationError("Idempotency-Key header is required")
-    existing = await db.retail_idempotency.find_one(_scope(actor, {"key": key}), {"_id": 0},
-                                                    **session_kwargs(session))
-    if existing:
-        _assert_replay_matches(existing, params)
-        sale = await db.retail_sales.find_one(_scope(actor, {"id": existing["sale_id"]}), {"_id": 0},
-                                              **session_kwargs(session))
-        return sale
-    entity = await resolve_entity(db, actor, params.get("entity_id"))
-    shift = await _open_shift(db, actor, _required(params, "shift_id"), entity["id"], session=session)
-    try:
-        await assert_posting_allowed(db, actor.branch_id, params.get("posting_date") or date.today().isoformat(),
-                                     entity_id=entity["id"], session=session)
-    except AccountingPeriodValidationError as exc:
-        raise CommercialValidationError(str(exc))
-    except AccountingPeriodClosedError as exc:
-        raise CommercialConflictError(str(exc))
-    customer_type = _clean(params.get("customer_type") or "walk_in").lower()
-    if customer_type not in CUSTOMER_TYPES:
-        raise CommercialValidationError("customer_type must be student, guardian, or walk_in")
-    customer_id = _clean(params.get("customer_id")) or None
-    customer_name = _clean(params.get("customer_name")) or "Walk-in"
-    if customer_type == "student":
-        if not customer_id:
-            raise CommercialValidationError("customer_id is required for a student sale")
-        customer = await db.students.find_one(
-            _scope(actor, {"id": customer_id, "is_active": True}),
-            {"_id": 0, "id": 1, "name": 1}, **session_kwargs(session),
-        )
-        if not customer:
-            raise CommercialNotFoundError("Student customer not found")
-        customer_name = _clean(customer.get("name")) or "Student"
-    elif customer_type == "guardian":
-        if not customer_id:
-            raise CommercialValidationError("customer_id is required for a guardian sale")
-        customer = await db.guardians.find_one(
-            _scope(actor, {"id": customer_id}), {"_id": 0, "id": 1, "name": 1},
-            **session_kwargs(session),
-        )
-        if not customer:
-            raise CommercialNotFoundError("Guardian customer not found")
-        customer_name = _clean(customer.get("name")) or "Guardian"
-    raw_lines = params.get("lines")
-    if not isinstance(raw_lines, list) or not raw_lines:
-        raise CommercialValidationError("lines must contain at least one product")
-    grouped_lines = {}
-    for index, raw in enumerate(raw_lines):
-        if not isinstance(raw, dict):
-            raise CommercialValidationError(f"lines[{index}] must be an object")
-        product_id = _required(raw, "product_id")
-        quantity = _positive_int(raw.get("quantity"), f"lines[{index}].quantity")
-        prior = grouped_lines.get(product_id)
-        if prior and raw.get("unit_price") is not None and prior.get("unit_price") not in {None, raw.get("unit_price")}:
-            raise CommercialValidationError("Duplicate product lines must use the same unit price")
-        grouped_lines[product_id] = {
-            "product_id": product_id,
-            "quantity": quantity + int(prior.get("quantity") or 0) if prior else quantity,
-            "unit_price": raw.get("unit_price") if raw.get("unit_price") is not None else (prior or {}).get("unit_price"),
-        }
-    lines = []
-    subtotal = tax_total = 0
-    # Audit A-7 (2026-08-05): one batched read for the whole cart instead of a query
-    # per line, per CLAUDE.md's no-loop-queries rule.
-    product_ids = [_required(raw, "product_id") for raw in grouped_lines.values()]
-    products_by_id = {
-        row["id"]: row
-        for row in await db.commercial_products.find(
-            _scope(actor, {"id": {"$in": product_ids}, "entity_id": entity["id"], "is_active": True}),
-            {"_id": 0}, **session_kwargs(session),
-        ).to_list(len(product_ids))
-    }
-    for index, raw in enumerate(grouped_lines.values()):
-        product = products_by_id.get(_required(raw, "product_id"))
-        if not product:
-            raise CommercialNotFoundError(f"Product not found at lines[{index}]")
-        quantity = _positive_int(raw.get("quantity"), f"lines[{index}].quantity")
-        price = int(product["unit_price_paise"])
-        if raw.get("unit_price") is not None and _paise(raw["unit_price"], "unit_price") != price:
-            raise CommercialConflictError(f"Price changed for {product['name']}; refresh and retry")
-        net = price * quantity
-        tax = round(net * int(product.get("tax_rate_bps") or 0) / 10000)
-        subtotal += net
-        tax_total += tax
-        lines.append({"product_id": product["id"], "inventory_item_id": product["inventory_item_id"],
-                      "sku": product["sku"], "name": product["name"], "quantity": quantity,
-                      "unit_price_paise": price, "tax_rate_bps": int(product.get("tax_rate_bps") or 0),
-                      "net_paise": net, "tax_paise": tax, "total_paise": net + tax})
-    total = subtotal + tax_total
-    payments = _normalise_payments(params.get("payments"), total)
-    sale_id = str(uuid.uuid4())
-    receipt = await _next_number(db, actor, entity, "sale", session=session)
-    now = actor.now_iso()
-    shift_touch = await db.pos_shifts.update_one(
-        _scope(actor, {"id": shift["id"], "entity_id": entity["id"], "status": "open"}),
-        {"$inc": {"activity_version": 1}}, **session_kwargs(session),
-    )
-    if shift_touch.matched_count == 0:
-        raise CommercialConflictError("POS shift closed while the sale was being posted")
-    for line in lines:
-        result = await db.inventory_items.update_one(
-            _scope(actor, entity_record_filter(entity, {"id": line["inventory_item_id"], "is_active": True,
-                                                        "on_hand": {"$gte": line["quantity"]}})),
-            {"$inc": {"on_hand": -line["quantity"], "quantity": -line["quantity"]},
-             "$set": {"updated_at": now}}, **session_kwargs(session),
-        )
-        if result.matched_count == 0:
-            raise CommercialConflictError(f"Insufficient or changed stock for {line['name']}")
-        movement_id = str(uuid.uuid4())
-        await db.stock_movements.insert_one({
-            "_id": movement_id, "id": movement_id, "schoolId": actor.school_id,
-            "branch_id": actor.branch_id, "entity_id": entity["id"],
-            "item_id": line["inventory_item_id"], "sku": line["sku"],
-            "movement_type": "issue", "quantity": line["quantity"],
-            "quantity_delta": -line["quantity"], "reference_type": "retail_sale",
-            "reference_id": sale_id, "posted_by": actor.user_id, "posted_at": now,
-        }, **session_kwargs(session))
-    sale = {
-        "_id": sale_id, "id": sale_id, "schoolId": actor.school_id, "branch_id": actor.branch_id,
-        "entity_id": entity["id"], "receipt_number": receipt, "shift_id": shift["id"],
-        "customer_type": customer_type, "customer_id": customer_id,
-        "customer_name": customer_name,
-        "lines": lines, "subtotal_paise": subtotal, "tax_paise": tax_total, "total_paise": total,
-        "payments": payments, "status": "posted", "posting_date": params.get("posting_date") or date.today().isoformat(),
-        "created_by": actor.user_id, "created_at": now,
-    }
-    await db.retail_sales.insert_one(sale, **session_kwargs(session))
-    await db.retail_idempotency.insert_one({
-        "_id": str(uuid.uuid4()), "schoolId": actor.school_id, "branch_id": actor.branch_id,
-        "key": key, "sale_id": sale_id, "request_fingerprint": _fingerprint(params), "created_at": now,
-    }, **session_kwargs(session))
-    await _audit(db, actor, "retail_sale_post", "retail_sales", sale_id,
-                 {"receipt_number": receipt, "entity_id": entity["id"], "total_paise": total})
-    return _public(sale)
-
-
-async def create_return(db, actor: ActorContext, sale_id: str, params: dict, *,
-                        idempotency_key: str, session=None) -> dict:
-    key = _clean(idempotency_key)
-    if not key:
-        raise CommercialValidationError("Idempotency-Key header is required")
-    prior_key = await db.retail_return_idempotency.find_one(_scope(actor, {"key": key}), {"_id": 0},
-                                                           **session_kwargs(session))
-    if prior_key:
-        _assert_replay_matches(prior_key, {"sale_id": sale_id, **params})
-        return await db.retail_returns.find_one(_scope(actor, {"id": prior_key["return_id"]}), {"_id": 0},
-                                                **session_kwargs(session))
-    sale = await db.retail_sales.find_one(_scope(actor, {"id": sale_id, "status": "posted"}), {"_id": 0},
-                                          **session_kwargs(session))
-    if not sale:
-        raise CommercialNotFoundError("Posted retail sale not found")
-    entity = await resolve_entity(db, actor, params.get("entity_id") or sale.get("entity_id"))
-    if entity["id"] != sale.get("entity_id"):
-        raise CommercialValidationError("Return legal entity must match the original sale")
-    shift = await _open_shift(db, actor, _required(params, "shift_id"), entity["id"], session=session)
-    try:
-        await assert_posting_allowed(db, actor.branch_id, params.get("posting_date") or date.today().isoformat(),
-                                     entity_id=entity["id"], session=session)
-    except AccountingPeriodValidationError as exc:
-        raise CommercialValidationError(str(exc))
-    except AccountingPeriodClosedError as exc:
-        raise CommercialConflictError(str(exc))
-    previous = await _all_docs(db.retail_returns.find(
-        _scope(actor, {"sale_id": sale_id, "status": "posted"}),
-        {"_id": 0}, **session_kwargs(session)
-    ))
-    returned = {}
-    for row in previous:
-        for line in row.get("lines") or []:
-            returned[line["product_id"]] = returned.get(line["product_id"], 0) + int(line["quantity"])
-    sold = {line["product_id"]: line for line in sale.get("lines") or []}
-    raw_lines = params.get("lines")
-    if not isinstance(raw_lines, list) or not raw_lines:
-        raise CommercialValidationError("lines must contain at least one returned product")
-    requested_quantities = {}
-    for index, raw in enumerate(raw_lines):
-        if not isinstance(raw, dict):
-            raise CommercialValidationError(f"lines[{index}] must be an object")
-        product_id = _required(raw, "product_id")
-        requested_quantities[product_id] = requested_quantities.get(product_id, 0) + _positive_int(
-            raw.get("quantity"), f"lines[{index}].quantity"
-        )
-    lines = []
-    total = 0
-    for index, (product_id, quantity) in enumerate(requested_quantities.items()):
-        original = sold.get(product_id)
-        if not original:
-            raise CommercialValidationError(f"Product at lines[{index}] was not on the original sale")
-        if returned.get(product_id, 0) + quantity > int(original["quantity"]):
-            raise CommercialConflictError(f"Return quantity exceeds remaining quantity for {original['name']}")
-        ratio_net = round(int(original["net_paise"]) * quantity / int(original["quantity"]))
-        ratio_tax = round(int(original["tax_paise"]) * quantity / int(original["quantity"]))
-        ratio_total = ratio_net + ratio_tax
-        lines.append({**original, "quantity": quantity, "net_paise": ratio_net,
-                      "tax_paise": ratio_tax, "total_paise": ratio_total})
-        total += ratio_total
-    payments = _normalise_refund_payments(params.get("payments"), total, sale, previous)
-    return_id = str(uuid.uuid4())
-    number = await _next_number(db, actor, entity, "return", session=session)
-    now = actor.now_iso()
-    shift_touch = await db.pos_shifts.update_one(
-        _scope(actor, {"id": shift["id"], "entity_id": entity["id"], "status": "open"}),
-        {"$inc": {"activity_version": 1}}, **session_kwargs(session),
-    )
-    if shift_touch.matched_count == 0:
-        raise CommercialConflictError("POS shift closed while the return was being posted")
-    for line in lines:
-        result = await db.inventory_items.update_one(
-            _scope(actor, entity_record_filter(entity, {"id": line["inventory_item_id"], "is_active": True})),
-            {"$inc": {"on_hand": line["quantity"], "quantity": line["quantity"]},
-             "$set": {"updated_at": now}}, **session_kwargs(session),
-        )
-        if result.matched_count == 0:
-            raise CommercialConflictError(f"Inventory item is unavailable for {line['name']}")
-        movement_id = str(uuid.uuid4())
-        await db.stock_movements.insert_one({
-            "_id": movement_id, "id": movement_id, "schoolId": actor.school_id,
-            "branch_id": actor.branch_id, "entity_id": entity["id"],
-            "item_id": line["inventory_item_id"], "sku": line["sku"],
-            "movement_type": "return", "quantity": line["quantity"],
-            "quantity_delta": line["quantity"], "reference_type": "retail_return",
-            "reference_id": return_id, "posted_by": actor.user_id, "posted_at": now,
-        }, **session_kwargs(session))
-    doc = {
-        "_id": return_id, "id": return_id, "schoolId": actor.school_id, "branch_id": actor.branch_id,
-        "entity_id": entity["id"], "return_number": number, "sale_id": sale_id,
-        "receipt_number": sale.get("receipt_number"), "shift_id": shift["id"],
-        "lines": lines, "total_paise": total, "payments": payments,
-        "reason": _required(params, "reason"), "status": "posted",
-        "posting_date": params.get("posting_date") or date.today().isoformat(),
-        "created_by": actor.user_id, "created_at": now,
-    }
-    await db.retail_returns.insert_one(doc, **session_kwargs(session))
-    await db.retail_return_idempotency.insert_one({
-        "_id": str(uuid.uuid4()), "schoolId": actor.school_id, "branch_id": actor.branch_id,
-        "key": key, "return_id": return_id,
-        "request_fingerprint": _fingerprint({"sale_id": sale_id, **params}), "created_at": now,
-    }, **session_kwargs(session))
-    await _audit(db, actor, "retail_return_post", "retail_returns", return_id,
-                 {"sale_id": sale_id, "total_paise": total}, doc["reason"])
-    return _public(doc)
-
-
-async def close_shift(db, actor: ActorContext, shift_id: str, params: dict, *, session=None) -> dict:
-    shift = await db.pos_shifts.find_one(
-        _scope(actor, {"id": shift_id, "status": "open"}), {"_id": 0}, **session_kwargs(session)
-    )
-    if not shift:
-        raise CommercialNotFoundError("Open POS shift not found")
-    if actor.role != "owner" and shift.get("cashier_id") != actor.user_id:
-        raise CommercialConflictError("This POS shift belongs to another cashier")
-    sales = await _all_docs(db.retail_sales.find(
-        _scope(actor, {"shift_id": shift_id, "status": "posted"}), {"_id": 0}, **session_kwargs(session)
-    ))
-    returns = await _all_docs(db.retail_returns.find(
-        _scope(actor, {"shift_id": shift_id, "status": "posted"}), {"_id": 0}, **session_kwargs(session)
-    ))
-    cash_sales = sum(p["amount_paise"] for row in sales for p in row.get("payments") or [] if p.get("mode") == "cash")
-    cash_returns = sum(p["amount_paise"] for row in returns for p in row.get("payments") or [] if p.get("mode") == "cash")
-    expected = int(shift.get("opening_cash_paise") or 0) + cash_sales - cash_returns
-    counted = _paise(params.get("counted_cash"), "counted_cash")
-    variance = counted - expected
-    if variance and not _clean(params.get("variance_reason")):
-        raise CommercialValidationError("variance_reason is required when counted cash differs")
-    update = {
-        "status": "closed", "expected_cash_paise": expected, "counted_cash_paise": counted,
-        "variance_paise": variance, "variance_reason": _clean(params.get("variance_reason")) or None,
-        "sales_count": len(sales), "returns_count": len(returns),
-        "closed_by": actor.user_id, "closed_at": actor.now_iso(),
-    }
-    result = await db.pos_shifts.update_one(
-        _scope(actor, {"id": shift_id, "status": "open",
-                       "activity_version": shift.get("activity_version", {"$exists": False})}),
-        {"$set": update}, **session_kwargs(session),
-    )
-    if result.matched_count == 0:
-        raise CommercialConflictError("POS shift was already closed")
-    await _audit(db, actor, "pos_shift_close", "pos_shifts", shift_id, update, update["variance_reason"] or "")
-    return {**shift, **update}
-
-
 async def commercial_summary(db, actor: ActorContext, entity_id: Optional[str] = None,
                              *, consolidated: bool = False) -> dict:
     if consolidated:
@@ -974,25 +547,18 @@ async def commercial_summary(db, actor: ActorContext, entity_id: Optional[str] =
         entities = [await resolve_entity(db, actor, entity_id)]
     rows = []
     for entity in entities:
-        sales = await _all_docs(db.retail_sales.find(
-            _scope(actor, entity_record_filter(entity, {"status": "posted"})), {"_id": 0}
-        ))
-        returns = await _all_docs(db.retail_returns.find(
-            _scope(actor, entity_record_filter(entity, {"status": "posted"})), {"_id": 0}
-        ))
+        # The shop sales and returns that used to be totalled here are gone with the
+        # campus-retail removal of 2026-08-14: The Aaryans runs no shop, and the canteen
+        # is an outside vendor renting space rather than a school business.
         opportunities = await _all_docs(db.crm_opportunities.find(
             _scope(actor, entity_record_filter(entity)), {"_id": 0}
         ))
-        gross = sum(int(row.get("total_paise") or 0) for row in sales)
-        refunds = sum(int(row.get("total_paise") or 0) for row in returns)
         pipeline = sum(round(int(row.get("amount_paise") or 0) * int(row.get("probability") or 0) / 100)
                        for row in opportunities if row.get("stage") not in {"won", "lost"})
         rows.append({"entity_id": entity["id"], "entity_name": entity["name"],
-                     "gross_sales_paise": gross, "returns_paise": refunds,
-                     "net_sales_paise": gross - refunds, "weighted_pipeline_paise": pipeline})
+                     "weighted_pipeline_paise": pipeline})
     return {"consolidated": consolidated, "entities": rows,
-            "totals": {"net_sales_paise": sum(row["net_sales_paise"] for row in rows),
-                       "weighted_pipeline_paise": sum(row["weighted_pipeline_paise"] for row in rows)}}
+            "totals": {"weighted_pipeline_paise": sum(row["weighted_pipeline_paise"] for row in rows)}}
 
 
 # ───────────────────── Deletes (owner instruction, 2026-08-07) ─────────────────
@@ -1030,6 +596,12 @@ async def delete_legal_entity(db, actor: ActorContext, params: dict, *, session=
             f"Cannot delete an entity with {children} entity/entities reporting to it"
         )
 
+    # The three shop collections are still checked here even though the campus-retail
+    # feature was removed on 2026-08-14. The FEATURE is gone; whatever rows it wrote
+    # before then are NOT, because removing a screen must never delete a school's
+    # records. If any survive, an entity holding them still refuses to be deleted rather
+    # than orphaning them. On a school that never used the shop these count zero and the
+    # check costs nothing.
     for collection, label in (
         (db.retail_sales, "sale"),
         (db.enquiries, "enquiry"),
@@ -1084,34 +656,3 @@ async def delete_crm_lead(db, actor: ActorContext, params: dict, *, session=None
     await _audit(db, actor, "crm_lead_delete", "enquiries", enquiry_id,
                  {"deleted": existing}, reason=_clean(params.get("reason")))
     return {"deleted": True, "enquiry_id": enquiry_id}
-
-
-async def delete_product(db, actor: ActorContext, params: dict, *, session=None) -> dict:
-    """Delete a shop product. Blocked once it has ever been sold.
-
-    A product that has been sold is part of the sales record: deleting it would leave
-    receipts pointing at nothing. Those are retired with `is_active` instead, which is
-    what `update` already does.
-
-    params: ``{product_id}``  returns: ``{"deleted": True, "product_id": <id>}``
-    """
-    kwargs = session_kwargs(session)
-    product_id = _required(params, "product_id")
-    existing = await db.commercial_products.find_one(
-        _scope(actor, {"id": product_id}), {"_id": 0}, **kwargs
-    )
-    if not existing:
-        raise CommercialNotFoundError("Retail product not found")
-
-    sold = await db.retail_sales.count_documents(
-        _scope(actor, {"lines.product_id": product_id}), **kwargs
-    )
-    if sold:
-        raise CommercialConflictError(
-            f"Cannot delete a product that appears on {sold} sale(s) - mark it inactive instead"
-        )
-
-    await db.commercial_products.delete_one(_scope(actor, {"id": product_id}), **kwargs)
-    await _audit(db, actor, "retail_product_delete", "commercial_products", product_id,
-                 {"deleted": existing}, reason=_clean(params.get("reason")))
-    return {"deleted": True, "product_id": product_id}

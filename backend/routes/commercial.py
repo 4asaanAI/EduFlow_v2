@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-"""Enterprise school CRM, campus retail, and legal-entity APIs."""
+"""School admissions CRM and legal-entity APIs.
+
+Campus retail was removed on 2026-08-14; see the note further down and
+`services/commercial_service.py`.
+"""
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pymongo.errors import DuplicateKeyError
-
 from database import TransactionUnavailableError, get_db, get_txn_session
 from middleware.auth import require_owner, require_owner_or_admin_subcategories
 from services.actor_context import actor_ctx_from_user
@@ -13,22 +15,15 @@ from services.commercial_service import (
     CommercialNotFoundError,
     CommercialValidationError,
     add_crm_activity,
-    close_shift,
     commercial_summary,
     create_crm_lead,
     create_entity,
     create_opportunity,
-    create_product,
-    create_return,
-    create_sale,
     crm_pipeline,
     delete_crm_lead,
     delete_legal_entity,
-    delete_product,
     entity_record_filter,
     list_entities,
-    open_shift,
-    replay_retail_request,
     resolve_entity,
     set_default_entity,
     update_crm_lead,
@@ -46,8 +41,6 @@ require_entity_viewer = require_owner_or_admin_subcategories("principal", "accou
 require_commercial_reporter = require_owner_or_admin_subcategories("principal", "accountant")
 require_admissions_operator = require_owner_or_admin_subcategories("principal", "admission", "receptionist")
 require_opportunity_editor = require_owner_or_admin_subcategories("principal", "admission")
-require_retail_operator = require_owner_or_admin_subcategories("principal", "accountant", "receptionist")
-require_retail_configurator = require_owner_or_admin_subcategories("principal", "accountant")
 
 
 def _actor(user: dict):
@@ -259,95 +252,16 @@ async def get_crm_pipeline(request: Request, entity_id: str | None = None,
     return {"success": True, "data": data}
 
 
-@router.get("/products")
-async def get_products(request: Request, entity_id: str | None = None,
-                       user: dict = Depends(require_retail_operator)):
-    db, actor = get_db(), _actor(user)
-    try:
-        entity = await resolve_entity(db, actor, entity_id)
-    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
-        raise _error(exc)
-    rows = await db.commercial_products.find(
-        scoped_query(entity_record_filter(entity, {"is_active": True}), branch_id=user.get("branch_id")),
-        {"_id": 0},
-    ).sort("name", 1).to_list(1000)
-    return {"success": True, "data": rows, "meta": {"count": len(rows)}}
-
-
-@router.post("/products")
-async def post_product(request: Request, user: dict = Depends(require_retail_configurator)):
-    try:
-        row = await _transactional_call(user, create_product, await _body(request))
-    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError,
-            TransactionUnavailableError) as exc:
-        raise _error(exc)
-    return {"success": True, "data": row}
-
-
-@router.delete("/products/{product_id}")
-async def delete_retail_product(product_id: str, request: Request,
-                                user: dict = Depends(require_retail_configurator)):
-    """Delete a shop product. Refused once it appears on any sale.
-
-    Owner instruction 2026-08-07 - parity reference for the AI `delete_retail_product`
-    tool.
-    """
-    try:
-        row = await _transactional_call(user, delete_product, {"product_id": product_id})
-    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError,
-            TransactionUnavailableError) as exc:
-        raise _error(exc)
-    return {"success": True, "data": row}
-
-
-@router.get("/pos/shifts")
-async def get_shifts(request: Request, entity_id: str | None = None, status: str | None = None,
-                     user: dict = Depends(require_retail_operator)):
-    db, actor = get_db(), _actor(user)
-    try:
-        entity = await resolve_entity(db, actor, entity_id)
-    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
-        raise _error(exc)
-    base = {"status": status} if status else {}
-    rows = await db.pos_shifts.find(
-        scoped_query(entity_record_filter(entity, base), branch_id=user.get("branch_id")), {"_id": 0}
-    ).sort("opened_at", -1).to_list(1000)
-    return {"success": True, "data": rows, "meta": {"count": len(rows)}}
-
-
-@router.post("/pos/shifts")
-async def post_shift(request: Request, user: dict = Depends(require_retail_operator)):
-    try:
-        row = await open_shift(get_db(), _actor(user), await _body(request))
-    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
-        raise _error(exc)
-    return {"success": True, "data": row}
-
-
-@router.patch("/pos/shifts/{shift_id}/close")
-async def patch_shift_close(shift_id: str, request: Request,
-                            user: dict = Depends(require_retail_operator)):
-    try:
-        row = await _transactional_call(user, close_shift, shift_id, await _body(request))
-    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError,
-            TransactionUnavailableError) as exc:
-        raise _error(exc)
-    return {"success": True, "data": row}
-
-
-@router.get("/pos/sales")
-async def get_sales(request: Request, entity_id: str | None = None, shift_id: str | None = None,
-                    user: dict = Depends(require_retail_operator)):
-    db, actor = get_db(), _actor(user)
-    try:
-        entity = await resolve_entity(db, actor, entity_id)
-    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
-        raise _error(exc)
-    base = {"shift_id": shift_id} if shift_id else {}
-    rows = await db.retail_sales.find(
-        scoped_query(entity_record_filter(entity, base), branch_id=user.get("branch_id")), {"_id": 0}
-    ).sort("created_at", -1).to_list(2000)
-    return {"success": True, "data": rows, "meta": {"count": len(rows)}}
+# ── Campus retail removed, 2026-08-14 ────────────────────────────────────────
+#
+# Eight routes lived here: the product catalogue, cashier shifts, sales and returns.
+# They are gone on Abhimanyu's instruction. The Aaryans runs no shop. The canteen is an
+# outside vendor renting space and running its own business, so what the school has
+# there is a tenant, not a till of its own.
+#
+# The rows the shop wrote were NOT deleted; removing a feature must not remove a
+# school's records. `delete_legal_entity` still refuses to delete an entity that holds
+# any of them.
 
 
 async def _transactional_call(user: dict, operation, *args, **kwargs):
@@ -360,39 +274,3 @@ async def _transactional_call(user: dict, operation, *args, **kwargs):
                 return await operation(db, actor, *args, session=session, **kwargs)
     finally:
         reset_current_session(token)
-
-
-async def _transactional_sale(user: dict, body: dict, key: str, *, sale_id: str | None = None):
-    try:
-        if sale_id:
-            return await _transactional_call(
-                user, create_return, sale_id, body, idempotency_key=key
-            )
-        return await _transactional_call(user, create_sale, body, idempotency_key=key)
-    except DuplicateKeyError:
-        return await replay_retail_request(
-            get_db(), _actor(user), key, body, sale_id=sale_id
-        )
-
-
-@router.post("/pos/sales")
-async def post_sale(request: Request, user: dict = Depends(require_retail_operator)):
-    try:
-        row = await _transactional_sale(user, await _body(request), request.headers.get("Idempotency-Key") or "")
-    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError,
-            TransactionUnavailableError) as exc:
-        raise _error(exc)
-    return {"success": True, "data": row}
-
-
-@router.post("/pos/sales/{sale_id}/returns")
-async def post_return(sale_id: str, request: Request,
-                      user: dict = Depends(require_retail_operator)):
-    try:
-        row = await _transactional_sale(
-            user, await _body(request), request.headers.get("Idempotency-Key") or "", sale_id=sale_id
-        )
-    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError,
-            TransactionUnavailableError) as exc:
-        raise _error(exc)
-    return {"success": True, "data": row}

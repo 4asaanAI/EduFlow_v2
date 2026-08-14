@@ -24,7 +24,7 @@ import { PROFILE_MATRIX, ALL_SCREENS } from '../profileMatrix.generated';
 const EXPECTED_GROUP_NAMES = [
   'School Overview',
   'School Database',
-  'Finance & Campus Sales',
+  'Finance',
   'Admissions & Communication',
   'Academics & Activities',
   'People & Attendance',

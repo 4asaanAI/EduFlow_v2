@@ -898,9 +898,9 @@ TOOL_GET_FINANCE_CONTROLS = {
 }
 TOOL_GET_COMMERCIAL_OPERATIONS = {
     "name": "get_commercial_operations",
-    "description": "View the school CRM pipeline, campus retail totals, or legal-entity structure.",
+    "description": "View the school CRM pipeline or the legal-entity structure.",
     "params_schema": {
-        "domain": "optional: overview | crm | retail | entities | consolidated",
+        "domain": "optional: overview | crm | entities | consolidated",
         "entity_id": "optional legal entity ID; defaults to the configured operating entity",
     },
 }
@@ -932,11 +932,6 @@ TOOL_UPDATE_CRM_LEAD = {
 }
 TOOL_CREATE_LEGAL_ENTITY = {"name": "create_legal_entity", "description": "Create a legal entity. Owner only; confirmation required.", "params_schema": {"name": "required", "code": "required", "entity_type": "school | trust | company | group", "parent_entity_id": "optional"}}
 TOOL_SET_DEFAULT_LEGAL_ENTITY = {"name": "set_default_legal_entity", "description": "Set the default operating entity. Owner only; confirmation required.", "params_schema": {"entity_id": "required"}}
-TOOL_CREATE_RETAIL_PRODUCT = {"name": "create_retail_product", "description": "Map inventory into the campus retail catalog. Confirmation required.", "params_schema": {"inventory_item_id": "required", "sku": "required", "name": "required", "unit_price": "required rupee amount", "entity_id": "optional"}}
-TOOL_OPEN_POS_SHIFT = {"name": "open_pos_shift", "description": "Open a campus POS shift. Confirmation required.", "params_schema": {"register_name": "required", "opening_cash": "optional", "entity_id": "optional"}}
-TOOL_CLOSE_POS_SHIFT = {"name": "close_pos_shift", "description": "Close and reconcile a POS shift. Confirmation required.", "params_schema": {"shift_id": "required", "counted_cash": "required", "variance_reason": "required when different"}}
-TOOL_POST_POS_SALE = {"name": "post_pos_sale", "description": "Post an immutable multi-line campus sale. Confirmation required.", "params_schema": {"shift_id": "required", "lines": "required product and quantity list", "payments": "required exact split payments", "entity_id": "optional"}}
-TOOL_POST_POS_RETURN = {"name": "post_pos_return", "description": "Post a linked immutable retail return. Confirmation required.", "params_schema": {"sale_id": "required", "shift_id": "required", "lines": "required returned quantities", "reason": "required", "entity_id": "optional"}}
 TOOL_GET_MY_SCHOOL_HUB = {
     "name": "get_my_school_hub",
     "description": "View own or a linked ward's fees, leave, library loans, quizzes and attempts.",
@@ -1025,14 +1020,6 @@ TOOL_DELETE_LEGAL_ENTITY = {
     ),
     "params_schema": {"entity_id": "required - legal entity ID"},
 }
-TOOL_DELETE_RETAIL_PRODUCT = {
-    "name": "delete_retail_product",
-    "description": (
-        "Permanently delete a shop product. Destructive; requires confirmation. "
-        "Blocked once it appears on any sale - retire it instead."
-    ),
-    "params_schema": {"product_id": "required - shop product ID"},
-}
 
 _OWNER_TOOLS = [
     # ---- Read / analytics ----
@@ -1045,11 +1032,6 @@ _OWNER_TOOLS = [
     TOOL_UPDATE_CRM_LEAD,
     TOOL_CREATE_LEGAL_ENTITY,
     TOOL_SET_DEFAULT_LEGAL_ENTITY,
-    TOOL_CREATE_RETAIL_PRODUCT,
-    TOOL_OPEN_POS_SHIFT,
-    TOOL_CLOSE_POS_SHIFT,
-    TOOL_POST_POS_SALE,
-    TOOL_POST_POS_RETURN,
     TOOL_GET_DAILY_BRIEF,
     TOOL_QUERY_DASHBOARD_SUMMARY,
     TOOL_GET_FEE_SUMMARY,
@@ -1147,7 +1129,6 @@ _OWNER_TOOLS = [
     TOOL_DELETE_CERTIFICATE,
     TOOL_DELETE_ENQUIRY,
     TOOL_DELETE_LEGAL_ENTITY,
-    TOOL_DELETE_RETAIL_PRODUCT,
 ]
 
 _PRINCIPAL_TOOLS = [
@@ -1157,11 +1138,6 @@ _PRINCIPAL_TOOLS = [
     TOOL_GET_COMMERCIAL_OPERATIONS,
     TOOL_CREATE_CRM_LEAD,
     TOOL_UPDATE_CRM_LEAD,
-    TOOL_CREATE_RETAIL_PRODUCT,
-    TOOL_OPEN_POS_SHIFT,
-    TOOL_CLOSE_POS_SHIFT,
-    TOOL_POST_POS_SALE,
-    TOOL_POST_POS_RETURN,
     TOOL_GET_DAILY_BRIEF,
     TOOL_GET_FEE_SUMMARY,
     TOOL_GET_STAFF_STATUS,
@@ -1217,7 +1193,6 @@ _PRINCIPAL_TOOLS = [
     TOOL_DELETE_INCIDENT,
     TOOL_DELETE_CERTIFICATE,
     TOOL_DELETE_ENQUIRY,
-    TOOL_DELETE_RETAIL_PRODUCT,
 ]
 
 _ACCOUNTS_TOOLS = [
@@ -1230,7 +1205,6 @@ _ACCOUNTS_TOOLS = [
     TOOL_GET_STUDENT_DATABASE,  # names + fees only - enforced in role rules
     # ---- Deletes the registry allows the accountant (2026-08-07) ----
     TOOL_DELETE_FEE_STRUCTURE,
-    TOOL_DELETE_RETAIL_PRODUCT,
 ]
 
 _TRANSPORT_HEAD_TOOLS = [
@@ -1546,7 +1520,7 @@ ENTERPRISE SCHOOL WORKFLOWS:
 - Create or advance admissions CRM leads: use create_crm_lead or update_crm_lead. Confirm before writing.
 - Resources, asset custody, procurement, inventory ledger, library circulation and student leave: use get_enterprise_operations
 - Accounting periods, fee schedule versions and payroll status: use get_finance_controls
-- Admissions CRM, campus retail totals and legal-entity reporting: use get_commercial_operations
+- Admissions CRM and legal-entity reporting: use get_commercial_operations
 
 FEE DISCOUNT APPLICATION:
 - Apply a ONE-OFF, hand-typed discount to a student: use apply_discount (first get discount_type_id from get_fee_structures).
@@ -1573,7 +1547,7 @@ SALARY: Never reveal exact salaries in chat - direct to Financial Reports panel.
     # ---- Admin: Principal ----
     ("admin", "principal"): """
 ROLE: Principal - Full School Management Access
-- You can read and update every operational and financial school domain exposed by the available tools, including fees, expenses, payroll status, retail, legal entities, students, staff, admissions, academics, transport, assets and settings.
+- You can read and update every operational and financial school domain exposed by the available tools, including fees, expenses, payroll status, legal entities, students, staff, admissions, academics, transport, assets and settings.
 - Use the available tool instead of directing the Principal to a panel when Flo can complete the request.
 - Ordinary single-record writes execute immediately. Destructive, bulk and financial-reversal actions require explicit confirmation.
 - Audit history is fully visible so the Principal can review changes made by every profile.
@@ -1599,7 +1573,7 @@ For parent complaints, list open/unresolved cases with priority and days pending
     # ---- Admin: Accounts ----
     ("admin", "accountant"): """
 ROLE: Accountant Head - Complete Finance Access
-- You can read and update every financial domain exposed by the available tools: fees, payments, discounts, fee structures, expenses, accounting periods, payroll and salaries, legal entities, campus retail/POS, corrections, reversals and finance reporting.
+- You can read and update every financial domain exposed by the available tools: fees, payments, discounts, fee structures, expenses, accounting periods, payroll and salaries, legal entities, corrections, reversals and finance reporting.
 - When anyone asks why a family is charged what they are charged, use explain_student_fee. It gives you the class band, every concession and what each is worth, whether the child holds a Right to Education place, their brothers and sisters here, their bus and fare, and everything they have paid.
 - The school gives four concessions and no others: sibling, employee's child at 50%, 5% for the whole year paid by 30 April, and a one-time amount agreed at admission. They do not stack; a child entitled to both the employee and the sibling one keeps the employee one. Grant or remove with set_student_concession. The one-time amount goes through record_admission_concession and must name who authorised it, because the school's owner or the Principal decide it and you apply it.
 - Right to Education children owe no school fee at all. It is not a discount and must never be recorded as one. Use set_right_to_education, and a reason is required in both directions.
@@ -1617,7 +1591,7 @@ ROLE: Accountant Head - Complete Finance Access
     ("admin", "management"): """
 ROLE: Admin Office - Complete Non-Finance Access
 - You can read and update every non-financial school domain exposed by the available tools: students, staff administration, admissions, attendance, academics, classes, houses, announcements, incidents, visitors, certificates, assets, inventory and operational workflows.
-- You never see a rupee figure. Do not access or report fees collected, amounts outstanding, discounts, expenses, payroll, salaries, accounting periods, legal entities, campus POS/retail or finance reports. For a named child you can see WHETHER their fees are paid or unpaid; you cannot see how much, and you must not guess or estimate an amount.
+- You never see a rupee figure. Do not access or report fees collected, amounts outstanding, discounts, expenses, payroll, salaries, accounting periods, legal entities or finance reports. For a named child you can see WHETHER their fees are paid or unpaid; you cannot see how much, and you must not guess or estimate an amount.
 - The one money figure you can look up is the school's published fee rate card - what a given class is charged per year. That is public, it is on the school's own fee sheet, and any parent may ask for it. It tells you nothing about what any family has paid.
 - Transport and vendor records now belong to the Accountant Head. They are outside your scope until the school appoints a transport head.
 - Ordinary single-record writes execute immediately. Destructive and bulk actions require explicit confirmation.

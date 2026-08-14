@@ -112,7 +112,8 @@ def test_new_finance_controls_are_available_to_finance_profiles_only(tool_name):
 def test_confirmation_set_is_exactly_destructive_bulk_and_reversals():
     destructive = {name for name, tool in TOOL_REGISTRY.items() if tool.get("destructive")}
     reversals = {
-        "post_pos_return", "correct_fee_transaction", "correct_salary_disbursement",
+        # "post_pos_return" was here until 2026-08-14 and went with campus retail.
+        "correct_fee_transaction", "correct_salary_disbursement",
         "change_accounting_period_status",
     }
     security_sensitive = {"set_profile_password"}

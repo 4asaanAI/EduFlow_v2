@@ -28,7 +28,7 @@ export const MANAGEMENT_HUBS = [
     ],
   },
   {
-    id: 'finance-commercial-hub', name: 'Finance & Campus Sales', subtitle: 'Fees, payroll, expenses and retail', color: 'var(--tool-hex-34d399)',
+    id: 'finance-commercial-hub', name: 'Finance', subtitle: 'Fees, payroll and expenses', color: 'var(--tool-hex-34d399)',
     items: [
       ['fee-collection', 'Fee Collection', 'Payments, receipts and exports', 'owner'],
       ['fee-sync', 'Fee Sync', 'External fee-system conflicts', 'owner'],
@@ -38,7 +38,7 @@ export const MANAGEMENT_HUBS = [
       ['accounting-periods', 'Accounting Periods', 'Posting locks and controls', 'owner'],
       ['payroll-manager', 'Payroll & Payslips', 'Salary runs and corrections', 'owner'],
       ['expense-tracker', 'Expenses', 'Track and approve expenditure', 'owner'],
-      ['commercial-operations', 'Commercial Operations', 'CRM, legal entities and campus retail', 'both'],
+      ['commercial-operations', 'Commercial Operations', 'Admissions CRM and legal entities', 'both'],
     ],
   },
   {

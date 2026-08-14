@@ -306,12 +306,24 @@ def test_only_leadership_reaches_the_private_leadership_tools():
 # they gained `export_data_file` in Release 3, and gain no access with it: it reads a
 # figure the database already keeps and touches no school record.
 EXPECTED_REACH = {
-    "owner":          (165, 104),
-    "principal":      (165, 104),
+    # 165/104 until 2026-08-14. MINUS SIX tools, all six of them writes: campus retail
+    # was removed on Abhimanyu's instruction, taking create_retail_product,
+    # delete_retail_product, open_pos_shift, close_pos_shift, post_pos_sale and
+    # post_pos_return with it. The Aaryans runs no shop; the canteen is an outside vendor
+    # renting space.
+    #
+    # Worth reading the whole block rather than just these two lines: the drop is exactly
+    # six on the owner, the principal AND the accountant head, and **management did not
+    # move at all**. That is the proof the removal hit precisely what it aimed at. The six
+    # were finance-classified, which is why the management head never had them, and if his
+    # number had moved it would have meant the cut caught something else on the way past.
+    "owner":          (159, 98),
+    "principal":      (159, 98),
     # 56/31 until 2026-08-11. +1 tool, +1 write: update_staff, named in
     # PROFILE_MATRIX["accountant"]["extra_tools"], scoped by the SERVICE to salary
     # only (Abhimanyu, relaying Aman's and Adesh's instruction).
-    "accountant":     (65, 36),
+    # 65/36 until 2026-08-14, minus the same six campus-retail tools.
+    "accountant":     (59, 30),
     "management":     (101, 60),
     "transport_head": (30, 0),
     "receptionist":   (30, 0),

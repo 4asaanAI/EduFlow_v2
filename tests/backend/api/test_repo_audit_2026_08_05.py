@@ -188,104 +188,13 @@ def test_a5_federation_still_refuses_the_wrong_role_and_no_token(client, monkeyp
     ).status_code == 403
 
 
-# ── A-2: a reused idempotency key replays instead of erroring in chat ────────
-
-async def test_a2_flo_pos_sale_replays_a_reused_key(client, fake_db):
-    """The REST route turns a duplicate key into the original sale. Flo's tool used to
-    let the raw DuplicateKeyError escape, which reaches the person as a generic failure."""
-    from ai.tool_functions_v2 import tool_post_pos_sale
-
-    owner_user = {"id": "owner-1", "user_id": "owner-1", "role": "owner",
-                  "name": "Owner", "branch_id": "branch-a"}
-    owner = _headers("owner-1", "owner")
-    entity = client.post("/api/commercial/entities", headers=owner, json={
-        "name": "The Aaryans School", "code": "TAS", "entity_type": "school",
-    })
-    assert entity.status_code == 200, entity.text
-    entity_id = entity.json()["data"]["id"]
-    fake_db.inventory_items.docs.append({
-        "id": "item-1", "schoolId": "aaryans-joya", "branch_id": "branch-a",
-        "sku": "PEN", "name": "Pen", "is_active": True, "on_hand": 10, "quantity": 10,
-    })
-    product = client.post("/api/commercial/products", headers=owner, json={
-        "entity_id": entity_id, "inventory_item_id": "item-1", "sku": "PEN",
-        "name": "Pen", "unit_price": 20, "tax_rate_percent": 0,
-    })
-    assert product.status_code == 200, product.text
-    shift = client.post("/api/commercial/pos/shifts", headers=owner, json={
-        "entity_id": entity_id, "register_name": "Counter", "opening_cash": 0,
-    })
-    assert shift.status_code == 200, shift.text
-
-    params = {
-        "entity_id": entity_id, "shift_id": shift.json()["data"]["id"],
-        "customer_type": "walk_in", "customer_name": "Visitor",
-        "lines": [{"product_id": product.json()["data"]["id"], "quantity": 1}],
-        "payments": [{"mode": "cash", "amount": 20}],
-        "idempotency_key": "flo-repeat-key",
-    }
-    first = await tool_post_pos_sale(dict(params), owner_user)
-    assert first["success"] is True, first
-    stock_after_first = fake_db.inventory_items.docs[0]["on_hand"]
-
-    second = await tool_post_pos_sale(dict(params), owner_user)
-    assert second["success"] is True, second
-    assert second["data"]["id"] == first["data"]["id"], "the same key must replay, not re-post"
-    assert fake_db.inventory_items.docs[0]["on_hand"] == stock_after_first, "stock moved twice"
-
-
-# ── A-7: the cart is read in one query, not one per line ─────────────────────
-
-async def test_a7_sale_reads_products_in_a_single_batched_query(client, fake_db, monkeypatch):
-    owner = _headers("owner-1", "owner")
-    entity = client.post("/api/commercial/entities", headers=owner, json={
-        "name": "The Aaryans School", "code": "TAS", "entity_type": "school",
-    })
-    assert entity.status_code == 200, entity.text
-    entity_id = entity.json()["data"]["id"]
-
-    for index in range(4):
-        fake_db.inventory_items.docs.append({
-            "id": f"item-{index}", "schoolId": "aaryans-joya", "branch_id": "branch-a",
-            "sku": f"SKU-{index}", "name": f"Item {index}", "is_active": True,
-            "on_hand": 20, "quantity": 20,
-        })
-        created = client.post("/api/commercial/products", headers=owner, json={
-            "entity_id": entity_id, "inventory_item_id": f"item-{index}", "sku": f"SKU-{index}",
-            "name": f"Item {index}", "unit_price": 50, "tax_rate_percent": 0,
-        })
-        assert created.status_code == 200, created.text
-
-    shift = client.post("/api/commercial/pos/shifts", headers=owner, json={
-        "entity_id": entity_id, "register_name": "Book Counter", "opening_cash": 0,
-    })
-    assert shift.status_code == 200, shift.text
-    shift_id = shift.json()["data"]["id"]
-
-    product_ids = [row["id"] for row in client.get(
-        f"/api/commercial/products?entity_id={entity_id}", headers=owner
-    ).json()["data"]]
-    assert len(product_ids) == 4
-
-    finds: list[dict] = []
-    original_find = type(fake_db.commercial_products).find
-
-    def _counting_find(self, filter=None, *args, **kwargs):
-        finds.append(filter or {})
-        return original_find(self, filter, *args, **kwargs)
-
-    monkeypatch.setattr(type(fake_db.commercial_products), "find", _counting_find)
-
-    sale = client.post(
-        "/api/commercial/pos/sales", headers={**owner, "Idempotency-Key": "audit-a7-sale"},
-        json={
-            "entity_id": entity_id, "shift_id": shift_id,
-            "customer_type": "walk_in", "customer_name": "Visitor",
-            "lines": [{"product_id": pid, "quantity": 1} for pid in product_ids],
-            "payments": [{"mode": "cash", "amount": 200}],
-        },
-    )
-    assert sale.status_code == 200, sale.text
-    assert len(sale.json()["data"]["lines"]) == 4
-    assert len(finds) == 1, f"a 4-line cart must issue ONE product read, issued {len(finds)}"
-    assert "$in" in str(finds[0])
+# ── A-2 and A-7 removed with campus retail, 2026-08-14 ──────────────────────
+#
+# Two audit findings from 2026-08-05 were proven here on the till: A-2, that a reused
+# idempotency key replays the original sale instead of surfacing a raw database error in
+# chat, and A-7, that a multi-line cart reads its products in ONE query rather than one
+# per line.
+#
+# Both tests went with the feature. **The lessons did not, and are worth carrying:**
+# a Flo tool must never let a raw database error escape to the person, and a batch write
+# must not issue a query per line. Neither has another exercise in this file today.

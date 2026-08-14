@@ -65,7 +65,6 @@ PARITY_CORPUS = {
     "delete_certificate": "new_deletes_parity_test.py",
     "delete_enquiry": "new_deletes_parity_test.py",
     "delete_legal_entity": "new_deletes_parity_test.py",
-    "delete_retail_product": "new_deletes_parity_test.py",
     # Epic K.2 - academic-structure CRUD
     "create_class": "academic_structure_parity_test.py",
     "update_class": "academic_structure_parity_test.py",
@@ -89,11 +88,6 @@ PARITY_CORPUS = {
     "update_crm_lead": "commercial_parity_test.py",
     "create_legal_entity": "commercial_parity_test.py",
     "set_default_legal_entity": "commercial_parity_test.py",
-    "create_retail_product": "commercial_parity_test.py",
-    "open_pos_shift": "commercial_parity_test.py",
-    "close_pos_shift": "commercial_parity_test.py",
-    "post_pos_sale": "commercial_parity_test.py",
-    "post_pos_return": "commercial_parity_test.py",
     # R4-5: the only write that leaves the school. Parity matters more here than
     # anywhere, because a difference between the button and Flo is invisible from
     # inside the school - both say "reported" - and only shows up at our end.

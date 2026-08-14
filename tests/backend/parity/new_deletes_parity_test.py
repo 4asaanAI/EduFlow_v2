@@ -315,22 +315,3 @@ async def test_an_enquiry_that_became_a_student_is_refused_through_both_doors(cl
     assert rest.status_code == 409
     assert ai["success"] is False
     assert len(fake_db.enquiries.docs) == 1
-
-
-async def test_a_product_that_has_been_sold_is_refused_through_both_doors(client, fake_db):
-    _clear(fake_db, "commercial_products", "retail_sales")
-    fake_db.commercial_products.docs[:] = [{
-        "id": "prod-1", "_id": "prod-1", "schoolId": "aaryans-joya", "branch_id": "branch-joya",
-        "entity_id": "ent-1", "sku": "TIE-01", "name": "School Tie", "is_active": True,
-    }]
-    fake_db.retail_sales.docs[:] = [{
-        "id": "sale-1", "_id": "sale-1", "schoolId": "aaryans-joya", "branch_id": "branch-joya",
-        "entity_id": "ent-1", "lines": [{"product_id": "prod-1", "quantity": 1}],
-    }]
-
-    rest = client.delete("/api/commercial/products/prod-1", headers=OWNER_HEADERS)
-    ai = await tool_functions_v2.tool_delete_retail_product({"product_id": "prod-1"}, OWNER_USER, None)
-
-    assert rest.status_code == 409
-    assert ai["success"] is False
-    assert len(fake_db.commercial_products.docs) == 1
