@@ -418,3 +418,56 @@ R3-2 and nothing else.
 `test_r3_1a_narrowed_gates::test_transport_still_reaches_the_dormant_desks` said the gap
 closes when R3-0 lands. That is no longer true, so it now records an ACCEPTED gap and names
 who deletes it. A comment that quietly stops being true is how a decision gets lost.
+
+### 2026-08-14 (evening) - session log: what shipped after R3-1a
+
+Recorded here so the whole evening is in one place. Three pieces of work, all LIVE.
+
+**1. R3-1a, five permission narrowings.** Backend `eduflow-r31a-20260814-d571571`.
+Detail earlier in this file.
+
+**2. Sidebar: the More tab retired, and the sections open differently.** Staff Tracker moved
+into People & Attendance; Recent Chats now starts closed and Tools open, for every profile.
+Detail earlier in this file. Shipped in the same deploy as R3-1a and Amplify job 151.
+
+**3. Campus retail removed, and the screen renamed.** Backend
+`eduflow-noshop-20260814-484135d`, frontend Amplify job 155, `main` at `484135d`.
+Rollback target `eduflow-r31a-20260814-d571571`. Full record:
+`implementation-artifacts/fit-to-the-school/campus-retail-removed-2026-08-14.md`.
+
+**4. R3-0 retired rather than parked.** Detail earlier in this file.
+
+**Nothing in the access ladder itself moved tonight.** R3-2 (Chaman), R3-3 (drivers and
+conductors) and R3-4 (his handover) are all still not started, and R3-4 is no longer blocked
+now that R3-0 is retired.
+
+### 2026-08-14 (evening) - admissions was surveyed, read only, nothing changed
+
+Abhimanyu asked how the admission funnel works today and whether there is a proper workflow
+from a family's enquiry through to enrolment. Read from the code; nothing changed, no live
+data read. Full record:
+`implementation-artifacts/admissions-how-it-actually-works-2026-08-14.md`.
+
+**The answer is no, not end to end.** Two well-built halves with nothing joining them.
+
+- **The enquiry pipeline** (8 stages, new through enrolled, with a timeline per family)
+  works properly.
+- **The application lifecycle** (8 statuses, draft through enrolled, with a real state
+  machine, an assessment, a dated offer, and student creation in one transaction) works
+  properly and carefully.
+- **There is no way on ANY screen to turn an enquiry into an application.** The server
+  supports it and refuses duplicates; the form on screen has no field for it. That is the
+  single break in the chain.
+
+**The finding that matters most: an enquiry can reach "enrolled" without any child being
+created.** `fee_paid` to `enrolled` is an ordinary stage move, nothing requires an
+application, and the enquiry service never creates a student. So the funnel can show a child
+as enrolled while the school has no record of them, and nobody looking can tell that apart
+from a real enrolment. **Same shape as the fault Release 4 was written to close.**
+
+Also found: three screens show the same enquiries under three names, the application
+workflow has no menu entry of its own (it is a panel at the bottom of two other screens),
+and the two tracks use different words for one journey.
+
+**Nothing was fixed.** Four suggestions are in the artifact, smallest first; adding a "start
+an application" button to the enquiry screen is the one that turns two halves into a whole.
