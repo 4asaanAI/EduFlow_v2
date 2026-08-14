@@ -118,18 +118,44 @@
 > The rule: read credentials fresh from their source each time, never stage a scratch file
 > holding one, and never `git add` without looking at what is being added.
 
-> ## 📋 What comes next, and the one thing blocking it
+> ## ⚠️ TWO different things are called Release 3, and two are called Release 4
 >
-> There is **no seven-release plan** anywhere. Four numbered releases have been planned and
-> shipped (2, 3, 4, plus the four owner reports after Release 3). Numbering starts at 2;
-> there is no Release 1 and no Release 7.
+> **Read `_bmad-output/planning-artifacts/release-numbering-collision-2026-08-14.md` before
+> using a release number in any sentence.** *(An earlier version of this section said there
+> was "no seven-release plan anywhere". That was wrong: the plan is in the Release 2
+> document at line 18 and had been there since 10 August. Corrected 2026-08-14.)*
 >
-> **Release 5 is teachers, Release 6 is students.** Neither is planned; each exists as one
-> sentence. **Do not start Release 5 until Abhimanyu answers who may message whom** once
-> teachers have logins, and then students. It is recorded as needing an answer before that
-> release, not during it, and a student-to-staff channel is a different question from
-> staff-to-staff. Teachers, students and guardians are also still outside `profile_matrix.py`
-> with hand-written menus, so Release 5 will have to bring them into the same grant table.
+> There is a **seven step access ladder**, given by Abhimanyu on 2026-08-09 and recorded in
+> `release-2-person-profiles-2026-08-10.md`: 1 Aman and Adesh, 2 + Sonu and Lalit,
+> **3 + department heads**, **4 + whole admin staff**, 5 + teachers, 6 + students,
+> 7 + parents. **The access ladder stopped after step 2.**
+>
+> The work that shipped as "Release 3" (tables, downloads, phone sizing) and "Release 4"
+> (audit, undo, menus) is unrelated and took those numbers on 11 and 12 August without
+> anybody noticing the clash. Both were needed and both shipped. But **department heads and
+> the admin staff have never been catered for**, while the numbering makes it look as
+> though they were passed two releases ago.
+>
+> **The live consequence, found 2026-08-14 and never written down before.** Migration 041
+> was applied to the live school database on 2026-08-12 and created seven office logins.
+> Four of them were given the `accountant` or `management` profile, which are Sonu's and
+> Lalit's. So **two assistant accountants hold exactly what the accountant head holds**,
+> every teacher's salary included, and two admin office staff hold exactly what the
+> management head holds. Never designed, never discussed. All seven carry
+> `must_change_password` and the one-time passwords went to a handover file outside the
+> repo, so **whether anyone has ever signed in depends on whether those were distributed.**
+> Establish that before anything else.
+>
+> **"Dormant" is documentation, not a lock.** Nothing in the running code reads the
+> `status` field; it appears only in tests and the mirror generator. A dormant profile with
+> a login reaches its listed screens with no Flo tools and no ability to write, which reads
+> as a broken platform rather than a locked one.
+>
+> **Blocking Release 5 since 2026-08-10:** who may message whom. Teachers are already inside
+> the staff messaging group, so the live part of that question is students and parents.
+> Note also that **there is no way to create a staff or teacher login** through the
+> platform. Only students have a login-creation route; every staff login so far came from a
+> hand-run migration.
 
 > ## ✅ SHIPPED - Release 3: the whole list, on any device (2026-08-12)
 >
