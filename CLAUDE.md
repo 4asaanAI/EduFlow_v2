@@ -77,6 +77,42 @@
 > There is no third option where it sits on `main` undeployed. The backend is the opposite
 > and needs a deliberate deploy, which is why the two can drift apart at all.
 >
+> ## ✅ SHIPPED - Two photo leaks closed, and staff logins narrowed (deployed 2026-08-15)
+>
+> **LIVE.** Backend `eduflow-photoleak-20260815-36b04c7`, frontend Amplify job 164, commit
+> `36b04c7`. **Rollback target: `eduflow-tests-20260815-f7a1be2`.** Proven live: the parent
+> portal, staff and student routes all answer 401 while a made-up path under the same
+> prefix answers 404. Bundle checked before upload, 242 entries either way, nothing added
+> or dropped.
+>
+> **The parent portal was handing parents' browsers the previous vendor's public web
+> address for their own child and both parents.** `GET /api/guardian/wards` and the ward
+> detail returned the child's whole record without going through `photo_url_service`, and
+> the guardian `PATCH` response did the same. Of every screen to have missed that rule,
+> the parent portal was the worst one. Both now go through it, pinned by
+> `test_no_vendor_photo_link_escapes_2026_08_15.py`, which also fails if a NEW route module
+> returns a person without so much as importing the service.
+>
+> **The photo move off Vedmarg is finished and, for the first time, PROVEN.** All 1,692
+> images are in the school's own bucket (202.8 MB), nothing stranded across students,
+> parents, guardians and staff, and a 21-image sample was signed and read back as real
+> JPEGs. **Two traps that manufacture a false alarm** are recorded in
+> `implementation-artifacts/vedmarg-photos-verified-2026-08-15.md`: `S3_BUCKET` is unset
+> locally, and a link signed for GET returns 403 to a HEAD request, which is
+> indistinguishable from the file being gone. The originals are still on Vedmarg's servers
+> and still public; nothing in this code can change that.
+>
+> **Creating a staff record MINTS A LOGIN, and that is now owner and principal only.** The
+> old gate fired only for a privileged account, so every office desk could create a plain
+> teacher and hand out a way in. Refused server-side and hidden in the UI.
+>
+> **The Add Staff form used to throw the password away.** It received the one-time password
+> and closed. The username now travels with it (derived from email, phone, employee ID or
+> name, so it cannot be guessed) and both are shown once. **The password is NOT forced to
+> change** (Abhimanyu, 2026-08-15); every profile can change its own from Settings.
+>
+> Gate: backend 3,784 passed / 0 failed; frontend 813 passed; production build clean.
+>
 > ## ✅ SHIPPED - B1: an entrance test is a record, not a word (deployed 2026-08-15)
 >
 > **LIVE.** Backend `eduflow-tests-20260815-f7a1be2`, frontend Amplify job 161, commit
