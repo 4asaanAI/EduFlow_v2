@@ -370,6 +370,46 @@ def require_owner_principal_or_accountant(request: Request):
     raise HTTPException(status_code=403, detail="Forbidden")
 
 
+def require_attendance_marker(*, include_teacher: bool):
+    """Who may WRITE an attendance register.
+
+    R3-1a, 2026-08-14. Both bulk attendance routes were gated `require_role(...)` with
+    "admin" in the list, which ignores the sub_category, so all eight office desks could
+    mark a register - the front desk, IT, maintenance, the transport head and support
+    staff among them, none of whom has an attendance screen.
+
+    Abhimanyu's decision of 2026-08-14, given after the R3-1 survey: marking stays with
+    the school's owner, the principal, the accountant head and the management head. That
+    KEEPS the accountant head, who the permission table otherwise holds to attendance
+    read-only (decision 2, 2026-08-10) - so this helper is the written record that the
+    school widened that on purpose rather than a route quietly disagreeing with the table.
+
+    `include_teacher` is True on the student register, which teachers have always marked
+    and still do, and False on the staff register, which they never could.
+
+    Named positively rather than as "everyone except the dormant desks". Subtraction is
+    what Release 2 removed from the menus and it must not creep back in at the door.
+    """
+    allowed_admin = ("principal", "accountant", "management")
+
+    def dependency(request: Request):
+        user = get_current_user(request)
+        role = user.get("role")
+        if role == "owner":
+            return user
+        if include_teacher and role == "teacher":
+            return user
+        if role == "admin" and user.get("sub_category") in allowed_admin:
+            return user
+        logger.info(
+            "attendance-marker gate failed: role=%s sub=%s teacher_allowed=%s path=%s",
+            role, user.get("sub_category"), include_teacher, request.url.path,
+        )
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    return dependency
+
+
 def require_exam_manager(request: Request):
     """Owner, admin+principal, admin+management, or teacher can manage exams."""
     user = get_current_user(request)

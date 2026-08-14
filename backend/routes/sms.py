@@ -339,7 +339,21 @@ async def send_parent_message(request: Request, user: dict = Depends(require_rol
 
 
 @router.get("/logs")
-async def get_sms_logs(request: Request, user: dict = Depends(require_role("admin", "owner"))):
+async def get_sms_logs(request: Request, user: dict = Depends(require_owner_accountant_or_principal)):
+    """The message log: owner, principal and accountant head only.
+
+    R3-1a, 2026-08-14, and this was the money leak of the R3-1 survey. The gate was
+    `require_role("admin", "owner")`, so every office desk could read it, the management
+    head included - and a fee-reminder row stores BOTH an `amount` field and the full
+    message text, which names a child and what their family owes. Decision 1 of
+    2026-08-10 says the management head never sees a rupee figure anywhere.
+
+    Narrowed rather than filtered, deliberately. The only screen that reads this route is
+    Smart Fee Defaulter, which the permission table gives to the accountant head and NOT
+    to the management head, so he could never reach it through the platform and loses
+    nothing he was using. Filtering the rows instead would have left him a screen he
+    cannot open and a route that half-answers.
+    """
     db = get_db()
     bid = user.get("branch_id")
     logs = await db.sms_logs.find(scoped_query({}, branch_id=bid), {"_id": 0}).sort("sent_at", -1).to_list(100)

@@ -9,6 +9,7 @@ from middleware.auth import (
     require_owner_or_principal,
     require_role,
 )
+from services.profile_matrix import PROFILE_MATRIX, profile_of
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
 from services.actor_context import actor_ctx_from_user
@@ -176,6 +177,48 @@ def _is_accounts(user: dict) -> bool:
 
 def _is_receptionist(user: dict) -> bool:
     return user.get("role") == "admin" and user.get("sub_category") == "receptionist"
+
+
+# R3-1a, 2026-08-14: the transport routes ask the permission table whether this profile
+# has been REFUSED transport, instead of naming a profile here.
+#
+# Why it is shaped this way. Decision 2 of 2026-08-10 moved transport to the accountant
+# head until the transport head's own release, and it did that by naming five tools and
+# DENYING them to the management head in `profile_matrix.py`. The REST routes never asked,
+# so he kept all thirteen of them - the only case the R3-1 survey found where a written
+# refusal is contradicted rather than merely unenforced. Reading the denial from the table
+# means that when transport moves again, the routes move with it and nobody has to
+# remember this file.
+#
+# This deliberately does NOT close the five dormant desks out of transport. They can still
+# reach these routes today, which is wrong, and closing it is exactly the question R3-0 is
+# PARKED on: it turned eleven transport tests red, and each is a judgement about what a
+# person may do rather than a chore. Resolving that here, as a side effect of a different
+# fix, would be deciding it by the back door.
+_TRANSPORT_TOOLS = frozenset({
+    "get_transport_status",
+    "create_transport_route",
+    "update_transport_route",
+    "delete_transport_route",
+    "add_transport_vehicle",
+})
+
+
+def require_transport_access(request: Request):
+    user = get_current_user(request)
+    role = user.get("role")
+    if role == "owner":
+        return user
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    profile = profile_of(user)
+    denied = PROFILE_MATRIX[profile]["denied_tools"] if profile else frozenset()
+    if _TRANSPORT_TOOLS & denied:
+        raise HTTPException(
+            status_code=403,
+            detail="Transport is not part of your profile. The accountant head runs transport.",
+        )
+    return user
 
 
 def _require_accounting(user: dict) -> None:
@@ -796,7 +839,7 @@ async def update_asset(asset_id: str, request: Request, user: dict = Depends(req
 # --- Transport ---
 @router.get("/transport")
 @transport_router.get("")
-async def list_transport(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def list_transport(request: Request, user: dict = Depends(require_transport_access)):
     db = get_db()
     bid = user.get("branch_id")
     routes = await db.transport_routes.find(scoped_query({}, branch_id=bid), {"_id": 0}).to_list(50)
@@ -819,7 +862,7 @@ async def list_transport(request: Request, user: dict = Depends(require_role("ow
 
 @router.post("/transport")
 @transport_router.post("")
-async def create_route(request: Request, user: dict = Depends(require_role("admin", "owner"))):
+async def create_route(request: Request, user: dict = Depends(require_transport_access)):
     # AD7 shared write path - same service as the AI `create_transport_route` tool.
     db = get_db()
     body = await request.json()
@@ -833,7 +876,7 @@ async def create_route(request: Request, user: dict = Depends(require_role("admi
 
 @router.get("/transport/roster")
 @transport_router.get("/roster")
-async def get_transport_roster(request: Request, zone_id: str = None, user: dict = Depends(require_role("owner", "admin"))):
+async def get_transport_roster(request: Request, zone_id: str = None, user: dict = Depends(require_transport_access)):
     """Owner/Principal: full roster. Transport Head: zone-specific."""
     db = get_db()
     bid = user.get("branch_id")
@@ -850,7 +893,7 @@ async def get_transport_roster(request: Request, zone_id: str = None, user: dict
 
 @router.post("/transport/vehicles")
 @transport_router.post("/vehicles")
-async def create_vehicle(request: Request, user: dict = Depends(require_role("admin", "owner"))):
+async def create_vehicle(request: Request, user: dict = Depends(require_transport_access)):
     # AD7 shared write path - same service as the AI `add_transport_vehicle` tool.
     db = get_db()
     body = await request.json()
@@ -864,7 +907,7 @@ async def create_vehicle(request: Request, user: dict = Depends(require_role("ad
 
 @router.get("/transport/vehicles")
 @transport_router.get("/vehicles")
-async def list_vehicles(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def list_vehicles(request: Request, user: dict = Depends(require_transport_access)):
     db = get_db()
     bid = user.get("branch_id")
     vehicles = await db.vehicles.find(scoped_query({}, branch_id=bid), {"_id": 0}).to_list(50)
@@ -873,7 +916,7 @@ async def list_vehicles(request: Request, user: dict = Depends(require_role("own
 
 @router.post("/transport/zones")
 @transport_router.post("/zones")
-async def create_zone(request: Request, user: dict = Depends(require_role("admin", "owner"))):
+async def create_zone(request: Request, user: dict = Depends(require_transport_access)):
     """Alias: zones map to transport routes with zone semantics (AD7 shared service)."""
     db = get_db()
     body = await request.json()
@@ -889,7 +932,7 @@ async def create_zone(request: Request, user: dict = Depends(require_role("admin
 
 @router.patch("/transport/{route_id}")
 @transport_router.patch("/{route_id}")
-async def update_route(route_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
+async def update_route(route_id: str, request: Request, user: dict = Depends(require_transport_access)):
     # AD7 shared write path - same service as the AI `update_transport_route` tool.
     db = get_db()
     body = await request.json()
@@ -905,7 +948,7 @@ async def update_route(route_id: str, request: Request, user: dict = Depends(req
 
 @router.delete("/transport/{route_id}")
 @transport_router.delete("/{route_id}")
-async def delete_route(route_id: str, request: Request, user: dict = Depends(require_role("admin", "owner"))):
+async def delete_route(route_id: str, request: Request, user: dict = Depends(require_transport_access)):
     # AD7 shared write path - same service as the AI `delete_transport_route` tool.
     # Now blocked while active students are assigned (K-review safety rule).
     db = get_db()
@@ -941,7 +984,7 @@ def _parse_latlon(lat, lng):
 async def set_student_coordinates(
     student_id: str,
     request: Request,
-    user: dict = Depends(require_role("owner", "admin")),
+    user: dict = Depends(require_transport_access),
 ):
     """Store backend-only lat/lng on a student - never returned in list responses."""
     db = get_db()
@@ -962,7 +1005,7 @@ async def set_student_coordinates(
 async def set_zone_centroid(
     zone_id: str,
     request: Request,
-    user: dict = Depends(require_role("owner", "admin")),
+    user: dict = Depends(require_transport_access),
 ):
     """Set the geographic centroid of a route zone."""
     db = get_db()
@@ -982,7 +1025,7 @@ async def set_zone_centroid(
 @transport_router.post("/geocode")
 async def geocode_address(
     request: Request,
-    user: dict = Depends(require_role("owner", "admin")),
+    user: dict = Depends(require_transport_access),
 ):
     """Geocode an address string to lat/lng using Google Maps Geocoding API."""
     api_key = os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()
@@ -1004,7 +1047,7 @@ async def geocode_address(
 async def suggest_route(
     student_id: str,
     request: Request,
-    user: dict = Depends(require_role("owner", "admin")),
+    user: dict = Depends(require_transport_access),
 ):
     """Rank active route zones by proximity to a student's stored coordinates."""
     db = get_db()
@@ -1055,7 +1098,7 @@ async def suggest_route(
 @transport_router.get("/cluster-analysis")
 async def cluster_analysis(
     request: Request,
-    user: dict = Depends(require_role("owner", "admin")),
+    user: dict = Depends(require_transport_access),
 ):
     """Return students whose current zone is not the nearest zone."""
     db = get_db()

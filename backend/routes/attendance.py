@@ -4,7 +4,10 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from database import get_db
 from models.schemas import AttendanceBulkRequest, StudentAttendance, StaffAttendance
-from middleware.auth import get_current_user, require_role, require_owner_or_principal
+from middleware.auth import (
+    get_current_user, require_role, require_owner_or_principal,
+    require_attendance_marker,
+)
 from datetime import date, datetime
 from tenant import get_school_id, scoped_filter, scoped_query
 from services import enrolment_status
@@ -187,7 +190,13 @@ async def delete_attendance(attendance_id: str, request: Request):
 
 
 @router.post("/student/bulk")
-async def mark_student_attendance(body: AttendanceBulkRequest, request: Request, user: dict = Depends(require_role("owner", "admin", "teacher"))):
+async def mark_student_attendance(
+    body: AttendanceBulkRequest,
+    request: Request,
+    # R3-1a: was require_role("owner", "admin", "teacher"), which let all eight office
+    # desks mark a child's register. See require_attendance_marker for the decision.
+    user: dict = Depends(require_attendance_marker(include_teacher=True)),
+):
     db = get_db()
     await _require_teacher_class_access(db, user, body.class_id)
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
@@ -274,7 +283,12 @@ async def get_today_attendance(class_id: str, request: Request, date: str = None
 
 
 @router.post("/staff/bulk")
-async def mark_staff_attendance(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def mark_staff_attendance(
+    request: Request,
+    # R3-1a: was require_role("owner", "admin"), which let all eight office desks mark
+    # the staff register. Teachers never could and still cannot.
+    user: dict = Depends(require_attendance_marker(include_teacher=False)),
+):
     # AD7 shared write path - same service as the AI `mark_staff_attendance` tool.
     db = get_db()
     body = await request.json()

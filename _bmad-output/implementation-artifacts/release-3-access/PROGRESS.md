@@ -265,3 +265,55 @@ branch records back to the owner. Detail and harm ranking in the survey.
 **Carried from R3-0, because it will apply again:** narrowing these may turn existing tests
 red. If it does, do not make them green to make the suite green. Decide what the person may
 do first.
+
+### 2026-08-14 (evening) - R3-1a BUILT and green. Five gates narrowed, nothing widened
+
+Abhimanyu approved the five on 2026-08-14, with one change to item 4: **marking a register
+stays with Aman, Adesh, Sonu AND Lalit.** So item 4 closes the five dormant desks out and
+keeps all four of the people who hold or will hold credentials, including the accountant
+head, whom the table otherwise holds to attendance read-only. That widening is now written
+down in `require_attendance_marker` as a decision of the school's, not a route disagreeing
+with the table.
+
+| # | What | Where |
+|---|---|---|
+| 1 | The message log stops handing the management head fee amounts | `routes/sms.py`, `GET /api/sms/logs` now `require_owner_accountant_or_principal` |
+| 2 | Transport refused to the management head | `routes/operations.py`, new `require_transport_access` on all 13 routes |
+| 3 | Year-end promotion back to the school's owner alone | `routes/settings.py` |
+| 4 | Marking a register: owner, principal, accountant head, management head (plus teachers on the student register only) | new `require_attendance_marker` in `middleware/auth.py`, both bulk routes |
+| 5 | Branch records back to the school's owner alone | `routes/settings.py` |
+
+**Every change is a narrowing. Nobody gained anything.** `profile_matrix.py` was not
+touched, so the generated mirror is unchanged and the pinned reach counts cannot have moved.
+
+**Two decisions inside the work worth knowing.**
+
+**The transport fix reads the refusal off the table rather than naming a profile.**
+Decision 2 denied five transport tools to the management head in `profile_matrix.py` and
+the routes never asked. They ask now, so when transport moves to the transport head the
+routes follow with no code change. There is a test that proves exactly that, by clearing
+the denial and watching the route open.
+
+**It deliberately does NOT close the five dormant desks out of transport.** They can still
+reach those routes, which is wrong, and R3-0 is the change that closes it. R3-0 is parked,
+and eleven of its twenty red tests are transport tests. Closing them here would have
+settled that parked question as a side effect of an unrelated fix. There is a test that
+records the gap on purpose, with a comment saying to delete it when R3-0 lands.
+
+**The message log was narrowed rather than filtered.** The only screen that reads it is
+Smart Fee Defaulter, which the table gives to the accountant head and not to the management
+head, so he could never reach it through the platform and loses nothing he was using.
+Filtering rows instead would have left a route that half-answers a screen he cannot open.
+
+**Checked so no dead button appears:** the management head's menu never offered a transport
+screen, and no frontend file calls the branch-records route at all. Nobody sees a control
+that now refuses.
+
+**Gate: backend 3,680 passed / 0 failed / 15 deselected.** No frontend change, so the
+frontend suites were not run.
+
+**Nothing turned red.** Unlike R3-0, these five broke no existing test, which is the
+clearest sign that they are narrowings the codebase already believed in.
+
+**NOT DEPLOYED.** Waiting on Abhimanyu. This matters more than usual: Sonu and Lalit already
+hold their passwords, so until this ships the fee-amount leak in item 1 is live.

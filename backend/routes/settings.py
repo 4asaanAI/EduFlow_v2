@@ -179,10 +179,17 @@ async def set_token_limit(user_id: str, request: Request, user: dict = Depends(r
 
 # --- Year-end Session Transition ---
 @router.post("/year-end-transition")
-async def year_end_transition(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def year_end_transition(request: Request, user: dict = Depends(require_owner)):
     """Transition to new academic year: create new year, promote students, archive old data.
 
-    Thin adapter over services.org_config_service.year_end_transition (Story K.3 / AD7)."""
+    Thin adapter over services.org_config_service.year_end_transition (Story K.3 / AD7).
+
+    R3-1a, 2026-08-14: the gate was `require_role("owner", "admin")`, which ignores the
+    sub_category, so every one of the eight office desks could promote the whole roll into
+    a new academic year - support staff included. The permission table has always called
+    the year-end promotion owner-only, the principal expressly excluded; the REST route
+    simply never asked it. Narrowed on Abhimanyu's instruction after the R3-1 survey.
+    """
     db = get_db()
     body = await request.json()
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
@@ -204,7 +211,15 @@ async def update_school_settings(request: Request, user: dict = Depends(require_
 
 
 @router.get("/branches")
-async def list_branches(request: Request, user: dict = Depends(require_role("owner", "admin"))):
+async def list_branches(request: Request, user: dict = Depends(require_owner)):
+    """Owner-only: the school's branch records.
+
+    R3-1a, 2026-08-14: creating a branch was already owner-only one function below, but
+    READING the list was open to every office desk. The permission table calls the branch
+    records owner-only and nobody else reaches them, not even the principal (R2-3). No
+    screen in the frontend calls this route, so narrowing it takes nothing off anybody's
+    display.
+    """
     db = get_db()
     branches = await db.branches.find(_settings_query(), {"_id": 0}).sort("name", 1).to_list(100)
     return {"success": True, "data": branches, "meta": {"count": len(branches)}}
