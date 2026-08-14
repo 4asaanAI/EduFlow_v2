@@ -52,13 +52,30 @@
 > `_bmad-output/planning-artifacts/inspection-findings-2026-08-04.md`.
 > Logs in `_bmad-output/implementation-artifacts/inspection-2026-08-04/`.
 
-> ## 🚧 CURRENT INITIATIVE - Release 4: the platform can account for itself (2026-08-12) - branch `release-4-2026-08-12`
+> ## ✅ SHIPPED - Release 4: the platform can account for itself (deployed 2026-08-13)
+>
+> **LIVE.** All six parts went out together on 2026-08-13. Backend
+> `eduflow-release4-20260813-fec72a7`, frontend Amplify job 147, merged as `6daf32f`.
+> Gate: 3,608 backend and 777 frontend tests passing, build and lint clean. Rollback
+> target: `eduflow-msgfix-20260812-6520aed`. *(This banner said "CURRENT INITIATIVE" for a
+> day after the release went out. Never leave a deploy state written down without a date
+> beside it.)*
+>
+> **The new routes live under `/api/audit-log`, not `/api/audit`.** Probing the shorter
+> path returns a 404 and reads exactly like a failed deploy; it caused a false alarm on
+> 14 August. Verified live: `/api/audit-log/{retention/plan,my-changes-today,school-summary}`,
+> `/api/issues/platform` and `/api/operator/platform-health` all answer 401.
+>
+> **One hop is still broken and it is not in this repository.** The school can raise a
+> ticket and it is stored in LayaaStat under The Aaryans, but the notification email does
+> not send until the Gmail sign-in is renewed in n8n. Do not describe ticket email as
+> working until one real ticket has been watched into the inbox.
 >
 > **Start here:** `_bmad-output/implementation-artifacts/release-4/PROGRESS.md` is the ONLY
-> record of what is done. The work itself is
+> record of what is done, including what is left. The work itself is
 > `_bmad-output/planning-artifacts/release-4-audit-undo-and-honest-menus-2026-08-12.md`.
 >
-> **Release 4 is NOT just "audit and undo".** That one line is all that was ever copied
+> **Release 4 was NOT just "audit and undo".** That one line is all that was ever copied
 > into these notes and it is about a quarter of what was agreed on 12 August. It is six
 > parts: one shape for a recorded change, record everything, two-year retention with a
 > monthly summary kept forever, undo what hurts and let Flo guide the rest, Flo watching
@@ -88,6 +105,31 @@
 >
 > **Grouping never grants, and nothing is ever dropped.** Both rules carry over from the
 > post-Release-3 work and neither may be relaxed for a layout change.
+
+> ## ⛔ Never write a secret to a file inside this repository (2026-08-13)
+>
+> **This repository is PUBLIC.** On 13 August a scratch file holding LayaaStat's database
+> address, its secret key and the shared secret guarding LayaaStat's scheduled jobs was
+> written inside the repo, swept in by a blanket `git add`, and pushed. The file is gone,
+> it is ignored, and the history was rewritten and force-pushed, but **none of that is a
+> fix**: the old commit is still reachable by its id and a public repo can be copied or
+> cached. The only real fix is changing the values, which is with Abhimanyu.
+>
+> The rule: read credentials fresh from their source each time, never stage a scratch file
+> holding one, and never `git add` without looking at what is being added.
+
+> ## 📋 What comes next, and the one thing blocking it
+>
+> There is **no seven-release plan** anywhere. Four numbered releases have been planned and
+> shipped (2, 3, 4, plus the four owner reports after Release 3). Numbering starts at 2;
+> there is no Release 1 and no Release 7.
+>
+> **Release 5 is teachers, Release 6 is students.** Neither is planned; each exists as one
+> sentence. **Do not start Release 5 until Abhimanyu answers who may message whom** once
+> teachers have logins, and then students. It is recorded as needing an answer before that
+> release, not during it, and a student-to-staff channel is a different question from
+> staff-to-staff. Teachers, students and guardians are also still outside `profile_matrix.py`
+> with hand-written menus, so Release 5 will have to bring them into the same grant table.
 
 > ## ✅ SHIPPED - Release 3: the whole list, on any device (2026-08-12)
 >

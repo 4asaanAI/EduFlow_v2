@@ -14,21 +14,30 @@ reports after it are live.
 
 | Part | What it is | State |
 |---|---|---|
-| R4-1 | One shape for a recorded change | **Done** (not deployed) |
-| R4-2 | Everything is recorded | **Done** (not deployed) |
-| R4-3 | Two years in full, a summary forever | **Done** (not deployed) |
-| R4-4 | Undo what hurts, guide the rest | **Done** (not deployed) |
-| R4-5 | Flo watches the platform and can reach us | **Built and green** (not deployed; see the four steps below) |
-| R4-6 | Honest menus, one layout | **Done** (not deployed) |
+| R4-1 | One shape for a recorded change | **Live** |
+| R4-2 | Everything is recorded | **Live** |
+| R4-3 | Two years in full, a summary forever | **Live** |
+| R4-4 | Undo what hurts, guide the rest | **Live** |
+| R4-5 | Flo watches the platform and can reach us | **Live except the final email**, which waits on the Gmail reconnection in n8n |
+| R4-6 | Honest menus, one layout | **Live** |
 
-All six parts are built and green. **Nothing is deployed. No live school data has been
-read or changed.**
+**All six parts went out on 2026-08-13.** Backend `eduflow-release4-20260813-fec72a7`,
+frontend Amplify job 147. Merged as `6daf32f`. No live school data was read or changed.
 
-R4-5 is the one that reaches outside this repository, so "built" means less here than it
-does for the other five: the code is done and tested, and four things still have to
-happen by hand before a ticket can actually travel. They are listed at the foot of this
-file. **Do not report R4-5 as working until one real ticket has been watched all the way
-to the inbox.**
+Backend re-verified from this machine on 2026-08-14 by hitting the new routes through
+CloudFront: `/api/audit-log/retention/plan`, `/api/audit-log/my-changes-today`,
+`/api/audit-log/school-summary`, `/api/issues/platform` and `/api/operator/platform-health`
+all answer **401**, which proves the new code is live and still guarded.
+*(`/api/audit-log`, not `/api/audit`. Guessing the shorter one returns a 404 and reads
+exactly like a failed deploy. It cost a false alarm on 14 August.)*
+
+Rollback target: `eduflow-msgfix-20260812-6520aed`.
+
+R4-5 is the one that reaches outside this repository. The ticket route works end to end
+inside our own systems: the button is live, the school can raise a ticket and it is stored
+in LayaaStat under The Aaryans. **The only hop still broken is the final email**, waiting
+on the Gmail sign-in being renewed in n8n. Do not describe the email as working until one
+real ticket has been watched into the inbox.
 
 ---
 
@@ -458,3 +467,53 @@ records, where the old one had 405,000.
 4. **The Resend key is dead** (403, invalid) and has been for a while, so LayaaStat's
    direct alert emails have been failing silently. Not caused by any of this, and worth
    renewing.
+
+---
+
+### 2026-08-13 - shipped, and a credentials leak that is not yet fully closed
+
+**Deployed.** Backend `eduflow-release4-20260813-fec72a7`, environment green, every new
+route answering 401. Frontend merged to `main` and built as Amplify job 147.
+
+**The order was deliberate: backend first.** Merging to `main` deploys the frontend by
+itself, so doing it the other way round would have put a "Report a problem" button in
+front of the school with nothing behind it. That is the exact fault Release 4 exists to
+remove, so shipping it during Release 4 would have been the wrong way round.
+
+Gate at the time: 3,608 backend tests and 777 frontend tests passing, build and lint clean.
+
+#### A scratch file holding secrets was committed and pushed to a PUBLIC repository
+
+A small working file holding LayaaStat's database address, its secret key and the shared
+secret guarding LayaaStat's scheduled jobs was written **inside the repository**. A blanket
+`git add` swept it into a commit and it was pushed. EduFlow_v2 is public, so those values
+were briefly readable by anyone.
+
+Done: the file is removed, it is in the ignore list (`59da86b`), the branch history was
+rewritten and force-pushed, and the rest of the tree was checked for anything else
+sensitive. **None of that is a fix.** The old commit is still reachable on GitHub by its
+id, and a public repository can be copied or cached by others, so the only real fix is
+changing the values.
+
+Asked of Abhimanyu, and still open at the time of writing:
+1. **Rotate `CRON_SECRET` on the LayaaStat Amplify app.** This is the live one and it
+   guards the jobs that send notifications. Cannot be done from here.
+2. **Delete the old Supabase project.** The other leaked key belongs to it, so deleting
+   the project makes the key worthless. This was already on the list as tidy-up; the leak
+   moves it to worth doing today.
+
+No school data was in the file, and both values belong to an internal monitoring tool
+rather than to anything of the school's. That limits the harm; it does not excuse it.
+
+**The rule, so this cannot recur: never write a secret to a file inside a repository, not
+even a scratch one, and never `git add` without looking at what is being added.** Read
+credentials fresh from their source each time they are needed.
+
+#### Left after this release
+
+1. **Reconnect Gmail in n8n** (Abhimanyu), then watch one real ticket reach the inbox.
+2. **Rotate the secret and delete the old Supabase project** (above).
+3. **Decide the Resend route**: delete it, or point it at a verified domain. The key has
+   been dead with a 403 for a while, so those alert emails were failing in silence.
+4. **Give LayaaStat a proper address** such as `stat.layaa.ai`. Can be done without
+   Abhimanyu.
