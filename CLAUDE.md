@@ -151,11 +151,23 @@
 > a login reaches its listed screens with no Flo tools and no ability to write, which reads
 > as a broken platform rather than a locked one.
 >
-> **Blocking Release 5 since 2026-08-10:** who may message whom. Teachers are already inside
-> the staff messaging group, so the live part of that question is students and parents.
-> Note also that **there is no way to create a staff or teacher login** through the
+> **The messaging question is ANSWERED (2026-08-14, decision 17): messaging stops at
+> teachers, students never get it.** Teachers are already inside the staff group and
+> students are already outside it, so nothing changes except adding a test that pins it.
+> Note separately that **there is no way to create a staff or teacher login** through the
 > platform. Only students have a login-creation route; every staff login so far came from a
 > hand-run migration.
+>
+> **`profile_matrix.py` does NOT gate the REST API.** It decides menus, Flo tools and
+> exports, and nothing else. Every route carries a hand-written gate, and
+> `require_role("owner", "admin")` ignores the sub-category, so every office desk passes it.
+> Proven by probe on 2026-08-14: a support staff account can `POST /api/transport` and read
+> the whole student and staff lists. Money is properly refused everywhere tested.
+>
+> **Current work: `_bmad-output/planning-artifacts/release-3-access-department-heads-2026-08-14.md`,
+> progress in `implementation-artifacts/release-3-access/PROGRESS.md`, handoff
+> `HANDOFF-2026-08-14-access-ladder.md`. R3-0 must land before any credential is handed
+> out.**
 
 > ## ✅ SHIPPED - Release 3: the whole list, on any device (2026-08-12)
 >

@@ -286,3 +286,21 @@ not be what gives a dormant profile anything. Each is recorded here for its own 
 - **One thing to carry into R2-16 and the data work**: for support staff the DATA matters
   more than the login. Their records, attendance and salary need to be right in the live
   database even though none of them will ever sign in.
+
+---
+
+# LATER ANSWERS — Abhimanyu, 2026-08-14
+
+**13. The seven office passwords created by migration 041 were never handed out.** Aman
+and Adesh have theirs; Sonu's and Lalit's go out on 14 August. Nobody else has ever signed
+in. This is the only thing currently keeping the dormant accounts harmless, because
+dormant turned out not to be a lock (see the Release 3 access plan, Part 2).
+
+**14. The two assistant accountants and the two admin office staff need their own
+profiles.** They hold the accountant head's and management head's profiles today, which
+was never designed. The shape Abhimanyu expects: roughly what the head has, with a little
+less visibility and with the head approving actions. **The specifics come from the school
+and are not settled.** Until they are, no password may be issued to those four.
+
+**15. Messaging stops at teachers.** Students never get it. It is therefore not part of
+the students release at all.

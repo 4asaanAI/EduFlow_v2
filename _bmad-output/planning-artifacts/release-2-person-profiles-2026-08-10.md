@@ -586,10 +586,12 @@ Then, per decision 8:
   release has arrived", read from the same matrix as R2-1.
 - Add a person search to the New Message dialog and a member picker to New Group; neither
   exists.
-- Decide and write down who may message whom as later releases land. Release 5 puts
-  teachers in; Release 6 puts students in, and a student-to-staff channel is a different
-  question from staff-to-staff. **This needs an explicit answer before Release 5**, not
-  at the time.
+- ~~Decide and write down who may message whom as later releases land.~~ **ANSWERED
+  2026-08-14, decision 17: messaging stops at teachers. Students never get it, so it is
+  not part of the students release.** Teachers are already inside the staff group
+  (`STAFF_ROLES` covers owner, admin and teacher) and students are already outside it, so
+  no behaviour changes. The only work left is a test that pins it, so a later change
+  cannot quietly let a child into the staff chat.
 
 *Done when:* the RECONNECTING cause is written down and either fixed or raised as
 infrastructure work; and Aman, Adesh, Sonu and Lalit see each other, can search, and can

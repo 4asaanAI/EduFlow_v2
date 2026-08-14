@@ -1,3 +1,7 @@
+> ## SUPERSEDED 2026-08-14
+> This is history. The current handoff is `HANDOFF-2026-08-14-access-ladder.md`.
+> Kept because it records how Release 2 was reasoned about, not because it is current.
+
 # Handoff — Release 2, after the permission work, 2026-08-10
 
 **Give this whole file to the next agent.** It is written to be opened cold. It replaces
