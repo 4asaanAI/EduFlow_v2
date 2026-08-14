@@ -118,14 +118,20 @@ def test_transport_refusal_is_read_from_the_table_not_hardcoded(monkeypatch, cli
     assert client.get("/api/ops/transport", headers=_admin("management")).status_code == 200
 
 
-def test_transport_still_reaches_the_dormant_desks_because_r3_0_is_parked(client):
+def test_transport_still_reaches_the_dormant_desks(client):
     """Deliberate, and NOT an endorsement.
 
-    The five dormant desks can still reach transport. That is wrong and R3-0 is the change
-    that closes it; R3-0 is PARKED by Abhimanyu's instruction because it turns eleven
-    transport tests red and each is a judgement rather than a chore. This test exists so
-    that closing them is a decision somebody makes on purpose, with this line deleted,
-    rather than a silent side effect of an unrelated fix.
+    The five dormant desks can still reach transport.
+
+    This test's name and reasoning changed on 2026-08-14, and the change matters. It
+    originally said the gap closes when R3-0 lands. **R3-0 is now RETIRED, not parked**, so
+    nothing is coming to close it centrally: Abhimanyu's decision is that a credential is
+    handed out only once a profile is ready, which makes the lock redundant. See
+    `implementation-artifacts/release-3-access/R3-0-retired-and-the-twenty-questions-2026-08-14.md`.
+
+    So this now records an ACCEPTED gap rather than a queued one. What holds the line is a
+    process rule and the fact that nobody holds a password, not code. Whoever narrows these
+    desks in R3-2 or Release 4 (access) deletes this test as part of that decision.
     """
     assert client.get("/api/ops/transport", headers=_admin("support_staff")).status_code == 200
 

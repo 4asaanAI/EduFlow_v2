@@ -18,12 +18,12 @@ both live.
 
 | Part | What it is | State |
 |---|---|---|
-| R3-0 | Make dormant mean something, at the door | **Built, PARKED on branch `r3-0-dormant-lock`. Parked by Abhimanyu's instruction on 2026-08-14 evening, NOT because it failed. Do not start it. Turns 20 existing tests red; see below.** |
+| R3-0 | Make dormant mean something, at the door | **RETIRED by Abhimanyu's decision, 2026-08-14. Will not be built.** A credential goes out only once the profile is ready, so the lock never fires. The 20 questions it raised are KEPT, named test by test, in `R3-0-retired-and-the-twenty-questions-2026-08-14.md`. Branch `r3-0-dormant-lock` (`033ef40`) stays, not deleted. |
 | R3-M | The staff room holds only profiles whose release has landed | **LIVE 2026-08-14** |
 | R3-1 | Close the gap between the matrix and the REST API | **Survey DONE 2026-08-14, read only, nothing changed. `R3-1-survey-2026-08-14.md`. The fixing half is not started and needs a decision on order first.** |
 | R3-2 | Chaman's profile built properly, no money anywhere | Not started |
 | R3-3 | The tenth profile: drivers and conductors, defined only | Not started |
-| R3-4 | Switch Chaman on and watch him sign in | Not started |
+| R3-4 | Switch Chaman on and watch him sign in | Not started. **No longer blocked** - it was blocked only by R3-0 being parked, and R3-0 is retired. Waits on R3-2 now. |
 
 Nothing beyond R3-M is built. No live school data has been read or changed by this release.
 
@@ -382,3 +382,39 @@ somebody wants a live proof, ask Abhimanyu to sign in as Lalit and open Transpor
 **The money leak is closed as of this deploy.** Until now the management head could read
 every fee reminder ever sent, with the amount and the child's name, and he has held a
 password since earlier today.
+
+### 2026-08-14 (evening) - R3-0 is RETIRED, not parked. The twenty questions are kept
+
+**Abhimanyu's decision.** Credentials go out only once a profile is ready, so a lock that
+refuses a not-ready profile never fires. That reasoning is sound and it is the deciding
+factor. R3-0 will not be built. Full record, including the exact twenty tests and what each
+one asks:
+`R3-0-retired-and-the-twenty-questions-2026-08-14.md`.
+
+**The twenty were enumerated properly rather than left as a count in a table.** The R3-0
+change was applied to today's `main` in the working tree, the whole suite was run, the exact
+failures were captured, and the working tree was reverted. **21 failed, and the twenty-first
+is our own deliberate marker test.** By profile: transport head 11, front desk 3,
+maintenance 2, IT 1, mixed 3, plus one that is really a test of the permission helper using
+the front desk as an example and is a one-line change rather than a decision.
+
+**Two of them are worth real attention rather than a rubber stamp.** The transport eleven
+are the map of what Chaman can already do and should be the starting point for R3-2 rather
+than a set of failures. The procurement one shows a maintenance account raising a purchase
+requisition carrying an estimated cost, and Release 4 (access) says maintenance touches no
+money, so **that one may be a genuine narrowing rather than a wait.**
+
+**What is being accepted, written down rather than buried.** "Dormant" still means nothing
+at runtime. The seven office logins in the live database from migration 041 still reach real
+screens if anybody ever signs in. **The remaining risk is a handover mistake at the school,
+not a bug**, and the control has moved from the code to the process. If that ever feels too
+large, the cheap answer is to change those seven passwords to something nobody holds, which
+removes the same risk without touching a permission gate. Not done; nobody asked.
+
+**R3-4 is UNBLOCKED by this.** It was blocked only because R3-0 was parked. It now waits on
+R3-2 and nothing else.
+
+**One test corrected in the same commit.**
+`test_r3_1a_narrowed_gates::test_transport_still_reaches_the_dormant_desks` said the gap
+closes when R3-0 lands. That is no longer true, so it now records an ACCEPTED gap and names
+who deletes it. A comment that quietly stops being true is how a decision gets lost.
