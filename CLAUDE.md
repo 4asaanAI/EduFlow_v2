@@ -52,6 +52,49 @@
 > `_bmad-output/planning-artifacts/inspection-findings-2026-08-04.md`.
 > Logs in `_bmad-output/implementation-artifacts/inspection-2026-08-04/`.
 
+> ## ⛔ A push to `main` IS a frontend deploy. Decide the deploy BEFORE pushing.
+>
+> Amplify builds **every** push to `main` automatically. So "code-complete, green, not
+> deployed" **is not a state this repository can hold** for anything with a screen in it.
+>
+> Learned the hard way on 2026-08-15: B1 (entrance tests) was pushed as finished-but-not-
+> deployed work, and the Tests tab began shipping to the school while the routes behind it
+> were still only on a laptop. Anybody opening it would have got an error box, which is the
+> exact "button that looks like a feature" fault that item was written to remove. It was
+> caught mid-build and closed by deploying the backend, so both halves went live together.
+>
+> **If frontend work must wait, keep it off `main` or put the control behind a flag.**
+> There is no third option where it sits on `main` undeployed. The backend is the opposite
+> and needs a deliberate deploy, which is why the two can drift apart at all.
+>
+> ## ✅ SHIPPED - B1: an entrance test is a record, not a word (deployed 2026-08-15)
+>
+> **LIVE.** Backend `eduflow-tests-20260815-f7a1be2`, frontend Amplify job 161, commit
+> `f7a1be2`. **Rollback target: `eduflow-admissions-20260814-52dc341`.** Proven live: the
+> new `/api/admissions/tests` routes answer 401 while a made-up path under the same prefix
+> answers 404.
+>
+> `assessment_scheduled` used to be a status and nothing else, so **the school could not
+> pull a list for Sunday**. There is now a Tests tab: a test with a date, a time, a place
+> and a total, the list of who is sitting it, who turned up, and the marks.
+>
+> **Two rules, and neither may be relaxed.** "Nobody has marked this yet" is its own state
+> and is never drawn as absent, because a register nobody filled in and a test nobody came
+> to are opposite facts. And a mark reaches the application through
+> `admissions_service.record_assessment` **in the same call**; if that refuses, nothing is
+> stored, including the attendance, so the list and the application can never disagree.
+>
+> **The paper's total lives on the TEST and freezes at the first mark.** Before this the
+> maximum was typed per child, so two children sitting one paper could be recorded out of
+> different totals with their percentages silently disagreeing.
+>
+> **The Tests tab was asserted ABSENT by a test until B1 built it.** That assertion was
+> flipped, not deleted. Keep it that way: it now fails if the tab exists without its panel.
+>
+> **Not built:** no Flo tools for tests yet, and B2 (generate the paper) and B3 (marking)
+> are not started. B3's on-screen half is still blocked by the unsettled applicant sign-in
+> question, Part 4 of the plan.
+>
 > ## ✅ SHIPPED - Admissions stage one: the two halves of the funnel are joined (deployed 2026-08-14)
 >
 > **LIVE.** A1 to A6 went out together on 2026-08-14 as `52dc341`. Backend

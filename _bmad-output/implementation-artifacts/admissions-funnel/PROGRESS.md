@@ -13,7 +13,7 @@ Plan: `_bmad-output/planning-artifacts/admissions-funnel-end-to-end-2026-08-14.m
 | A4 One admissions screen | SHIPPED 2026-08-14 |
 | A5 Who to call today | SHIPPED 2026-08-14 |
 | A6 Flo can work the second half | SHIPPED 2026-08-14 |
-| B1 A test is a record | DONE 2026-08-15, green, **NOT deployed** |
+| B1 A test is a record | SHIPPED 2026-08-15 |
 | B2 to B4 (rest of stage two) | not started |
 
 ## Deployed 2026-08-14, on Abhimanyu's instruction
@@ -439,7 +439,27 @@ assertion in `AdmissionsScreen.test.js`.
 
 **Gate.** Backend 3,770 passed / 1 failed (the machine's `uharfbuzz` one, unchanged from
 the 3,733 baseline before this run). Frontend 813 passed across 69 suites. Lint and
-production build clean. No live school database was read or touched. **Not deployed.**
+production build clean. No live school database was read or touched.
+
+**Deployed 2026-08-15** as `eduflow-tests-20260815-f7a1be2`, frontend Amplify job 161,
+commit `f7a1be2`. **Rollback target: `eduflow-admissions-20260814-52dc341`.** Proven live:
+`/api/admissions/tests` and the seat routes all answer 401 while a made-up path under the
+same prefix answers 404.
+
+### ⚠️ The lesson from this deploy, worth more than the feature
+
+**A push to `main` IS a frontend deploy.** Amplify builds every push, automatically. B1 was
+committed and pushed as finished-but-not-deployed work, which is a state that **does not
+exist** in this repository: the moment it was pushed, the Tests tab was on its way to the
+school's browsers while the routes behind it were still only on a laptop. Anybody opening
+that tab would have got an error box, which is the exact "button that looks like a feature"
+fault B1's own design notes are about.
+
+It was caught before the build finished and closed by deploying the backend, so the two
+halves went live together. **The rule for next time: decide the deploy BEFORE pushing to
+main, not after.** If frontend work must wait, it has to be held back from `main` or the
+control has to be hidden behind a flag; there is no third option where it sits on `main`
+undeployed.
 
 ## The documentation pass (2026-08-14, commit `6802f6e`)
 
