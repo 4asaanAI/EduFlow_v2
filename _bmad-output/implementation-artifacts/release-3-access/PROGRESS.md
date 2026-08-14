@@ -19,6 +19,7 @@ both live.
 | Part | What it is | State |
 |---|---|---|
 | R3-0 | Make dormant mean something, at the door | **Not started. Do this before any credential goes out.** |
+| R3-M | The staff room holds only profiles whose release has landed | **Done**, not deployed |
 | R3-1 | Close the gap between the matrix and the REST API | Not started (survey first, read only) |
 | R3-2 | Chaman's profile built properly, no money anywhere | Not started |
 | R3-3 | The tenth profile: drivers and conductors, defined only | Not started |
@@ -64,3 +65,39 @@ nobody has a password, and nothing else.
 
 **Left.** R3-0 is next and should precede any credential handover. R3-1 is a read-only
 survey and changes nothing.
+
+### 2026-08-14 (later) - the staff room now holds only the four whose release has landed
+
+**Why.** Abhimanyu saw office staff in the colleague list who cannot sign in. Logins exist
+for people whose release has not happened: the seven office accounts from migration 041
+and four shared desks. Every one of them was offered as somebody to message. **A colleague
+you can see and write to but who can never answer reads as being ignored**, which is worse
+than their simply not being there.
+
+**The rule he set:** a profile appears in the staff room when its release lands. Not
+before, not after.
+
+**How it is done, and why not a list of names.** `_release_has_landed` in
+`routes/messaging.py` asks the permission table the question it already answers: is this
+profile marked `live`? So nobody maintains a second list, and **switching a profile on for
+its release lights it up in the staff room the same day, with no code change**. There is a
+test that proves exactly that, by marking the transport head live and watching him appear.
+
+`STAFF_ROLES` stays underneath as the floor. Both filters apply, so a mistake in the matrix
+still cannot put a child in the staff room.
+
+**Teachers are out too, and that is deliberate.** They are step 5 of the ladder. The four
+tests written on 12 August that proved a teacher can use messaging were NOT deleted: they
+now run with the teacher profile switched on, so they still prove the feature works and
+they will pass unchanged when Release 5 lands. Only the date of the answer moved.
+
+**Hiding is not refusing.** A second test proves that a dormant colleague cannot be reached
+by typing their id either, not merely that they are absent from the list.
+
+**The button follows the list.** `MessagingContext.js` drew the messaging button from role
+alone, so without this the excluded profiles would have opened an empty staff room, which
+looks broken rather than not-yet-theirs. It now reads the same `status` field through a new
+`releaseHasLanded` helper in the generated mirror, so the button and the list cannot drift.
+
+**Gates:** backend 3,611 passed / 0 failed / 15 deselected. Frontend 777 passed / 0 failed.
+Production build clean including lint. **Not deployed.**

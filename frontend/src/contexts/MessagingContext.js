@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
 import { getMessagingContacts, getMessagingThreads, subscribeSSE } from '@/lib/api';
+import { releaseHasLanded } from '@/lib/toolPermissions';
 import { useUser } from '@/contexts/UserContext';
 
 
@@ -15,8 +16,16 @@ const MessagingContext = createContext(null);
 // of step shows up as a dead button rather than as access somebody should not have.
 const STAFF_ROLES = ['owner', 'admin', 'teacher'];
 
+// 2026-08-14: and their release must have landed.
+//
+// The server now returns only colleagues whose profile is switched on, which is the right
+// answer for the LIST. On its own it would leave everybody else with a messaging button
+// that opens onto nobody, and an empty staff room reads as a broken tool rather than one
+// that is not theirs yet. Both halves read the same `status` field in the permission
+// table, so they cannot drift apart, and a profile switching on for its release lights
+// the button and fills the list on the same day.
 function canUseMessaging(user) {
-  return !!user && STAFF_ROLES.includes(user.role);
+  return !!user && STAFF_ROLES.includes(user.role) && releaseHasLanded(user);
 }
 
 export function MessagingProvider({ children }) {

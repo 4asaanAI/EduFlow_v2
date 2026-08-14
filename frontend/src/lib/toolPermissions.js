@@ -80,6 +80,23 @@ function profileOf(user) {
 }
 
 /**
+ * Has this person's release actually landed?
+ *
+ * Added 2026-08-14. Logins exist on this platform for people whose release has not
+ * happened: seven office accounts made by migration 041 and four shared desks, none of
+ * which has ever been signed into. `status` in the matrix is what says so.
+ *
+ * Use this for anything that would otherwise draw a control leading nowhere. It is the
+ * same rule the server applies to the staff messaging list, kept here so the button and
+ * the list cannot disagree.
+ */
+export function releaseHasLanded(user) {
+  const profile = profileOf(user);
+  if (!profile) return false;
+  return PROFILE_MATRIX[profile].status === 'live';
+}
+
+/**
  * May this user be OFFERED this screen?
  *
  * Default deny. Note the owner check resolves before any sub_category test - the

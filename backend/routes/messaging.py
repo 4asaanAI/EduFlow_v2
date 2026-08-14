@@ -15,6 +15,7 @@ from pagination import clamp_page, clamp_page_size
 from database import get_db
 from services import audit_changes
 from services.audit_service import write_audit
+from services.profile_matrix import PROFILE_MATRIX, profile_of
 from middleware.auth import require_school_staff
 from services.sse import (
     KEEPALIVE_COMMENT,
@@ -49,6 +50,39 @@ require_messaging_profile = require_school_staff
 # named here rather than "anyone with a login" precisely so that widening it again has
 # to be a decision somebody writes down.
 STAFF_ROLES = ("owner", "admin", "teacher")
+
+# 2026-08-14 - NARROWED AGAIN, to whoever's release has actually landed.
+#
+# The instruction above ("you are in if you work here") was right about the RULE and wrong
+# about the TIMING. Logins exist today for people whose release has not happened: seven
+# office accounts created by migration 041 and four shared desks. None of them has ever
+# been used, but every one of them was showing in the colleague list, so the school could
+# see and try to message colleagues who cannot sign in. A contact who can never reply is
+# worse than an absent one: it looks like they are ignoring you.
+#
+# Abhimanyu, 2026-08-14: **a profile appears in the staff room when its release lands.
+# Not before, not after.** Today that is the four of Release 2, and this file does not
+# name them.
+#
+# The test is the SAME question `profile_matrix` already answers, so nothing here needs
+# maintaining and nobody has to remember to edit it: a profile appears when its row is
+# marked `live`. Switching a profile on for its release makes it appear in the staff room
+# on the same day, automatically, which is exactly what "along with the release" means.
+#
+# STAFF_ROLES stays as the floor underneath. Both filters apply. A profile that is
+# somehow marked live but is not a staff role still does not get in, so a mistake in the
+# matrix cannot put a child in the staff room.
+def _release_has_landed(role: object, sub_category: object) -> bool:
+    """True when this person's profile is switched on, per the permission table.
+
+    Default deny. An unrecognised profile, or one whose release has not happened, is
+    not a colleague you can message yet.
+    """
+    profile = profile_of({"role": role, "sub_category": sub_category})
+    if not profile:
+        return False
+    return PROFILE_MATRIX[profile]["status"] == "live"
+
 # R2-10, 2026-08-11 - REMOVED, and do not bring it back.
 #
 # This used to be a set of four usernames - aman.litt, adesh.singh, sonu.ruhal,
@@ -184,12 +218,15 @@ def _scope(query: dict, user: dict) -> dict:
 async def _staff_contacts(db, user: dict) -> list[dict]:
     """Everyone who works at the school and can sign in.
 
-    Two filters do the work, and neither is a list anybody has to maintain:
+    Three filters do the work, and none of them is a list anybody has to maintain:
 
     * the login must be active, which is why the 21 staff who left in August drop out
       by themselves rather than lingering in a colleague list as people to message
     * the role must be one of :data:`STAFF_ROLES`, which keeps students and guardians
       out even though they hold logins on this same platform
+    * the person's release must have landed, per :func:`_release_has_landed`. Logins
+      exist for people who cannot yet sign in, and a colleague who can never answer is
+      worse than one who is simply absent.
     """
     query = {
         "schoolId": get_school_id(),
@@ -213,6 +250,8 @@ async def _staff_contacts(db, user: dict) -> list[dict]:
         )
         user_id = info.get("id") or row.get("id")
         if not user_id or role not in STAFF_ROLES:
+            continue
+        if not _release_has_landed(role, sub_category):
             continue
         contacts.append({
             "id": user_id,

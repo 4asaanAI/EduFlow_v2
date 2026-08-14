@@ -105,11 +105,10 @@ def test_contacts_are_limited_to_same_school_and_branch(client, messaging_db):
 
     assert response.status_code == 200
     found = {item["id"] for item in response.json()["data"]}
-    # The teacher IS a colleague now. The other school and the other branch are not,
-    # which is what this test is actually about.
-    assert found == {
-        "owner-1", "principal-1", "accountant-1", "management-1", "teacher-1"
-    }
+    # What this test is actually about: the other school and the other branch stay out.
+    # The teacher is also absent, but for a different reason and it is pinned elsewhere:
+    # teachers are step 5 of the access ladder and have not landed (2026-08-14).
+    assert found == {"owner-1", "principal-1", "accountant-1", "management-1"}
     assert "other-school-owner" not in found
     assert "other-branch" not in found
 
@@ -241,10 +240,17 @@ def test_a_new_colleague_appears_without_anybody_adding_their_login_to_a_list(cl
     assert "accountant-2" in {item["id"] for item in response.json()["data"]}
 
 
-def test_the_colleague_list_holds_every_colleague_and_no_child(client, messaging_db):
-    # 2026-08-12: messaging is the whole staff room, so the teacher, the receptionist
-    # and the helper SHOULD appear. This test now guards the line that did not move,
-    # and it is the one that matters: **a student must never be in the staff room.**
+def test_the_colleague_list_holds_only_profiles_whose_release_has_landed(client, messaging_db):
+    # 2026-08-14, Abhimanyu: a profile appears in the staff room WHEN ITS RELEASE LANDS,
+    # not before and not after. Today that is Release 2's four: the owner, the principal,
+    # the accountant head and the management head.
+    #
+    # This replaces the 2026-08-12 version, which asserted the opposite because the rule
+    # then was "you are in if you work here". That rule was right about who belongs and
+    # wrong about when. Logins already exist for the front desk, the helpers and the seven
+    # office accounts made by migration 041, and NONE of them can sign in: their passwords
+    # were never handed out. A colleague you can see and message but who can never answer
+    # reads as somebody ignoring you.
     messaging_db.auth_users.docs.extend([
         make_auth_user(id="teacher-9", name="A Teacher", role="teacher",
                        sub_category="class_teacher", username="teacher9"),
@@ -254,14 +260,69 @@ def test_the_colleague_list_holds_every_colleague_and_no_child(client, messaging
                        username="reception9"),
         make_auth_user(id="support-9", name="A Helper", sub_category="support_staff",
                        username="support9"),
+        make_auth_user(id="transport-9", name="Transport Head", sub_category="transport_head",
+                       username="transport9"),
+        # A shared desk account whose sub_category is not a profile at all. Four of these
+        # exist in production (transport, reception, ittech, maintenance).
+        make_auth_user(id="desk-9", name="Reception Desk", sub_category="reception",
+                       username="desk9"),
     ])
 
     response = client.get("/api/messaging/contacts", headers=_headers("owner-1", role="owner", sub_category="owner"))
 
     found = {item["id"] for item in response.json()["data"]}
-    for colleague in ("teacher-9", "reception-9", "support-9"):
-        assert colleague in found, f"{colleague} works here and is missing from the staff room"
+    assert found == {"owner-1", "principal-1", "accountant-1", "management-1"}, (
+        "the staff room should hold exactly the four live profiles, and held: "
+        + ", ".join(sorted(found))
+    )
     assert "student-9" not in found, "a student appeared in the staff messaging list"
+
+
+def test_a_dormant_profile_cannot_be_messaged_directly_either(client, messaging_db):
+    """Hiding somebody from the list is not the same as refusing to open a chat with them.
+
+    Without this, a stale screen or a typed id would still start a conversation with a
+    colleague whose release has not landed.
+    """
+    messaging_db.auth_users.docs.append(
+        make_auth_user(id="transport-9", name="Transport Head",
+                       sub_category="transport_head", username="transport9")
+    )
+
+    response = client.post(
+        "/api/messaging/threads/direct",
+        json={"user_id": "transport-9"},
+        headers=_headers("owner-1", role="owner", sub_category="owner"),
+    )
+
+    assert response.status_code == 404
+
+
+def test_switching_a_profile_on_puts_them_in_the_staff_room_with_no_code_change(
+    client, messaging_db, monkeypatch
+):
+    """The whole point of reading the permission table instead of a list of names.
+
+    Release 3 switches the transport head on by marking his row live. This proves the
+    staff room follows on the same day, with nobody editing messaging.py.
+    """
+    from services import profile_matrix
+
+    entry = dict(profile_matrix.PROFILE_MATRIX["transport_head"])
+    entry["status"] = "live"
+    patched = dict(profile_matrix.PROFILE_MATRIX)
+    patched["transport_head"] = entry
+    monkeypatch.setattr(profile_matrix, "PROFILE_MATRIX", patched)
+    monkeypatch.setattr("routes.messaging.PROFILE_MATRIX", patched)
+
+    messaging_db.auth_users.docs.append(
+        make_auth_user(id="transport-9", name="Transport Head",
+                       sub_category="transport_head", username="transport9")
+    )
+
+    response = client.get("/api/messaging/contacts", headers=_headers("owner-1", role="owner", sub_category="owner"))
+
+    assert "transport-9" in {item["id"] for item in response.json()["data"]}
 
 
 def test_an_inactive_colleague_does_not_appear(client, messaging_db):
@@ -283,9 +344,41 @@ def test_an_inactive_colleague_does_not_appear(client, messaging_db):
 # staff can get in.
 
 
-def test_a_teacher_can_actually_use_messaging_not_merely_appear_in_it(client, messaging_db):
+
+def _with_profile_live(monkeypatch, name):
+    """Mark one profile live, the way its release will.
+
+    Used so the teacher tests keep proving that messaging WORKS for a teacher, while
+    today's answer stays "not until Release 5". Deleting them would have lost the
+    coverage; asserting a 403 forever would have baked in a temporary state.
+    """
+    from services import profile_matrix
+
+    entry = dict(profile_matrix.PROFILE_MATRIX[name])
+    entry["status"] = "live"
+    patched = dict(profile_matrix.PROFILE_MATRIX)
+    patched[name] = entry
+    monkeypatch.setattr(profile_matrix, "PROFILE_MATRIX", patched)
+    monkeypatch.setattr("routes.messaging.PROFILE_MATRIX", patched)
+
+
+def test_a_teacher_is_not_in_the_staff_room_until_release_5(client, messaging_db):
+    """Today's answer. Teachers are step 5 of the access ladder and have not landed."""
+    messaging_db.auth_users.docs.append(
+        make_auth_user(id="teacher-76", name="A Teacher", role="teacher",
+                       sub_category="class_teacher", username="teacher76")
+    )
+
+    response = client.get("/api/messaging/contacts",
+                          headers=_headers("owner-1", role="owner", sub_category="owner"))
+
+    assert "teacher-76" not in {item["id"] for item in response.json()["data"]}
+
+def test_a_teacher_can_actually_use_messaging_not_merely_appear_in_it(client, messaging_db, monkeypatch):
     """Appearing in a colleague list and being allowed to open the tool are different
-    things, and the old rule granted neither to a teacher."""
+    things, and the old rule granted neither to a teacher. Proven with Release 5 in
+    place, because that is when it becomes true."""
+    _with_profile_live(monkeypatch, "teacher")
     messaging_db.auth_users.docs.append(
         make_auth_user(id="teacher-77", name="A Teacher", role="teacher",
                        sub_category="class_teacher", username="teacher77")
@@ -300,7 +393,8 @@ def test_a_teacher_can_actually_use_messaging_not_merely_appear_in_it(client, me
     assert threads.status_code == 200
 
 
-def test_a_teacher_can_start_a_chat_with_the_principal(client, messaging_db):
+def test_a_teacher_can_start_a_chat_with_the_principal(client, messaging_db, monkeypatch):
+    _with_profile_live(monkeypatch, "teacher")
     messaging_db.auth_users.docs.append(
         make_auth_user(id="teacher-78", name="Another Teacher", role="teacher",
                        sub_category="subject_teacher", username="teacher78")
@@ -317,7 +411,8 @@ def test_a_teacher_can_start_a_chat_with_the_principal(client, messaging_db):
     assert sent.status_code == 201
 
 
-def test_a_teacher_can_make_a_group(client, messaging_db):
+def test_a_teacher_can_make_a_group(client, messaging_db, monkeypatch):
+    _with_profile_live(monkeypatch, "teacher")
     messaging_db.auth_users.docs.append(
         make_auth_user(id="teacher-79", name="Group Maker", role="teacher",
                        sub_category="class_teacher", username="teacher79")
@@ -378,10 +473,14 @@ def test_somebody_who_has_left_the_school_is_not_a_colleague(client, messaging_d
     assert "teacher-gone" not in {item["id"] for item in response.json()["data"]}
 
 
-def test_the_whole_staff_room_fits_and_nobody_is_silently_truncated(client, messaging_db):
+def test_the_whole_staff_room_fits_and_nobody_is_silently_truncated(client, messaging_db, monkeypatch):
     """The old cap was 50, set when four people could message each other. The school has
     96 staff logins. A colleague missing because of a cap looks exactly like a colleague
-    who has left, which is why this is pinned rather than left to a comment."""
+    who has left, which is why this is pinned rather than left to a comment.
+
+    Run with teachers switched on, since that is the release that makes the staff room
+    big enough for the cap to matter at all."""
+    _with_profile_live(monkeypatch, "teacher")
     messaging_db.auth_users.docs.extend([
         make_auth_user(id=f"teacher-bulk-{index}", name=f"Teacher {index}", role="teacher",
                        sub_category="subject_teacher", username=f"bulk{index}")
