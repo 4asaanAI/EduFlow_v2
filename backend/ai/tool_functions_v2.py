@@ -164,6 +164,16 @@ from services.expense_service import (
     ExpenseValidationError,
     ExpenseNotFoundError,
 )
+from services.admissions_service import (
+    create_application as svc_create_application,
+    transition_application as svc_transition_application,
+    record_assessment as svc_record_assessment,
+    issue_offer as svc_issue_offer,
+    enroll_application as svc_enroll_application,
+    AdmissionValidationError,
+    AdmissionNotFoundError,
+    AdmissionConflictError,
+)
 from services.enquiry_service import (
     create_enquiry as svc_create_enquiry,
     update_enquiry as svc_update_enquiry,
@@ -3666,6 +3676,147 @@ async def tool_update_enquiry_status(params: dict, user: dict, scope: dict = Non
             "message": f"Enquiry for '{enq.get('student_name', params['enquiry_id'])}' status → {enq.get('status')}"}
 
 
+# ─────────────── A6: Flo can work the second half of the funnel ───────────────
+#
+# Flo had `create_enquiry`, `update_enquiry_status`, `get_admissions_pipeline` and
+# `delete_enquiry`, and no application tool at all. So the chat half of the platform
+# could take an enquiry as far as "fee paid" and then stop, while the second half of the
+# journey - application, assessment, offer, enrolment - existed only on a screen. A
+# person could ask Flo to do the first half of a job and had no way of knowing the second
+# half was not merely unavailable to them but unavailable to Flo.
+#
+# Every one of these is a THIN ADAPTER over `services/admissions_service.py`, the same
+# functions `routes/admissions.py` calls. Not a copy of the rules: the same rules. The
+# refusals that matter live in the service, so Flo gets them for free - no submitting
+# without a guardian name and phone, no "assessed" without an assessment, no acceptance
+# without an offer, and A2's rule that nobody sets `enrolled` by hand.
+# `tests/backend/parity/admissions_parity_test.py` pins the writes to be identical.
+#
+# There is deliberately NO new read tool. `get_admissions_pipeline` already lists
+# applications with their statuses, and a second door onto the same list is the fault A4
+# spent its whole run removing.
+#
+# `add_application_document` is deliberately NOT here. It attaches an uploaded file to an
+# application, and the thing it needs is a file, not a sentence. Left for when the chat
+# attachment path is joined to admissions properly rather than half-joined now.
+
+
+def _admission_error(exc: Exception, application_id: str = "") -> dict:
+    if isinstance(exc, AdmissionNotFoundError):
+        return {"success": False, "message": f"Admission application {application_id} not found."
+                if application_id else str(exc)}
+    return {"success": False, "message": str(exc)}
+
+
+async def tool_create_admission_application(params: dict, user: dict, scope: dict = None) -> dict:
+    """Start an admission application, optionally carrying an enquiry's family across."""
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_create_application(db, actor_ctx, params)
+    except (AdmissionValidationError, AdmissionNotFoundError, AdmissionConflictError) as exc:
+        return _admission_error(exc)
+    application = result["application"]
+    # A1's honesty, said the same way in chat as on the screen: the service hands back
+    # the FIRST application when one already exists, and reporting that as a new record
+    # would be reporting a write that did not happen.
+    if result["existing"]:
+        return {"success": True, "data": application,
+                "message": (f"{application.get('applicant_name')} already had an application, so "
+                            f"nothing new was created. It is at stage '{application.get('status')}'.")}
+    return {"success": True, "data": application,
+            "message": f"Application started for {application.get('applicant_name')} as a draft."}
+
+
+async def tool_update_admission_application_status(params: dict, user: dict, scope: dict = None) -> dict:
+    """Move an application along its stages. Enrolment is not one of them."""
+    application_id = str(params.get("application_id") or "").strip()
+    if not application_id:
+        return {"success": False, "message": "application_id is required"}
+    if not str(params.get("status") or "").strip():
+        return {"success": False, "message": "status is required"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_transition_application(db, actor_ctx, application_id, params)
+    except (AdmissionValidationError, AdmissionNotFoundError, AdmissionConflictError) as exc:
+        return _admission_error(exc, application_id)
+    application = result["application"]
+    if result["noop"]:
+        # Saying "moved" about a move that did not happen is the whole fault this
+        # initiative exists to remove, even when nothing is harmed by it.
+        return {"success": True, "data": application,
+                "message": f"That application was already at '{application.get('status')}', so nothing changed."}
+    return {"success": True, "data": application,
+            "message": f"Application for {application.get('applicant_name')} is now '{application.get('status')}'."}
+
+
+async def tool_record_admission_assessment(params: dict, user: dict, scope: dict = None) -> dict:
+    """Record an entrance assessment result against an application."""
+    application_id = str(params.get("application_id") or "").strip()
+    if not application_id:
+        return {"success": False, "message": "application_id is required"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_record_assessment(db, actor_ctx, application_id, params)
+    except (AdmissionValidationError, AdmissionNotFoundError, AdmissionConflictError) as exc:
+        return _admission_error(exc, application_id)
+    assessment = result["assessment"]
+    return {"success": True, "data": assessment,
+            "message": (f"Assessment recorded: {assessment['score']:g} out of "
+                        f"{assessment['maximum']:g} ({assessment['percentage']}%).")}
+
+
+async def tool_issue_admission_offer(params: dict, user: dict, scope: dict = None) -> dict:
+    """Issue an admission offer for a named class, valid until a named date."""
+    application_id = str(params.get("application_id") or "").strip()
+    if not application_id:
+        return {"success": False, "message": "application_id is required"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_issue_offer(db, actor_ctx, application_id, params)
+    except (AdmissionValidationError, AdmissionNotFoundError, AdmissionConflictError) as exc:
+        return _admission_error(exc, application_id)
+    offer = result["offer"]
+    return {"success": True, "data": offer,
+            "message": f"Offer issued for class {offer['class_id']}, valid until {offer['valid_until']}."}
+
+
+async def tool_enroll_admission_application(params: dict, user: dict, scope: dict = None) -> dict:
+    """Turn an accepted application into a child on the roll.
+
+    This is the ONE source of enrolment, and A2 took every other route to it away. It
+    creates a student record and the guardians with it, and there is no undoing that from
+    chat, which is why it stops for a confirm card - see `EXPLICIT_CONFIRMATION_TOOL_NAMES`.
+
+    No session is opened here on purpose. A confirmed write runs inside the plan
+    executor's transaction, which binds itself into the ambient session, so the service
+    enlists in it exactly as the REST route's own transaction does.
+    """
+    application_id = str(params.get("application_id") or "").strip()
+    if not application_id:
+        return {"success": False, "message": "application_id is required"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_enroll_application(db, actor_ctx, application_id, params)
+    except (AdmissionValidationError, AdmissionNotFoundError, AdmissionConflictError,
+            StudentValidationError, StudentConflictError) as exc:
+        return _admission_error(exc, application_id)
+    student = result["student"] or {}
+    if result["existing"]:
+        return {"success": True, "data": result,
+                "message": (f"{student.get('name')} was already enrolled from this application, so "
+                            f"no second record was created. Admission number "
+                            f"{student.get('admission_number')}.")}
+    return {"success": True, "data": result,
+            "message": (f"{student.get('name')} is on the roll, admission number "
+                        f"{student.get('admission_number')}. The enquiry and the application "
+                        f"both now read as enrolled.")}
+
+
 async def tool_create_incident(params: dict, user: dict, scope: dict = None) -> dict:
     # Thin adapter over incident_service.create_incident (AD7 shared write path).
     if not params.get("description"):
@@ -6715,6 +6866,98 @@ TOOL_REGISTRY = {
         "requires_confirmation": True,
         "dispatch_type": "write",
     },
+    # A6, 2026-08-14. The five below are the second half of the admissions funnel, and
+    # each is a thin adapter over the same service function `routes/admissions.py` calls.
+    #
+    # The `roles` and `sub_categories` on each MIRROR THE REST ROUTE, so there is one
+    # answer to "who may do this" rather than two lists that drift. Create, stage move
+    # and assessment are `require_role("owner", "admin")` on the route, so no
+    # sub_category narrowing here. Offer and enrolment are narrowed on the route by
+    # `_can_enroll`, so they are narrowed here too.
+    #
+    # `_can_enroll` names an `admission` sub_category. **The platform has no such
+    # sub_category and there is no admissions desk profile**, so that name can never be
+    # true and is deliberately NOT repeated here. Copying a dead value forward is how it
+    # comes to read as a real permission.
+    "create_admission_application": {
+        "fn": tool_create_admission_application,
+        "roles": ["owner", "admin"],
+        "description": "Start an admission application, optionally from an existing enquiry.",
+        "params_schema": {
+            "enquiry_id": {"type": "string", "description": "optional enquiry to carry the family across from"},
+            "applicant_name": {"type": "string", "description": "child's name (taken from the enquiry if omitted)"},
+            "class_applying": {"type": "string", "description": "class applied for, e.g. 'Class 5'"},
+            "class_id": {"type": "string", "description": "optional class ID once the office has confirmed it"},
+            "guardian_name": {"type": "string", "description": "parent or guardian the office deals with"},
+            "guardian_phone": {"type": "string", "description": "contact phone number"},
+            "mother_name": {"type": "string", "description": "optional mother's name"},
+            "father_name": {"type": "string", "description": "optional father's name"},
+            "dob": {"type": "string", "description": "optional date of birth YYYY-MM-DD"},
+            "gender": {"type": "string", "description": "optional male | female | other"},
+            "previous_school": {"type": "string", "description": "optional present or previous school"},
+            "academic_year": {"type": "string", "description": "optional academic year"},
+        },
+        "dispatch_type": "write",
+    },
+    "update_admission_application_status": {
+        "fn": tool_update_admission_application_status,
+        "roles": ["owner", "admin"],
+        "description": (
+            "Move an admission application along: submitted, under_review, "
+            "assessment_scheduled, assessed, offered, accepted, rejected, withdrawn. "
+            "'enrolled' is NOT a stage anybody sets by hand - use enroll_admission_application."
+        ),
+        "params_schema": {
+            "application_id": {"type": "string", "description": "application ID (required)"},
+            "status": {"type": "string", "description": "submitted | under_review | assessment_scheduled | assessed | offered | accepted | rejected | withdrawn"},
+            "note": {"type": "string", "description": "optional note kept with the stage change"},
+        },
+        "dispatch_type": "write",
+    },
+    "record_admission_assessment": {
+        "fn": tool_record_admission_assessment,
+        "roles": ["owner", "admin"],
+        "description": "Record an entrance assessment score against an admission application.",
+        "params_schema": {
+            "application_id": {"type": "string", "description": "application ID (required)"},
+            "score": {"type": "number", "description": "marks scored (required)"},
+            "maximum": {"type": "number", "description": "marks available (required)"},
+            "assessed_on": {"type": "string", "description": "optional YYYY-MM-DD, defaults to today"},
+            "notes": {"type": "string", "description": "optional notes"},
+        },
+        "dispatch_type": "write",
+    },
+    "issue_admission_offer": {
+        "fn": tool_issue_admission_offer,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": "Issue an admission offer for a class, valid until a given date.",
+        "params_schema": {
+            "application_id": {"type": "string", "description": "application ID (required)"},
+            "class_id": {"type": "string", "description": "class the offer is for (required)"},
+            "valid_until": {"type": "string", "description": "YYYY-MM-DD, cannot be in the past (required)"},
+            "admission_fee": {"type": "number", "description": "optional admission fee quoted"},
+            "terms": {"type": "string", "description": "optional terms"},
+        },
+        "dispatch_type": "write",
+    },
+    "enroll_admission_application": {
+        "fn": tool_enroll_admission_application,
+        "roles": ["owner", "admin"],
+        "sub_categories": ["principal"],
+        "description": (
+            "Turn an ACCEPTED admission application into a child on the roll, creating "
+            "the student record and guardians together. This is the only way a family "
+            "becomes enrolled. Asks for confirmation first."
+        ),
+        "params_schema": {
+            "application_id": {"type": "string", "description": "accepted application ID (required)"},
+            "class_id": {"type": "string", "description": "optional class; the offer's class is used otherwise"},
+            "admission_number": {"type": "string", "description": "optional; generated if omitted"},
+            "roll_number": {"type": "string", "description": "optional roll number"},
+        },
+        "dispatch_type": "write",
+    },
     "create_incident": {
         "fn": tool_create_incident,
         "roles": ["owner", "admin", "teacher"],
@@ -7324,6 +7567,16 @@ NON_FINANCE_TOOL_NAMES = frozenset({
     "approve_leave", "assign_followup", "assign_query_ticket", "award_house_points",
     "checkout_visitor", "confirm_resolution", "correct_attendance",
     "create_announcement", "create_asset", "create_branch", "create_certificate",
+    # A6, 2026-08-14. The five admissions application tools are the admin office's work,
+    # classified the same way as `create_enquiry` and `get_admissions_pipeline` two lines
+    # below, which are the other half of the same funnel. None of them reads or writes a
+    # rupee figure: the admission fee on an offer is a number quoted to a family, not a
+    # ledger entry, and the fee record is created later by the fee machinery. The
+    # management head already works applications on the Admissions screen, so chat and
+    # screen agree rather than disagreeing.
+    "create_admission_application", "enroll_admission_application",
+    "issue_admission_offer", "record_admission_assessment",
+    "update_admission_application_status",
     "create_class", "create_crm_lead", "create_custom_form", "create_enquiry",
     "create_house", "create_incident", "create_message_template",
     "create_query_ticket", "create_staff", "create_transport_route",
@@ -7385,6 +7638,21 @@ EXPLICIT_CONFIRMATION_TOOL_NAMES = frozenset({
     # message is whether they can tell "Flo helped me" from "Flo told my supplier about
     # me". A confirm card is how they tell.
     "report_platform_problem",
+    # A6, 2026-08-14. Not destructive and not bulk, so it does not qualify under the rule
+    # at the head of this set, and it is here for a reason worth writing down rather than
+    # assuming.
+    #
+    # Enrolment is the one write in this platform that BRINGS A PERSON INTO EXISTENCE. It
+    # creates a child's record and their guardians together, mints an admission number,
+    # and marks the application and the enquiry enrolled. Nothing takes it back: there is
+    # no un-enrol. Every other write the confirm rule already covers is destructive, bulk,
+    # a money reversal, or something leaving the building; this is the mirror image of the
+    # first of those, and it deserves the same pause.
+    #
+    # The second reason is A2. Enrolment was the exact place the funnel could claim a
+    # child existed when none did, and the fix was to give it ONE source. A confirm card
+    # is how a person tells "Flo enrolled the child" from "Flo said it did".
+    "enroll_admission_application",
 }) | SECURITY_SENSITIVE_TOOL_NAMES
 
 # Release 2 audit, 2026-08-12, recorded because it was nearly decided the other way.

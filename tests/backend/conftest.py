@@ -301,8 +301,17 @@ class FakeCursor:
         self.docs = self.docs[:count]
         return self
 
-    async def to_list(self, _limit):
-        return [{k: v for k, v in doc.items() if k != "_id"} for doc in self.docs]
+    async def to_list(self, length):
+        """Honour the row limit, exactly as Motor does.
+
+        This used to ignore its argument and hand back every document. A stand-in kinder
+        than the real thing manufactures green: every route that caps its answer with
+        `.to_list(N)` was untested here, and a page-size fault would pass the suite and
+        truncate in production. Motor returns at most `length` documents, and `None`
+        means everything.
+        """
+        docs = self.docs if length is None else self.docs[:length]
+        return [{k: v for k, v in doc.items() if k != "_id"} for doc in docs]
 
     def __aiter__(self):
         self._iter_index = 0

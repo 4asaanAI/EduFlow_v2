@@ -1,7 +1,7 @@
 """Routes: certificates, expenses, visitors, assets, transport, announcements, incidents"""
 from __future__ import annotations
 from fastapi import APIRouter, Depends, Request, HTTPException
-from pagination import clamp_page, clamp_page_size
+from pagination import MAX_PAGE_SIZE, clamp_page, clamp_page_size
 from database import get_db
 from middleware.auth import (
     get_current_user,
@@ -9,6 +9,7 @@ from middleware.auth import (
     require_owner_or_principal,
     require_role,
 )
+from services.admissions_journey import describe_position
 from services.profile_matrix import PROFILE_MATRIX, profile_of
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
@@ -1444,15 +1445,40 @@ async def reject_announcement(ann_id: str, request: Request, user: dict = Depend
 
 # --- Enquiries ---
 @router.get("/enquiries")
-async def list_enquiries(request: Request, status: str = None, user: dict = Depends(require_role("owner", "admin"))):
+async def list_enquiries(request: Request, status: str = None, limit: int = None,
+                         user: dict = Depends(require_role("owner", "admin"))):
     db = get_db()
     bid = user.get("branch_id")
     query = {}
     if status:
         query["status"] = status
-    # branch-scope: receptionist sees only own branch
-    enquiries = await db.enquiries.find(scoped_query(query, branch_id=bid), {"_id": 0}).sort("created_at", -1).to_list(50)
-    return {"success": True, "data": enquiries}
+    # A3. This used to be a hard `.to_list(50)` with no total beside it, so a school with
+    # 200 enquiries looked like a school with 50 and the funnel counts drawn from this
+    # list were wrong with nothing saying so. It is the Release 3 fault exactly. One
+    # ceiling now, and the total is always returned so a partial answer is visible.
+    per_page = clamp_page_size(limit if limit is not None else MAX_PAGE_SIZE)
+    scoped = scoped_query(query, branch_id=bid)  # branch-scope: receptionist sees only own branch
+    total = await db.enquiries.count_documents(scoped)
+    enquiries = await db.enquiries.find(scoped, {"_id": 0}).sort("created_at", -1).to_list(per_page)
+
+    # A3. One position per family, worked out on the server so the screen never has to
+    # reconcile two vocabularies itself. The applications are fetched in ONE batched
+    # query, never one per row.
+    application_ids = [e["application_id"] for e in enquiries if e.get("application_id")]
+    applications = {}
+    if application_ids:
+        rows = await db.admission_applications.find(
+            scoped_query({"id": {"$in": application_ids}}, branch_id=bid),
+            {"_id": 0, "id": 1, "status": 1},
+        ).to_list(len(application_ids))
+        applications = {row["id"]: row for row in rows}
+    for enquiry in enquiries:
+        enquiry["journey"] = describe_position(
+            enquiry, applications.get(enquiry.get("application_id"))
+        )
+
+    return {"success": True, "data": enquiries,
+            "meta": {"count": len(enquiries), "total": total, "per_page": per_page}}
 
 
 @router.post("/enquiries")

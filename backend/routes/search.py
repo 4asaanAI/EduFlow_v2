@@ -21,7 +21,7 @@ TOOLS_BY_ROLE = {
         {"id": "expense-tracker", "name": "Expense tracker", "subtitle": "Track & approve", "type": "tool"},
         {"id": "complaint-tracker", "name": "Complaints", "subtitle": "Grievance tracker", "type": "tool"},
         {"id": "ai-health-report", "name": "AI health report", "subtitle": "Weekly auto-summary", "type": "tool"},
-        {"id": "admission-funnel", "name": "Admission funnel", "subtitle": "Enquiries & conversions", "type": "tool"},
+        {"id": "admissions", "name": "Admissions", "subtitle": "Enquiries, applications and pipeline value", "type": "tool"},
         {"id": "staff-leave-manager", "name": "Leave manager", "subtitle": "Approve / reject", "type": "tool"},
     ],
     "admin": [
@@ -29,7 +29,7 @@ TOOLS_BY_ROLE = {
         {"id": "fee-tracker", "name": "Fee tracker", "subtitle": "Reminders & dues", "type": "tool"},
         {"id": "attendance-recorder", "name": "Attendance", "subtitle": "Mark & track", "type": "tool"},
         {"id": "certificate-generator", "name": "Certificates", "subtitle": "TC, Bonafide, etc.", "type": "tool"},
-        {"id": "enquiry-register", "name": "Enquiry register", "subtitle": "Admission leads", "type": "tool"},
+        {"id": "admissions", "name": "Admissions", "subtitle": "Enquiries, applications and pipeline value", "type": "tool"},
         {"id": "timetable-builder", "name": "Timetable", "subtitle": "Build & manage", "type": "tool"},
         {"id": "asset-tracker", "name": "Asset tracker", "subtitle": "Inventory & items", "type": "tool"},
         {"id": "visitor-log", "name": "Visitor log", "subtitle": "Entry & exit", "type": "tool"},

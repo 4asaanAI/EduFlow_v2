@@ -42,7 +42,13 @@ const EXPECTED_SCREEN_COUNT = {
   // 48 until 2026-08-11. +1 governance-ai-hub (the group holding seven screens he was
   // granted and could not reach), -2 board-report and custom-report-builder (both carry
   // money, decision 1). See the named tests below.
-  management: 47,
+  // 47 until 2026-08-14. -1 by MERGE, not by a takeaway: A4 replaced 'admission-funnel'
+  // and 'enquiry-register', which described one funnel in two entries, with a single
+  // 'admissions' screen. This profile held both old entries and holds the merged one, so
+  // it reaches exactly what it reached before through one door instead of two. The
+  // receptionist swapped one entry for one and its number is unchanged, which is the
+  // proof the merge hit what it aimed at: only a profile holding BOTH could move.
+  management: 46,
   transport_head: 6,
   // 9 until 2026-08-11. Abhimanyu's answers 3 and 4: Student Transfer and Commercial
   // Operations both come off the front desk. See the ANSWERS section of

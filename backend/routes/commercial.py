@@ -23,6 +23,7 @@ from services.commercial_service import (
     delete_crm_lead,
     delete_legal_entity,
     entity_record_filter,
+    follow_up_worklist,
     list_entities,
     resolve_entity,
     set_default_entity,
@@ -200,6 +201,27 @@ async def post_crm_activity(enquiry_id: str, request: Request,
             TransactionUnavailableError) as exc:
         raise _error(exc)
     return {"success": True, "data": row}
+
+
+@router.get("/crm/follow-ups")
+async def get_follow_up_worklist(request: Request, entity_id: str | None = None,
+                                 today: str | None = None, upcoming_days: int = 7,
+                                 user: dict = Depends(require_admissions_operator)):
+    """A5. Who to call today, and who was missed.
+
+    The same gate as the activities that WRITE the follow-up date, directly above. One
+    permission for setting a date and for reading the list of dates, rather than two
+    lists of role names that can drift apart.
+
+    `today` is accepted so the caller can ask about a specific day; it defaults to the
+    real one. It changes only which day the list is read against and grants nothing.
+    """
+    try:
+        data = await follow_up_worklist(get_db(), _actor(user), entity_id,
+                                        today=today, upcoming_days=upcoming_days)
+    except (CommercialValidationError, CommercialConflictError, CommercialNotFoundError) as exc:
+        raise _error(exc)
+    return {"success": True, "data": data, "meta": data["counts"]}
 
 
 @router.post("/crm/leads/{enquiry_id}/opportunities")

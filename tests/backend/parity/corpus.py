@@ -64,6 +64,13 @@ PARITY_CORPUS = {
     "delete_incident": "new_deletes_parity_test.py",
     "delete_certificate": "new_deletes_parity_test.py",
     "delete_enquiry": "new_deletes_parity_test.py",
+    # A6, 2026-08-14 - the second half of the admissions funnel reaching Flo. Each is a
+    # thin adapter over the same service function `routes/admissions.py` calls.
+    "create_admission_application": "admissions_parity_test.py",
+    "update_admission_application_status": "admissions_parity_test.py",
+    "record_admission_assessment": "admissions_parity_test.py",
+    "issue_admission_offer": "admissions_parity_test.py",
+    "enroll_admission_application": "admissions_parity_test.py",
     "delete_legal_entity": "new_deletes_parity_test.py",
     # Epic K.2 - academic-structure CRUD
     "create_class": "academic_structure_parity_test.py",

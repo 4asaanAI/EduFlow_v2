@@ -1096,23 +1096,191 @@ export function CircularSender() {
   );
 }
 
-// 6. Enquiry Register
-export function EnquiryRegister() {
+// A5: who to call today.
+//
+// The follow-up date has been recorded against enquiries since the CRM shipped and
+// nothing has ever read it back, so "call them on Tuesday" was written down and then
+// never mentioned again on Tuesday. This is the reading-back.
+//
+// The important line on this block is NOT the overdue count. It is the one that says how
+// many families have no follow-up date at all, because a list built only from rows that
+// carry a date is empty both when the office is up to date and when the office has
+// planned nothing, and those are opposite facts. Nothing on screen may leave a person
+// unable to tell them apart.
+export function FollowUpWorklist({ reloadKey, onLogged }) {
+  const [data, setData] = useState(null);
+  const [available, setAvailable] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [logFor, setLogFor] = useState(null);
+  const [entry, setEntry] = useState({ activity_type: 'call', subject: '', notes: '', next_follow_up: '' });
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await apiFetch(`${API}/commercial/crm/follow-ups`, { headers: h() });
+      if (response.status === 403) { setAvailable(false); setData(null); }
+      else {
+        const body = await response.json();
+        if (body.success) { setAvailable(true); setData(body.data); }
+      }
+    } catch { /* the enquiry list below still stands on its own */ }
+    setLoading(false);
+  }, []);
+  useEffect(() => { load(); }, [load, reloadKey]);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setError(''); setNotice('');
+    if (!entry.subject.trim()) { setError('Say what the call was about.'); return; }
+    setSaving(true);
+    try {
+      const response = await apiFetch(`${API}/commercial/crm/leads/${logFor.enquiry_id}/activities`, {
+        method: 'POST', headers: h(), body: JSON.stringify(entry),
+      });
+      const body = await response.json();
+      if (response.ok && body.success) {
+        setNotice(entry.next_follow_up
+          ? `Written down for ${logFor.student_name}, next call ${entry.next_follow_up}.`
+          : `Written down for ${logFor.student_name}. No next call was set, so this family drops off the list.`);
+        setLogFor(null);
+        setEntry({ activity_type: 'call', subject: '', notes: '', next_follow_up: '' });
+        await load();
+        onLogged?.();
+      } else {
+        // A refusal that shows nothing on screen looks exactly like a saved note.
+        setError(body.detail || 'That note was not saved.');
+      }
+    } catch { setError('Network error. The note was not saved.'); }
+    setSaving(false);
+  };
+
+  // Nothing is drawn until a real answer arrives. A half-drawn worklist showing zeroes
+  // is the same lie as an empty one: it reads as "no calls due" when the truth is "we
+  // have not been told yet".
+  if (!available || !data || !data.counts) return null;
+  const counts = data.counts;
+  const groups = [
+    ['overdue', 'Missed', '#f87171'],
+    ['due_today', 'Today', '#fbbf24'],
+    ['upcoming', 'This week', '#4f8ff7'],
+  ].filter(([key]) => (data[key] || []).length > 0);
+
+  return (
+    <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 16, marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Who to call</span>
+        <span style={{ fontSize: 11, color: 'var(--c-faint)' }}>
+          {counts.overdue || 0} missed · {counts.due_today || 0} today · {counts.upcoming || 0} in the next {data.upcoming_days} days
+        </span>
+      </div>
+
+      {error && <div role="alert" style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 8 }}>{error}</div>}
+      {notice && <div role="status" style={{ color: '#10b981', fontSize: 12, marginBottom: 8 }}>{notice}</div>}
+
+      {groups.length === 0 && (
+        <div style={{ fontSize: 12, color: 'var(--c-faint)', marginBottom: 8 }}>
+          No calls are due. That is not the same as nothing to do: see the line below.
+        </div>
+      )}
+
+      {groups.map(([key, label, color]) => (
+        <div key={key} style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 4 }}>{label} ({data[key].length})</div>
+          {data[key].map(row => (
+            <div key={row.enquiry_id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '6px 0', borderTop: '1px solid var(--c-border)' }}>
+              <span style={{ color: 'var(--c-text)', fontSize: 12, fontWeight: 600, minWidth: 120 }}>{row.student_name}</span>
+              <span style={{ color: 'var(--c-faint)', fontSize: 11 }}>{row.parent_name} · {row.phone}</span>
+              <span style={{ color: 'var(--c-faint)', fontSize: 11 }}>
+                {row.date_is_readable
+                  ? (row.days_overdue > 0 ? `${row.days_overdue} days late` : `due ${row.next_follow_up}`)
+                  : `date recorded as "${row.next_follow_up}", which cannot be read`}
+              </span>
+              {row.last_activity && <span style={{ color: 'var(--c-faint)', fontSize: 11 }}>last: {row.last_activity.subject}</span>}
+              <button onClick={() => { setLogFor(row); setError(''); setNotice(''); }}
+                style={{ marginLeft: 'auto', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: 'var(--tool-hex-4f8ff7)', fontSize: 10, cursor: 'pointer', fontWeight: 500, minHeight: 40 }}>
+                Log call
+              </button>
+            </div>
+          ))}
+        </div>
+      ))}
+
+      {/* The honesty line. It is always shown, including when the list is empty. */}
+      <div style={{ fontSize: 11, color: 'var(--c-faint)', borderTop: '1px solid var(--c-border)', paddingTop: 8 }}>
+        {counts.no_follow_up_date_set > 0
+          ? `${counts.no_follow_up_date_set} of ${counts.active_enquiries} open enquiries have no follow-up date at all, so nobody is scheduled to call them.`
+          : `All ${counts.active_enquiries} open enquiries have a follow-up date.`}
+        {counts.scheduled_beyond_the_window > 0 && ` ${counts.scheduled_beyond_the_window} more are scheduled after ${data.upcoming_until}.`}
+      </div>
+
+      {logFor && (
+        <form onSubmit={submit} style={{ marginTop: 12, borderTop: '1px solid var(--c-border)', paddingTop: 12 }}>
+          <div style={{ fontSize: 12, color: 'var(--c-text)', fontWeight: 600, marginBottom: 8 }}>Log a call about {logFor.student_name}</div>
+          <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <FormField label="What happened" value={entry.subject} onChange={value => setEntry(row => ({ ...row, subject: value }))} placeholder="e.g. Spoke to mother" required />
+            <FormField label="Type" type="select" value={entry.activity_type} onChange={value => setEntry(row => ({ ...row, activity_type: value }))} options={[
+              { value: 'call', label: 'Call' },
+              { value: 'visit', label: 'Visit' },
+              { value: 'meeting', label: 'Meeting' },
+              { value: 'note', label: 'Note' },
+            ]} />
+            <FormField label="Notes" value={entry.notes} onChange={value => setEntry(row => ({ ...row, notes: value }))} placeholder="Optional" />
+            <FormField label="Call again on" type="date" value={entry.next_follow_up} onChange={value => setEntry(row => ({ ...row, next_follow_up: value }))} />
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--c-faint)', marginTop: 6 }}>
+            Leaving the date empty is allowed and means this family stops appearing here.
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <ActionBtn type="submit" label={saving ? 'Saving...' : 'Save note'} disabled={saving} />
+            <button type="button" onClick={() => { setLogFor(null); setError(''); }} style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid var(--c-border)', background: 'var(--c-bg)', color: 'var(--c-text)', fontSize: 12, cursor: 'pointer', fontWeight: 500, minHeight: 40 }}>Cancel</button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+// 6. Enquiries. A4: this is a PANEL now, not a screen of its own. It is the first tab
+// of the merged Admissions screen (`components/tools/AdmissionsScreen.js`), which also
+// carries the applications and the pipeline. It draws its own heading and refresh
+// control rather than a ToolPage, because the Admissions screen provides that.
+export function EnquiriesPanel({ onStarted }) {
   const { currentUser } = useUser();
   const [enquiries, setEnquiries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [selectedEnquiry, setSelectedEnquiry] = useState(null);
-  const [form, setForm] = useState({ student_name: '', parent_name: '', phone: '', class_applying: '', source: 'walk_in' });
+  // A3: the school's own admission form asks for the mother and the father separately,
+  // and for the child's date of birth, gender and current school. All five were being
+  // collected on paper and then retyped onto the application later.
+  const emptyForm = {
+    student_name: '', parent_name: '', phone: '', class_applying: '', source: 'walk_in',
+    mother_name: '', father_name: '', dob: '', gender: '', previous_school: '',
+  };
+  const [form, setForm] = useState(emptyForm);
+  const [total, setTotal] = useState(0);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [starting, setStarting] = useState('');
+  // A5: a new enquiry or a stage change alters who is due a call, so the worklist above
+  // is told to re-read rather than being left showing the position before the change.
+  const [worklistKey, setWorklistKey] = useState(0);
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
 
+  // The funnel across the top still counts all eight stages, enrolled included.
   const stages = ['new', 'contacted', 'visit_scheduled', 'visited', 'documents_submitted', 'fee_paid', 'enrolled', 'lost'];
+  // A2: but only these seven can be CHOSEN. A family becomes enrolled when their
+  // admission application creates the child's record, never by somebody pressing a
+  // button, because a pressed button and a child on the roll looked identical here.
+  const pickableStages = stages.filter(s => s !== 'enrolled');
   const stageLabels = { new: 'New', contacted: 'Contacted', visit_scheduled: 'Visit Scheduled', visited: 'Visited', documents_submitted: 'Documents', fee_paid: 'Fee Paid', enrolled: 'Enrolled ✓', lost: 'Lost ✗' };
   const stageFunnelColors = { new: '#4f8ff7', contacted: '#818cf8', visit_scheduled: '#a78bfa', visited: '#c084fc', documents_submitted: '#fbbf24', fee_paid: '#34d399', enrolled: '#10b981', lost: '#f87171' };
   const statusColors = { new: 'blue', contacted: 'yellow', visit_scheduled: 'purple', visited: 'purple', documents_submitted: 'yellow', fee_paid: 'green', enrolled: 'green', lost: 'red' };
 
-  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch(`${API}/ops/enquiries`, { headers: h() }).then(r => r.json()); if (r.success) setEnquiries(r.data || []); } catch {} setLoading(false); }, []);
+  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch(`${API}/ops/enquiries`, { headers: h() }).then(r => r.json()); if (r.success) { setEnquiries(r.data || []); setTotal(r.meta?.total ?? (r.data || []).length); } } catch {} setLoading(false); }, []);
   useEffect(() => { load(); }, [load]);
 
   const handleAdd = async (e) => {
@@ -1123,7 +1291,8 @@ export function EnquiryRegister() {
       const res = await apiFetch(`${API}/ops/enquiries`, { method: 'POST', headers: h(), body: JSON.stringify(form) }).then(r => r.json());
       if (res.success) {
         setShowForm(false);
-        setForm({ student_name: '', parent_name: '', phone: '', class_applying: '', source: 'walk_in' });
+        setForm(emptyForm);
+        setWorklistKey(key => key + 1);
         load();
       } else {
         setError('Failed to add enquiry');
@@ -1132,29 +1301,80 @@ export function EnquiryRegister() {
   };
 
   const updateStatus = async (id, newStatus) => {
+    setError('');
+    setNotice('');
     try {
       const res = await apiFetch(`${API}/ops/enquiries/${id}`, { method: 'PATCH', headers: h(), body: JSON.stringify({ status: newStatus }) }).then(r => r.json());
       if (res.success) {
+        setWorklistKey(key => key + 1);
         load();
         setSelectedEnquiry(null);
+      } else {
+        // A refused move used to do nothing at all here, which on screen is
+        // indistinguishable from a move that worked. Say what the server said.
+        setError(res.detail || 'That stage change was refused.');
       }
-    } catch { }
+    } catch { setError('Network error'); }
+  };
+
+  // Start an application from this enquiry. The family is carried across by the
+  // server, which also refuses a second application for the same enquiry and hands
+  // back the first one instead. The screen says which of the two happened.
+  const startApplication = async (enquiry) => {
+    setError('');
+    setNotice('');
+    if (!enquiry.class_applying) {
+      setError(`Add the class ${enquiry.student_name} is applying for before starting an application.`);
+      return;
+    }
+    setStarting(enquiry.id);
+    try {
+      const res = await apiFetch(`${API}/admissions/applications`, {
+        method: 'POST', headers: h(), body: JSON.stringify({ enquiry_id: enquiry.id }),
+      }).then(r => r.json());
+      if (res.success) {
+        setNotice(res.meta?.existing
+          ? `${enquiry.student_name} already had an application, so nothing new was created.`
+          : `Application started for ${enquiry.student_name}.`);
+        onStarted?.();
+        await load();
+      } else {
+        setError(res.detail || 'Could not start an application from this enquiry.');
+      }
+    } catch { setError('Network error'); }
+    setStarting('');
   };
 
   const counts = stages.reduce((acc, s) => { acc[s] = enquiries.filter(e => e.status === s).length; return acc; }, {});
-  const total = enquiries.length;
-  const conversionRate = total > 0 ? Math.round((counts.enrolled / total) * 100) : 0;
+  const shown = enquiries.length;
+  const conversionRate = shown > 0 ? Math.round((counts.enrolled / shown) * 100) : 0;
 
   return (
-    <ToolPage title="Enquiry Register" subtitle="Track admission leads through pipeline" onRefresh={load} loading={loading}
-      actions={<ActionBtn label="New Enquiry" onClick={() => setShowForm(true)} icon={<Plus size={11} />} />}>
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <ActionBtn label="New Enquiry" onClick={() => setShowForm(true)} icon={<Plus size={11} />} />
+      </div>
+
+      {error && !showForm && <div role="alert" style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 12 }}>{error}</div>}
+      {notice && <div role="status" style={{ color: '#10b981', fontSize: 12, marginBottom: 12 }}>{notice}</div>}
+
+      {/* A5: the day's calls sit above the funnel, because they are the thing a person
+          came to this screen to do. It hides itself for anybody the follow-up gate
+          refuses rather than showing an error over a list that works. */}
+      <FollowUpWorklist reloadKey={worklistKey} onLogged={() => load()} />
 
       {/* Admission Pipeline Funnel */}
       {!loading && enquiries.length > 0 && (
         <div style={{ marginBottom: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-faint)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Admission Pipeline</span>
-            <span style={{ fontSize: 11, color: 'var(--c-faint)' }}>{total} leads · <span style={{ color: '#10b981', fontWeight: 600 }}>{conversionRate}% conversion</span></span>
+            {/* A3: the counts below are drawn from the rows on screen, so when the list
+                is shorter than the register the figures say so rather than reading as
+                the whole school. */}
+            <span style={{ fontSize: 11, color: 'var(--c-faint)' }}>
+              {shown < total ? `${shown} of ${total} leads` : `${total} leads`}
+              {' · '}<span style={{ color: '#10b981', fontWeight: 600 }}>{conversionRate}% conversion{shown < total ? ' of those shown' : ''}</span>
+            </span>
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {stages.map(s => (
@@ -1176,9 +1396,22 @@ export function EnquiryRegister() {
           <form onSubmit={handleAdd}>
             <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <FormField label="Student Name" value={form.student_name} onChange={f('student_name')} placeholder="Prospective student" required />
-              <FormField label="Parent Name" value={form.parent_name} onChange={f('parent_name')} placeholder="Parent/guardian" required />
+              <FormField label="Parent Name" value={form.parent_name} onChange={f('parent_name')} placeholder="Whoever the office deals with" required />
               <FormField label="Phone" type="tel" value={form.phone} onChange={f('phone')} placeholder="10-digit mobile" required />
               <FormField label="Class Applying" value={form.class_applying} onChange={f('class_applying')} placeholder="e.g. Class 9" />
+              {/* A3: the five below are on the school's own paper form and were being
+                  retyped onto the application later. All optional: the office often
+                  takes an enquiry over the phone with only a name and a number. */}
+              <FormField label="Mother's Name" value={form.mother_name} onChange={f('mother_name')} placeholder="Optional" />
+              <FormField label="Father's Name" value={form.father_name} onChange={f('father_name')} placeholder="Optional" />
+              <FormField label="Date of Birth" type="date" value={form.dob} onChange={f('dob')} />
+              <FormField label="Gender" type="select" value={form.gender} onChange={f('gender')} options={[
+                { value: '', label: 'Not given' },
+                { value: 'male', label: 'Male' },
+                { value: 'female', label: 'Female' },
+                { value: 'other', label: 'Other' }
+              ]} />
+              <FormField label="Present School" value={form.previous_school} onChange={f('previous_school')} placeholder="Optional" />
               <FormField label="Source" type="select" value={form.source} onChange={f('source')} options={[
                 { value: 'walk_in', label: 'Walk In' },
                 { value: 'phone', label: 'Phone Call' },
@@ -1203,31 +1436,55 @@ export function EnquiryRegister() {
             <button onClick={() => setSelectedEnquiry(null)} style={{ background: 'transparent', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 14 }}>✕</button>
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {stages.map(s => (
+            {pickableStages.map(s => (
               <button key={s} onClick={() => updateStatus(selectedEnquiry.id, s)} disabled={selectedEnquiry.status === s}
                 style={{ padding: '6px 10px', borderRadius: 6, border: `1px solid ${selectedEnquiry.status === s ? 'var(--c-faint)' : 'var(--tool-hex-4f8ff7)'}`, background: selectedEnquiry.status === s ? 'var(--c-deep)' : 'var(--tool-hex-4f8ff7)', color: selectedEnquiry.status === s ? 'var(--c-faint)' : 'var(--tool-hex-fff)', fontSize: 11, cursor: selectedEnquiry.status === s ? 'default' : 'pointer', fontWeight: 500, opacity: selectedEnquiry.status === s ? 0.5 : 1 }}>
                 {stageLabels[s]}
               </button>
             ))}
           </div>
+          <div style={{ color: 'var(--c-faint)', fontSize: 11, marginTop: 10 }}>
+            Enrolled is not on this list. A family becomes enrolled when their admission
+            application creates the child's record, so start an application and enrol from there.
+          </div>
         </div>
       )}
 
-      <DataTable headers={['Student', 'Parent', 'Phone', 'Class', 'Status', 'Source', 'Date', 'Action']}
+      <DataTable headers={['Student', 'Parent', 'Phone', 'Class', 'Position', 'Source', 'Date', 'Action']}
         rows={enquiries.map(e => [
           e.student_name,
-          e.parent_name,
+          // A3: both parents when the school gave both, rather than one name with no
+          // way of telling which of the two it is.
+          [e.mother_name, e.father_name].filter(Boolean).join(' and ') || e.parent_name,
           e.phone,
           e.class_applying || 'N/A',
-          <Badge text={stageLabels[e.status] || e.status} color={statusColors[e.status] || 'blue'} />,
+          // A3: ONE position per family, worked out on the server from the enquiry and
+          // its application together, so the two halves stop describing the same journey
+          // in different words. The small line says which record decided it, because
+          // "we hold an application for this child" and "somebody moved the enquiry
+          // along" are different facts.
+          <span>
+            <Badge text={e.journey?.label || stageLabels[e.status] || e.status} color={statusColors[e.status] || 'blue'} />
+            {e.journey?.source && <small style={{ display: 'block', color: 'var(--c-faint)', fontSize: 9, marginTop: 2 }}>
+              from the {e.journey.source}
+            </small>}
+          </span>,
           e.source?.replace('_', ' '),
           e.created_at?.slice(0, 10),
-          <button onClick={() => setSelectedEnquiry(e)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: 'var(--tool-hex-4f8ff7)', fontSize: 10, cursor: 'pointer', fontWeight: 500 }}>Move Stage</button>
+          <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+            <button onClick={() => setSelectedEnquiry(e)} style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 5, padding: '3px 8px', color: 'var(--tool-hex-4f8ff7)', fontSize: 10, cursor: 'pointer', fontWeight: 500 }}>Move Stage</button>
+            {e.application_id
+              ? <span style={{ fontSize: 10, color: 'var(--c-faint)', alignSelf: 'center' }}>Application started</span>
+              : <button onClick={() => startApplication(e)} disabled={starting === e.id} style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 5, padding: '3px 8px', color: '#10b981', fontSize: 10, cursor: starting === e.id ? 'default' : 'pointer', fontWeight: 500 }}>Start application</button>}
+          </span>
         ])}
         emptyMsg="No enquiries yet"
       />
-      <AdmissionsWorkflow compact />
-    </ToolPage>
+      {/* A4: the applications used to be bolted onto the bottom of this list. They have
+          a tab of their own on the Admissions screen now, so a family's enquiry and
+          their application are two places a person chooses between rather than one
+          screen scrolling into another. `onStarted` tells that tab to reload. */}
+    </div>
   );
 }
 

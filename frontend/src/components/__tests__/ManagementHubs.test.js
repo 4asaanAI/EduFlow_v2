@@ -35,7 +35,10 @@ describe('owner and principal management hubs', () => {
     const ownerItems = new Set(MANAGEMENT_HUBS.flatMap(hub => hubItemsForUser(hub, { role: 'owner' }).map(item => item[0])));
     const principalItems = new Set(MANAGEMENT_HUBS.flatMap(hub => hubItemsForUser(hub, { role: 'admin', sub_category: 'principal' }).map(item => item[0])));
     [DIRECTORY, 'fee-collection', 'library-circulation', 'school-activities', 'audit-log'].forEach(id => expect(ownerItems.has(id)).toBe(true));
-    [DIRECTORY, 'enquiry-register', 'library-circulation', 'transport-manager', 'audit-log'].forEach(id => expect(principalItems.has(id)).toBe(true));
+    // 'enquiry-register' until 2026-08-14. A4 merged it and 'admission-funnel' into one
+    // 'admissions' screen, so the destination is the merged id. The point of this line
+    // is unchanged: the principal still reaches admissions through a hub.
+    [DIRECTORY, 'admissions', 'library-circulation', 'transport-manager', 'audit-log'].forEach(id => expect(principalItems.has(id)).toBe(true));
     const reachable = (set) => (id) => set.has(id) || REACHED_THROUGH_THE_DIRECTORY.includes(id);
     expect(OWNER_TOOLS.filter(id => !reachable(ownerItems)(id))).toEqual([]);
     expect(TOOL_SETS.admin_principal.filter(id => !reachable(principalItems)(id))).toEqual([]);

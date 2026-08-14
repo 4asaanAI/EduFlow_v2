@@ -317,14 +317,29 @@ EXPECTED_REACH = {
     # move at all**. That is the proof the removal hit precisely what it aimed at. The six
     # were finance-classified, which is why the management head never had them, and if his
     # number had moved it would have meant the cut caught something else on the way past.
-    "owner":          (159, 98),
-    "principal":      (159, 98),
+    #
+    # 159/98 until 2026-08-14 (A6). PLUS FIVE tools, all five of them writes: the second
+    # half of the admissions funnel reached Flo. `create_admission_application`,
+    # `update_admission_application_status`, `record_admission_assessment`,
+    # `issue_admission_offer` and `enroll_admission_application`, each a thin adapter
+    # over the same service function `routes/admissions.py` already calls. Flo could work
+    # the enquiry half of the journey and nothing beyond it.
+    #
+    # Read the three moves together rather than one line at a time. The owner and the
+    # principal gain five. **The management head gains only three**, because issuing an
+    # offer and enrolling a child are refused to him on the REST route by `_can_enroll`
+    # and are named in his `denied_tools` so chat gives the same answer as the screen.
+    # The six dormant desks and the accountant head do not move at all, which is the
+    # proof this landed where it was aimed: admissions is not money and it is not theirs.
+    "owner":          (164, 103),
+    "principal":      (164, 103),
     # 56/31 until 2026-08-11. +1 tool, +1 write: update_staff, named in
     # PROFILE_MATRIX["accountant"]["extra_tools"], scoped by the SERVICE to salary
     # only (Abhimanyu, relaying Aman's and Adesh's instruction).
     # 65/36 until 2026-08-14, minus the same six campus-retail tools.
     "accountant":     (59, 30),
-    "management":     (101, 60),
+    # 101/60 until 2026-08-14. PLUS THREE, not five: see the A6 note above.
+    "management":     (104, 63),
     "transport_head": (30, 0),
     "receptionist":   (30, 0),
     "it_tech":        (30, 0),

@@ -51,8 +51,9 @@ export const MANAGEMENT_HUBS = [
   {
     id: 'admissions-communication-hub', name: 'Admissions & Communication', subtitle: 'Prospects, enrolment and outreach', color: 'var(--tool-hex-a78bfa)',
     items: [
-      ['admission-funnel', 'Admission Funnel', 'Enquiries and conversions', 'owner'],
-      ['enquiry-register', 'Admissions CRM', 'Leads, follow-ups and pipeline', 'principal'],
+      // A4: two entries described one funnel and are now one screen. Whoever held
+      // either holds this; the hub only picks a tab and grants nothing.
+      ['admissions', 'Admissions', 'Enquiries, applications and pipeline', 'owner'],
       ['circular-sender', 'Circulars', 'School notices and announcements', 'principal'],
       ['announcement-broadcaster', 'Announcements', 'Broadcast school updates', 'owner'],
       ['parent-message', 'Parent Messages', 'Direct guardian communication', 'principal'],

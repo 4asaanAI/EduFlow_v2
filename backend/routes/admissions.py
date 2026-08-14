@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from database import get_db, get_txn_session
 from middleware.auth import require_role
 from services.actor_context import actor_ctx_from_user
+from services.admissions_journey import describe_position
 from services.admissions_service import (
     AdmissionConflictError,
     AdmissionNotFoundError,
@@ -51,6 +52,10 @@ async def list_applications(request: Request, status: str | None = None,
     rows = await get_db().admission_applications.find(
         scoped_query(query, branch_id=user.get("branch_id")), {"_id": 0}
     ).sort("created_at", -1).to_list(500)
+    # A3. The same one vocabulary the enquiry list answers in, so the two halves stop
+    # describing the same journey in different words.
+    for row in rows:
+        row["journey"] = describe_position(application=row)
     return {"success": True, "data": rows, "meta": {"count": len(rows)}}
 
 

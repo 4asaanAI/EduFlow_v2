@@ -204,7 +204,9 @@ async def test_ai_enquiry_transition_guard_now_matches_rest(client, fake_db):
     out = await tool_functions_v2.tool_update_enquiry_status(
         {"enquiry_id": "enq-1", "status": "enrolled"}, principal, None)
     assert out["success"] is False
-    assert "Invalid enquiry transition" in out["message"]
+    # A2 changed the reason this is refused, not whether it is. It used to be an invalid
+    # transition from "new"; now enrolled cannot be chosen from any stage by anybody.
+    assert "cannot be moved to enrolled by hand" in out["message"]
     assert fake_db.enquiries.docs[0]["status"] == "new"
 
 

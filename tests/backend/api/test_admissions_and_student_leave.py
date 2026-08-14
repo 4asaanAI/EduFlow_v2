@@ -81,6 +81,50 @@ def test_full_applicant_to_student_enrollment_is_linked_and_idempotent(client, f
     assert len(fake_db.students.docs) == 1
 
 
+def test_starting_an_application_from_an_enquiry_carries_the_family_and_never_duplicates(client, fake_db):
+    """A1: the enquiry screen's "Start application" button.
+
+    Two things have to hold for the screen to be honest. The family has to arrive on
+    the application without being retyped, and a second press must hand back the first
+    application rather than quietly making a second one for the same child.
+    """
+    fake_db.classes.docs.append(make_class(id="class-a", branch_id="branch-a"))
+    fake_db.enquiries.docs.append({
+        "id": "enquiry-9", "schoolId": "aaryans-joya", "branch_id": "branch-a",
+        "student_name": "Applicant Nine", "parent_name": "Guardian Nine",
+        "phone": "9800000009", "class_applying": "Class 3", "status": "contacted",
+    })
+    owner = _headers("owner-1", "owner")
+
+    first = client.post("/api/admissions/applications", headers=owner,
+                        json={"enquiry_id": "enquiry-9"})
+    assert first.status_code == 200
+    body = first.json()
+    assert body["meta"]["existing"] is False
+    application = body["data"]
+    assert application["applicant_name"] == "Applicant Nine"
+    assert application["guardian_name"] == "Guardian Nine"
+    assert application["guardian_phone"] == "9800000009"
+    assert application["class_applying"] == "Class 3"
+    assert application["enquiry_id"] == "enquiry-9"
+    # The enquiry now carries the link, which is what hides the button on the screen.
+    assert fake_db.enquiries.docs[0]["application_id"] == application["id"]
+
+    second = client.post("/api/admissions/applications", headers=owner,
+                         json={"enquiry_id": "enquiry-9"})
+    assert second.status_code == 200
+    assert second.json()["meta"]["existing"] is True
+    assert second.json()["data"]["id"] == application["id"]
+    assert len(fake_db.admission_applications.docs) == 1
+
+
+def test_starting_an_application_from_a_missing_enquiry_is_refused(client, fake_db):
+    refused = client.post("/api/admissions/applications", headers=_headers("owner-1", "owner"),
+                          json={"enquiry_id": "no-such-enquiry"})
+    assert refused.status_code == 404
+    assert len(fake_db.admission_applications.docs) == 0
+
+
 def test_admission_enrollment_rejects_unprivileged_admin_and_invalid_transition(client, fake_db):
     fake_db.classes.docs.append(make_class(id="class-a", branch_id="branch-a"))
     created = client.post("/api/admissions/applications", headers=_headers("owner-1", "owner"), json={

@@ -26,7 +26,7 @@ const T = {
   'attendance-recorder':   { id: 'attendance-recorder',   name: 'Attendance',          subtitle: 'Mark & track',          icon: ClipboardList, color: '#fb923c' },
   'certificate-generator': { id: 'certificate-generator', name: 'Certificates',        subtitle: 'TC, Bonafide, etc.',    icon: Award,         color: '#fbbf24' },
   'circular-sender':       { id: 'circular-sender',       name: 'Circulars',           subtitle: 'Notices & messages',    icon: Megaphone,     color: '#22d3ee' },
-  'enquiry-register':      { id: 'enquiry-register',      name: 'Enquiry Register',    subtitle: 'Admission leads',       icon: UserPlus,      color: '#a78bfa' },
+  'admissions':            { id: 'admissions',            name: 'Admissions',          subtitle: 'Enquiries and applications', icon: UserPlus,  color: '#a78bfa' },
   'document-scanner':      { id: 'document-scanner',      name: 'Doc Scanner',         subtitle: 'Extract & file',        icon: FileCheck,     color: '#737373' },
   'smart-fee-defaulter':   { id: 'smart-fee-defaulter',   name: 'Fee Defaulters',      subtitle: 'Smart reminders',       icon: Bell,          color: '#f87171' },
   'admission-pipeline':    { id: 'admission-pipeline',    name: 'Admission Pipeline',  subtitle: 'Track conversions',     icon: Target,        color: '#4f8ff7' },
@@ -99,7 +99,7 @@ const TOOL_SETS = {
   // Admin sub-roles
   admin_principal: [
     'student-database','fee-tracker','attendance-recorder','certificate-generator',
-    'circular-sender','enquiry-register','document-scanner','smart-fee-defaulter',
+    'circular-sender','admissions','document-scanner','smart-fee-defaulter',
     'parent-message','student-transfer','id-card-generator',
     'principal-daily','timetable-builder','asset-tracker','transport-manager','incident-tracker','student-leave-manager',
     'resource-calendar','asset-custody','procurement-inventory','library-circulation','quiz-manager',
@@ -117,7 +117,7 @@ const TOOL_SETS = {
   ],
   admin_management: [
     'student-database','attendance-recorder','certificate-generator','circular-sender',
-    'enquiry-register','document-scanner','parent-message','student-transfer','id-card-generator',
+    'admissions','document-scanner','parent-message','student-transfer','id-card-generator',
     'principal-daily','timetable-builder','asset-tracker','transport-manager','incident-tracker',
     'student-leave-manager','resource-calendar','asset-custody','procurement-inventory',
     'library-circulation','quiz-manager','school-activities','automated-report',
@@ -128,7 +128,7 @@ const TOOL_SETS = {
   ],
   // D-49: 'id-card-generator' removed - the server refuses a receptionist.
   admin_receptionist: [
-    'student-database','enquiry-register','parent-message',
+    'student-database','admissions','parent-message',
     'student-transfer','asset-tracker','incident-tracker',
     'custom-form-builder','raise-maintenance',
   ],
@@ -179,7 +179,7 @@ const SUB_ROLE_LABELS = {
 
 const OWNER_TOOLS = [
   'student-database','fee-tracker','attendance-recorder','certificate-generator',
-  'circular-sender','enquiry-register','smart-fee-defaulter',
+  'circular-sender','admissions','smart-fee-defaulter',
   'parent-message','id-card-generator','timetable-builder','asset-tracker','asset-custody',
   'resource-calendar','procurement-inventory','library-circulation','student-leave-manager','quiz-manager',
   'transport-manager','incident-tracker','facility-requests','accounting-periods','payroll-manager',

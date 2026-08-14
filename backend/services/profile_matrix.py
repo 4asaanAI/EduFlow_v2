@@ -230,8 +230,12 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
             "id-card-generator",
             # Admissions and talking to families.
             "admissions-communication-hub",
-            "admission-funnel",
-            "enquiry-register",
+            # A4, 2026-08-14: "admission-funnel" and "enquiry-register" were two entries
+            # describing one funnel and are now one screen, "admissions". This profile
+            # held both and holds the merged one, so its reach is unchanged. It does NOT
+            # hold "commercial-operations" and does not gain the pipeline value tab,
+            # which keeps its own gate inside the screen.
+            "admissions",
             "circular-sender",
             "announcement-broadcaster",
             "parent-message",
@@ -305,6 +309,19 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
             "update_transport_route",
             "delete_transport_route",
             "add_transport_vehicle",
+            # A6, 2026-08-14. The two admissions writes the REST route already refuses
+            # him. `_can_enroll` in `routes/admissions.py` allows the owner and the
+            # principal only, so issuing an offer and enrolling a child are not his on
+            # the screen and must not become his in chat.
+            #
+            # They are named HERE rather than left to the `sub_categories: ["principal"]`
+            # on the registry entries, because `profile_authorization_decision`
+            # deliberately does not honour `sub_categories` for this profile - see the
+            # comment there. This list is the mechanism that works, and a denial always
+            # wins. His other three admissions tools stand: he starts applications,
+            # moves them along and records assessments, exactly as the screen lets him.
+            "issue_admission_offer",
+            "enroll_admission_application",
         }),
         "may_delete_people": False,
         "notes": (
@@ -346,7 +363,8 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
         "status": "dormant",
         "screens": _screens(
             "student-database",
-            "enquiry-register",
+            # A4: was "enquiry-register". Same reach, one entry.
+            "admissions",
             "parent-message",
             # NOT 'student-transfer' and NOT 'commercial-operations'. Removed
             # 2026-08-11 on Abhimanyu's answers to questions 3 and 4 of the staff

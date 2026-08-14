@@ -24,7 +24,7 @@ school's records; see the guard in `delete_legal_entity`.
 import hashlib
 import json
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Optional
 
@@ -38,7 +38,12 @@ from services.accounting_period_service import (
 )
 from services.actor_context import ActorContext
 from services.audit_service import write_audit_doc
-from services.enquiry_service import create_enquiry, update_enquiry
+from services.enquiry_service import (
+    ENROLLED,
+    ENROLLED_IS_NOT_A_CHOICE,
+    create_enquiry,
+    update_enquiry,
+)
 from services.txn_context import session_kwargs
 from tenant import scoped_query
 
@@ -70,6 +75,24 @@ def _required(params: dict, key: str) -> str:
     if not value:
         raise CommercialValidationError(f"{key} is required")
     return value
+
+
+def _follow_up_date(value) -> Optional[str]:
+    """A5. A follow-up date the platform cannot read is a call that never gets made.
+
+    This was free text until 2026-08-14, and nothing read it back, so nobody noticed.
+    Now that it drives the "who to call today" list, an unreadable date would put a
+    family into a list nobody looks at while the record still shows a date beside their
+    name - which is the exact fault this initiative exists to remove. Every entrance
+    already sends YYYY-MM-DD; this refuses anything else instead of storing it.
+    """
+    text = _clean(value)
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text[:10]).isoformat()
+    except ValueError:
+        raise CommercialValidationError("next_follow_up must be a date in YYYY-MM-DD form")
 
 
 def _paise(value, key: str, *, allow_zero: bool = True) -> int:
@@ -344,7 +367,7 @@ async def create_crm_lead(db, actor: ActorContext, params: dict, *, session=None
         "branch_id": actor.branch_id, "entity_id": entity["id"], "email": email or None,
         "lead_type": _clean(params.get("lead_type") or "admission").lower(),
         "campaign": _clean(params.get("campaign")) or None,
-        "next_follow_up": _clean(params.get("next_follow_up")) or None,
+        "next_follow_up": _follow_up_date(params.get("next_follow_up")),
         "estimated_value_paise": _paise(params.get("estimated_value") or 0, "estimated_value"),
         "probability": _probability(params.get("probability")),
         "updated_at": actor.now_iso(),
@@ -393,13 +416,20 @@ async def update_crm_lead(db, actor: ActorContext, enquiry_id: str, params: dict
                       if "application_id" in params else existing.get("application_id"))
     student_id = (_clean(params.get("student_id")) or None
                   if "student_id" in params else existing.get("student_id"))
-    if status == "enrolled" and (not application_id or not student_id):
-        raise CommercialValidationError(
-            "An enrolled CRM lead must link its admission application and student record"
-        )
+    # A2. This used to accept "enrolled" as long as an application id and a student id
+    # were typed alongside it, which checked that two identifiers were present and not
+    # that a child had actually been created. Enrolment now has exactly one source, and
+    # this route is not it, so the refusal is the same one the enquiry service gives.
+    if status == ENROLLED:
+        raise CommercialValidationError(ENROLLED_IS_NOT_A_CHOICE)
     allowed = {"email", "lead_type", "campaign", "next_follow_up", "lost_reason",
                "application_id", "student_id", "assigned_to"}
     extra = {key: params[key] for key in allowed if key in params}
+    if "next_follow_up" in extra:
+        # A5. Same rule as the create path and the activity path: a date that cannot be
+        # read would sit on the record looking like a planned call and never reach the
+        # worklist.
+        extra["next_follow_up"] = _follow_up_date(extra["next_follow_up"])
     if "estimated_value" in params:
         extra["estimated_value_paise"] = _paise(params["estimated_value"], "estimated_value")
     if "probability" in params:
@@ -449,7 +479,7 @@ async def add_crm_activity(db, actor: ActorContext, enquiry_id: str, params: dic
         "enquiry_id": enquiry_id, "activity_type": activity_type,
         "subject": _required(params, "subject"), "notes": _clean(params.get("notes")),
         "occurred_at": _clean(params.get("occurred_at")) or actor.now_iso(),
-        "next_follow_up": _clean(params.get("next_follow_up")) or None,
+        "next_follow_up": _follow_up_date(params.get("next_follow_up")),
         "created_by": actor.user_id, "created_at": actor.now_iso(),
     }
     await db.crm_activities.insert_one(doc, **kwargs)
@@ -537,6 +567,135 @@ async def crm_pipeline(db, actor: ActorContext, entity_id: Optional[str] = None)
     due = [row for row in leads if row.get("next_follow_up") and str(row["next_follow_up"])[:10] <= date.today().isoformat()
            and row.get("status") not in {"lost", "closed", "enrolled"}]
     return {"entity": entity, "lead_count": len(leads), "follow_ups_due": len(due), "stages": stages}
+
+
+# ───────────────────── A5: who to call today (2026-08-14) ─────────────────────
+#
+# The follow-up date already existed and nothing ever read it back. `add_crm_activity`
+# has written `next_follow_up` onto the enquiry since the CRM shipped, and the only place
+# it was ever looked at again was one integer on the pipeline summary. So the office
+# could record "call them on Tuesday" and the platform would never mention it on Tuesday.
+#
+# The honesty this list has to carry is NOT the overdue count. It is the opposite one:
+# **a family nobody has scheduled a call with looks exactly like a family with nothing
+# left to do.** An empty worklist is the natural end state of a list built only from
+# rows that have a date on them, and it reads as "you are up to date" when the truth may
+# be "nobody has planned anything for ninety families". So the answer always carries how
+# many active enquiries there are, how many of them have no follow-up date at all, and
+# how many are scheduled past the end of the window. Nothing is dropped into a bucket
+# the caller cannot see the size of.
+
+#: An enquiry in one of these stages is finished with, so it is not chased.
+#: `enrolled` is here because the child is on the roll: see A2, where enrolment stopped
+#: being something a person could type.
+FOLLOW_UP_CLOSED_STATUSES = frozenset({"lost", "closed", ENROLLED})
+
+#: How far ahead "upcoming" reaches by default. A week is what the office plans over.
+FOLLOW_UP_UPCOMING_DAYS = 7
+
+
+def _follow_up_row(enquiry: dict, today: date, last_activity: Optional[dict]) -> dict:
+    due = str(enquiry.get("next_follow_up") or "")[:10]
+    try:
+        overdue_by = (today - date.fromisoformat(due)).days
+    except ValueError:
+        # A date the office typed by hand that is not a date. It is still shown, still
+        # counted, and marked as unreadable rather than quietly dropped from the list.
+        overdue_by = None
+    return {
+        "enquiry_id": enquiry.get("id"),
+        "student_name": enquiry.get("student_name"),
+        "parent_name": enquiry.get("parent_name"),
+        "mother_name": enquiry.get("mother_name"),
+        "father_name": enquiry.get("father_name"),
+        "phone": enquiry.get("phone"),
+        "class_applying": enquiry.get("class_applying"),
+        "status": enquiry.get("status"),
+        "next_follow_up": due or None,
+        "date_is_readable": overdue_by is not None,
+        "days_overdue": overdue_by if (overdue_by or 0) > 0 else 0,
+        "last_activity": last_activity,
+    }
+
+
+async def follow_up_worklist(db, actor: ActorContext, entity_id: Optional[str] = None, *,
+                             today: Optional[str] = None,
+                             upcoming_days: int = FOLLOW_UP_UPCOMING_DAYS) -> dict:
+    """Families the office owes a call, split into overdue, today and the week ahead."""
+    entity = await resolve_entity(db, actor, entity_id)
+    today_text = _clean(today) or date.today().isoformat()
+    try:
+        today_date = date.fromisoformat(today_text)
+    except ValueError:
+        raise CommercialValidationError("today must be a date in YYYY-MM-DD form")
+    if isinstance(upcoming_days, bool) or not isinstance(upcoming_days, int):
+        raise CommercialValidationError("upcoming_days must be a whole number of days")
+    if upcoming_days < 0 or upcoming_days > 90:
+        raise CommercialValidationError("upcoming_days must be between 0 and 90")
+    horizon = (today_date + timedelta(days=upcoming_days)).isoformat()
+
+    open_stages = {"status": {"$nin": sorted(FOLLOW_UP_CLOSED_STATUSES)}}
+    active_total = await db.enquiries.count_documents(
+        _scope(actor, entity_record_filter(entity, dict(open_stages)))
+    )
+    # Every enquiry that has a date on it, in one query. There is no row ceiling here on
+    # purpose: this list is complete or it is worthless, exactly like an export. It is
+    # bounded by the enquiries the school is actively working, which is a small number.
+    scheduled = await _all_docs(db.enquiries.find(
+        _scope(actor, entity_record_filter(entity, {
+            **open_stages, "next_follow_up": {"$ne": None},
+        })), {"_id": 0},
+    ))
+
+    # The last thing anybody wrote down about each family, in ONE batched query rather
+    # than one per row, so the person making the call knows what was said last time.
+    latest: dict = {}
+    ids = [row.get("id") for row in scheduled if row.get("id")]
+    if ids:
+        activities = await _all_docs(db.crm_activities.find(
+            _scope(actor, {"enquiry_id": {"$in": ids}}),
+            {"_id": 0, "enquiry_id": 1, "activity_type": 1, "subject": 1, "occurred_at": 1},
+        ))
+        for activity in activities:
+            key = activity.get("enquiry_id")
+            held = latest.get(key)
+            if held is None or str(activity.get("occurred_at") or "") > str(held.get("occurred_at") or ""):
+                latest[key] = activity
+
+    buckets: dict = {"overdue": [], "due_today": [], "upcoming": []}
+    beyond = 0
+    for enquiry in scheduled:
+        row = _follow_up_row(enquiry, today_date, latest.get(enquiry.get("id")))
+        due = row["next_follow_up"] or ""
+        if not row["date_is_readable"] or due < today_text:
+            # An unreadable date is treated as needing attention now. Somebody has to
+            # look at it, and the alternative is a row that exists in no bucket at all.
+            buckets["overdue"].append(row)
+        elif due == today_text:
+            buckets["due_today"].append(row)
+        elif due <= horizon:
+            buckets["upcoming"].append(row)
+        else:
+            beyond += 1
+    for name in buckets:
+        buckets[name].sort(key=lambda row: (str(row["next_follow_up"] or ""), str(row["student_name"] or "")))
+
+    return {
+        "entity": entity,
+        "today": today_text,
+        "upcoming_days": upcoming_days,
+        "upcoming_until": horizon,
+        **buckets,
+        "counts": {
+            "overdue": len(buckets["overdue"]),
+            "due_today": len(buckets["due_today"]),
+            "upcoming": len(buckets["upcoming"]),
+            "scheduled_beyond_the_window": beyond,
+            "active_enquiries": active_total,
+            # The one that stops an empty list reading as "nothing to do".
+            "no_follow_up_date_set": max(active_total - len(scheduled), 0),
+        },
+    }
 
 
 async def commercial_summary(db, actor: ActorContext, entity_id: Optional[str] = None,

@@ -19,7 +19,7 @@ const APPLICATION_EXPORT_COLUMNS = [
 import { API, apiFetch } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 
-const blank = { applicant_name: '', guardian_name: '', guardian_phone: '', class_id: '' };
+const blank = { enquiry_id: '', applicant_name: '', guardian_name: '', guardian_phone: '', class_id: '' };
 const nextStage = { draft: 'submitted', submitted: 'under_review', offered: 'accepted' };
 
 async function request(url, options = {}) {
@@ -32,9 +32,10 @@ async function request(url, options = {}) {
   return body;
 }
 
-export default function AdmissionsWorkflow({ compact = false }) {
+export default function AdmissionsWorkflow({ compact = false, reloadKey = 0 }) {
   const [applications, setApplications] = useState([]);
   const [classes, setClasses] = useState([]);
+  const [enquiries, setEnquiries] = useState([]);
   const [form, setForm] = useState(blank);
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState('');
@@ -53,9 +54,18 @@ export default function AdmissionsWorkflow({ compact = false }) {
     } catch (err) {
       setError(err.message);
     }
+    // The enquiry list is loaded separately and on purpose. It only feeds the
+    // "start from an enquiry" picker, so if this profile cannot read enquiries the
+    // picker is simply absent rather than the whole applications screen failing.
+    try {
+      const enquiryBody = await request(`${API}/ops/enquiries`);
+      setEnquiries(enquiryBody.data || []);
+    } catch {
+      setEnquiries([]);
+    }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, reloadKey]);
 
   const counts = useMemo(() => applications.reduce((result, item) => {
     result[item.status] = (result[item.status] || 0) + 1;
@@ -79,15 +89,33 @@ export default function AdmissionsWorkflow({ compact = false }) {
     }
   }
 
+  // Picking an enquiry carries the family across. The class is deliberately NOT
+  // guessed from the enquiry's free-text "class applying": the office confirms it.
+  function pickEnquiry(enquiryId) {
+    const enquiry = enquiries.find(item => item.id === enquiryId);
+    if (!enquiry) { setForm(v => ({ ...v, enquiry_id: '' })); return; }
+    setForm(v => ({
+      ...v,
+      enquiry_id: enquiryId,
+      applicant_name: enquiry.student_name || '',
+      guardian_name: enquiry.parent_name || '',
+      guardian_phone: enquiry.phone || '',
+    }));
+  }
+
   async function create(event) {
     event.preventDefault();
     setBusy('new');
     setError('');
     try {
-      await request(`${API}/admissions/applications`, { method: 'POST', body: JSON.stringify(form) });
+      const body = await request(`${API}/admissions/applications`, { method: 'POST', body: JSON.stringify(form) });
       setForm(blank);
       setShowForm(false);
-      setNotice('Application created as a draft.');
+      // Never report a record that was not written. When the family already had an
+      // application the server hands back the first one, and the screen says so.
+      setNotice(body.meta?.existing
+        ? 'This family already had an application, so nothing new was created. The existing one is in the list below.'
+        : 'Application created as a draft.');
       await load();
     } catch (err) {
       setError(err.message);
@@ -128,6 +156,20 @@ export default function AdmissionsWorkflow({ compact = false }) {
       {notice && <div role="status" style={message('#34d399')}><CheckCircle size={13} />{notice}</div>}
       {showForm && (
         <form onSubmit={create} className="admissions-form responsive-form-grid">
+          <select
+            value={form.enquiry_id}
+            onChange={e => pickEnquiry(e.target.value)}
+            style={input}
+            aria-label="Start from an enquiry"
+            data-testid="enquiry-picker"
+          >
+            <option value="">Start from an enquiry (optional)</option>
+            {enquiries.filter(item => !item.application_id).map(item => (
+              <option key={item.id} value={item.id}>
+                {item.student_name}{item.parent_name ? ` - ${item.parent_name}` : ''}
+              </option>
+            ))}
+          </select>
           <input required value={form.applicant_name} onChange={e => setForm(v => ({ ...v, applicant_name: e.target.value }))} placeholder="Applicant name" style={input} />
           <input required value={form.guardian_name} onChange={e => setForm(v => ({ ...v, guardian_name: e.target.value }))} placeholder="Guardian name" style={input} />
           <input required value={form.guardian_phone} onChange={e => setForm(v => ({ ...v, guardian_phone: e.target.value }))} placeholder="Guardian phone" style={input} />

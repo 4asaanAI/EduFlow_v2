@@ -253,6 +253,20 @@ WRITE_TOOL_REQUIRED_PARAMS = {
     "create_expense": ("category", "amount"),
     "create_enquiry": ("student_name",),
     "update_enquiry_status": ("enquiry_id", "status"),
+    # A6, 2026-08-14 - the second half of the admissions funnel. `create_admission_application`
+    # requires nothing here on purpose: it takes EITHER an enquiry to carry a family across
+    # from OR a name and a class typed out, and the service refuses when it has neither.
+    # Naming one of them required would make the other route impossible.
+    "create_admission_application": (),
+    "update_admission_application_status": ("application_id", "status"),
+    # A score without the marks available is not a score, so both are required rather
+    # than letting the model guess a maximum.
+    "record_admission_assessment": ("application_id", "score", "maximum"),
+    "issue_admission_offer": ("application_id", "class_id", "valid_until"),
+    # Nothing else. The class comes from the offer the school already made, and an
+    # admission number is generated. A guessed class on an enrolment puts a real child
+    # in the wrong room.
+    "enroll_admission_application": ("application_id",),
     "create_crm_lead": ("student_name",),
     "update_crm_lead": ("enquiry_id",),
     "create_legal_entity": ("name", "code"),
@@ -424,7 +438,7 @@ KEYWORD_TOOL_MAP = [
     # Leave approval
     (["approve leave", "reject leave", "leave approve"], "approve_leave"),
     # Enquiries
-    (["/admission-funnel", "/enquiry-register", "enquiry",
+    (["/admissions", "/admission-funnel", "/enquiry-register", "enquiry",
       "admission funnel", "new student inquiry",
       "admission"], "get_enquiries"),
     # Health report
@@ -561,10 +575,14 @@ NAVIGATE_MAP = {
     "show leave manager": "leave-manager",
     "open fee tracker": "fee-tracker",
     "show fee tracker": "fee-tracker",
-    "open admission funnel": "admission-funnel",
-    "show admission funnel": "admission-funnel",
-    "open enquiry register": "enquiry-register",
-    "show enquiry register": "enquiry-register",
+    # A4: the two screens are one. The old words still work, because the school says
+    # them and being told "no such screen" would read as the platform losing a feature.
+    "open admissions": "admissions",
+    "show admissions": "admissions",
+    "open admission funnel": "admissions",
+    "show admission funnel": "admissions",
+    "open enquiry register": "admissions",
+    "show enquiry register": "admissions",
     "open smart alerts": "smart-alerts",
     "show smart alerts": "smart-alerts",
     "open financial reports": "financial-reports",

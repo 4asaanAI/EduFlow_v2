@@ -125,8 +125,18 @@ def test_confirmation_set_is_exactly_destructive_bulk_and_reversals():
     # tell "Flo helped me" from "Flo told my supplier what I was doing", and the confirm
     # card is how they tell.
     leaves_the_school = {"report_platform_problem"}
+    # A6, 2026-08-14. A sixth reason, and like the fifth it is a new KIND rather than a
+    # new member of an old one. Enrolment is the only write in this platform that BRINGS
+    # A PERSON INTO EXISTENCE: it creates a child's record and their guardians together,
+    # mints an admission number and marks the application and the enquiry enrolled.
+    # Nothing takes it back; there is no un-enrol. It is the exact mirror of "destructive"
+    # and deserves the same pause. The second reason is A2: enrolment was the one place
+    # the funnel could claim a child existed when none did, and a confirm card is how a
+    # person tells "Flo enrolled the child" from "Flo said it did".
+    brings_a_person_into_existence = {"enroll_admission_application"}
     assert EXPLICIT_CONFIRMATION_TOOL_NAMES == (
-        destructive | set(BULK_TOOL_NAMES) | reversals | security_sensitive | leaves_the_school
+        destructive | set(BULK_TOOL_NAMES) | reversals | security_sensitive
+        | leaves_the_school | brings_a_person_into_existence
     )
     assert set(EXPLICIT_CONFIRMATION_TOOL_NAMES) <= set(WRITE_TOOL_NAMES)
     ordinary = set(WRITE_TOOL_NAMES) - set(EXPLICIT_CONFIRMATION_TOOL_NAMES)

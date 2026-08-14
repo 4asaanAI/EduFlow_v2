@@ -54,8 +54,7 @@ export function getToolForNotification(notif, userRole) {
   if (/circular/.test(text) && userRole === 'admin') return 'circular-sender';
   if (/substitut/.test(text) && userRole === 'teacher') return 'substitution-viewer';
   if (/admission|enquiry|enroll/.test(text)) {
-    if (userRole === 'owner') return 'admission-funnel';
-    if (userRole === 'admin') return 'enquiry-register';
+    if (userRole === 'owner' || userRole === 'admin') return 'admissions';
   }
   if (/staff|staffing/.test(text) && (userRole === 'owner' || userRole === 'admin')) return 'staff-tracker';
   if (/financial|expense|revenue/.test(text) && userRole === 'owner') return 'financial-reports';
@@ -87,8 +86,7 @@ export const TOOL_LABELS = {
   'leave-application': 'Leave Application',
   'announcement-broadcaster': 'Announcements',
   'circular-sender': 'Circulars',
-  'admission-funnel': 'Admission Funnel',
-  'enquiry-register': 'Enquiry Register',
+  'admissions': 'Admissions',
   'staff-tracker': 'Staff Tracker',
   'financial-reports': 'Financial Reports',
   'smart-alerts': 'Smart Alerts',

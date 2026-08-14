@@ -108,16 +108,24 @@ async def create_application(db, actor_ctx: ActorContext, params: dict, *, sessi
         "branch_id": actor_ctx.branch_id,
         "enquiry_id": enquiry_id,
         "applicant_name": applicant_name,
-        "dob": params.get("dob"),
-        "gender": params.get("gender"),
+        # A3. Date of birth, gender and the previous school were already fields here but
+        # were never taken from the enquiry, so the office retyped facts the school
+        # already held. The enquiry now carries them, and so does this.
+        "dob": params.get("dob") or (enquiry or {}).get("dob"),
+        "gender": params.get("gender") or (enquiry or {}).get("gender"),
         "class_id": class_id or None,
         "class_applying": class_applying or None,
         "academic_year": params.get("academic_year"),
         "guardian_name": params.get("guardian_name") or (enquiry or {}).get("parent_name"),
         "guardian_phone": params.get("guardian_phone") or (enquiry or {}).get("phone"),
         "guardian_email": params.get("guardian_email"),
+        # A3. The school records the mother and the father separately and fills both in
+        # on nearly every enquiry. Carrying only `guardian_name` across meant one of the
+        # two arrived on the application and nobody could tell which.
+        "mother_name": params.get("mother_name") or (enquiry or {}).get("mother_name"),
+        "father_name": params.get("father_name") or (enquiry or {}).get("father_name"),
         "address": params.get("address"),
-        "previous_school": params.get("previous_school"),
+        "previous_school": params.get("previous_school") or (enquiry or {}).get("previous_school"),
         "documents": [],
         "assessment": None,
         "offer": None,

@@ -32,14 +32,28 @@ test('owner can bootstrap the first legal entity without an endless loader', asy
   expect(screen.getByLabelText('Legal name')).toBeInTheDocument();
 });
 
-test('principal sees the CRM lifecycle', async () => {
+test('the admissions half of this screen has moved to the Admissions screen', async () => {
+  // A4, 2026-08-14. This test used to open a CRM tab here. Three screens described the
+  // admissions funnel and this was the third, so its CRM panel moved to the merged
+  // Admissions screen. `AdmissionsScreen.test.js` proves it still works over there;
+  // this asserts it is not ALSO still here, because two doors to one thing is the fault
+  // being fixed rather than a convenience.
   mockCurrentUser = { id: 'principal-1', role: 'admin', sub_category: 'principal', name: 'Principal' };
   mockEntities = [{ id: 'entity-1', name: 'The Aaryans', is_default: true, is_active: true }];
   render(<CommercialOperations />);
-  await waitFor(() => expect(screen.getByRole('tab', { name: 'CRM' })).toBeInTheDocument());
-  fireEvent.click(screen.getByRole('tab', { name: 'CRM' }));
-  expect(await screen.findByTestId('crm-lead-form')).toBeInTheDocument();
-  expect(screen.getByLabelText('Estimated value (₹)')).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole('tab', { name: 'Entities' })).toBeInTheDocument());
+  expect(screen.queryByRole('tab', { name: 'CRM' })).not.toBeInTheDocument();
+  expect(screen.queryByTestId('crm-lead-form')).not.toBeInTheDocument();
+});
+
+test('the entity overview still counts the admission leads', async () => {
+  // Moving where leads are WORKED must not take the money view off the legal entity,
+  // which is what this screen is for.
+  mockCurrentUser = { id: 'principal-1', role: 'admin', sub_category: 'principal', name: 'Principal' };
+  mockEntities = [{ id: 'entity-1', name: 'The Aaryans', is_default: true, is_active: true }];
+  render(<CommercialOperations />);
+  expect(await screen.findByText('CRM LEADS')).toBeInTheDocument();
+  expect(screen.getByText('WEIGHTED PIPELINE')).toBeInTheDocument();
 });
 
 test('there is no Retail tab, because the school runs no shop', async () => {
@@ -50,6 +64,6 @@ test('there is no Retail tab, because the school runs no shop', async () => {
   mockCurrentUser = { id: 'principal-1', role: 'admin', sub_category: 'principal', name: 'Principal' };
   mockEntities = [{ id: 'entity-1', name: 'The Aaryans', is_default: true, is_active: true }];
   render(<CommercialOperations />);
-  await waitFor(() => expect(screen.getByRole('tab', { name: 'CRM' })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole('tab', { name: 'Entities' })).toBeInTheDocument());
   expect(screen.queryByRole('tab', { name: 'Retail' })).not.toBeInTheDocument();
 });

@@ -19,22 +19,28 @@ async function request(path, options = {}) {
 }
 
 const money = paise => `₹${(Number(paise || 0) / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+// A2: the stages a person may choose. "enrolled" is deliberately absent everywhere a
+// stage is picked. An enquiry becomes enrolled only when its admission application
+// creates the child's record.
+const PICKABLE_LEAD_STAGES = ['new', 'contacted', 'visit_scheduled', 'visited', 'documents_submitted', 'fee_paid', 'lost'];
 const uniqueKey = prefix => `${prefix}-${typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`}`;
 
 export default function CommercialOperations() {
   const { currentUser } = useUser();
   const subRole = currentUser?.sub_category;
-  const canCrm = currentUser?.role === 'owner' || ['principal', 'admission', 'receptionist'].includes(subRole);
+  // A4: the CRM tab moved to the Admissions screen, where the enquiries and the
+  // applications already are. Three screens described the admissions funnel and this
+  // was the third. The overview below still counts the leads, because the money view of
+  // a legal entity is what this screen is for.
   const canSummary = currentUser?.role === 'owner' || ['principal', 'accountant'].includes(subRole);
   // Campus retail was removed on 2026-08-14: The Aaryans runs no shop, and the canteen
   // is an outside vendor renting space rather than a school counter.
   const requestSeq = useRef(0);
-  const [tab, setTab] = useState(canSummary ? 'overview' : canCrm ? 'crm' : 'entities');
+  const [tab, setTab] = useState(canSummary ? 'overview' : 'entities');
   const [entities, setEntities] = useState([]);
   const [entityId, setEntityId] = useState('');
   const [summary, setSummary] = useState(null);
   const [leads, setLeads] = useState([]);
-  const [opportunities, setOpportunities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -54,10 +60,9 @@ export default function CommercialOperations() {
     try {
       const tasks = [
         ...(canSummary ? [['summary', request(`/commercial/summary?${query}`)]] : []),
-        ...(canCrm ? [
-          ['leads', request(`/commercial/crm/leads?${query}`)],
-          ['opportunities', request(`/commercial/crm/opportunities?${query}`)],
-        ] : []),
+        // The lead COUNT still belongs on the entity overview, which is the money view
+        // of that entity. Working the leads themselves is on the Admissions screen.
+        ...(canSummary ? [['leads', request(`/commercial/crm/leads?${query}`)]] : []),
       ];
       const results = await Promise.allSettled(tasks.map(([, promise]) => promise));
       if (sequence !== requestSeq.current) return;
@@ -68,12 +73,11 @@ export default function CommercialOperations() {
         const data = result.value.data;
         if (key === 'summary') setSummary(data);
         if (key === 'leads') setLeads(data || []);
-        if (key === 'opportunities') setOpportunities(data || []);
       });
       if (failures.length) setError(failures.join(' '));
     } catch (err) { setError(err.message); }
     finally { if (sequence === requestSeq.current) setLoading(false); }
-  }, [canCrm, canSummary, entityId]);
+  }, [canSummary, entityId]);
 
   useEffect(() => { loadEntities().catch(err => { setError(err.message); setLoading(false); }); }, [loadEntities]);
   useEffect(() => { loadDomain(); }, [loadDomain]);
@@ -82,9 +86,9 @@ export default function CommercialOperations() {
   const selected = entities.find(item => item.id === entityId);
   const total = summary?.totals || {};
   const operatingEntities = entities.filter(item => !item.is_group && item.is_active !== false);
-  const availableTabs = [...(canSummary ? ['overview'] : []), ...(canCrm ? ['crm'] : []), 'entities'];
+  const availableTabs = [...(canSummary ? ['overview'] : []), 'entities'];
 
-  return <ToolPage title="Legal Entities & Admissions" subtitle="The trust's legal entities, and admission leads with values" loading={loading} onRefresh={refresh}>
+  return <ToolPage title="Legal Entities" subtitle="The trust's legal entities, and what each is carrying" loading={loading} onRefresh={refresh}>
     {error && <div role="alert" style={errorStyle}>{error}</div>}
     <div style={toolbar}>
       <label style={{ minWidth: 210, flex: '1 1 240px' }}>
@@ -95,11 +99,10 @@ export default function CommercialOperations() {
       </label>
       <div role="tablist" aria-label="Commercial operation sections" style={tabs}>
         {availableTabs.map(value => <button key={value} role="tab" aria-selected={tab === value}
-          onClick={() => setTab(value)} style={{ ...tabButton, ...(tab === value ? activeTab : {}) }}>{value === 'crm' ? 'CRM' : value[0].toUpperCase() + value.slice(1)}</button>)}
+          onClick={() => setTab(value)} style={{ ...tabButton, ...(tab === value ? activeTab : {}) }}>{value[0].toUpperCase() + value.slice(1)}</button>)}
       </div>
     </div>
     {tab === 'overview' && canSummary && <Overview entity={selected} total={total} leads={leads} />}
-    {tab === 'crm' && <CrmPanel entityId={entityId} leads={leads} opportunities={opportunities} onChanged={loadDomain} setError={setError} />}
     {tab === 'entities' && <EntitiesPanel currentUser={currentUser} entities={entities} onChanged={refresh} setError={setError} />}
   </ToolPage>;
 }
@@ -115,14 +118,78 @@ function Overview({ entity, total, leads }) {
   </>;
 }
 
+/**
+ * A4: the admissions half of Legal Entities, now living on the Admissions screen.
+ *
+ * It stays in this file because every helper it needs is here. What moved is where it
+ * is SHOWN, not who may see it: the gate below is character for character the `canCrm`
+ * this screen has always used, so grouping grants nobody anything. The management head
+ * is not on that list and was never on it, and does not gain the pipeline by the
+ * Admissions screen existing.
+ *
+ * `receptionist` is on the list and is dormant. `admission` is on it too and is NOT a
+ * sub-category the platform recognises at all, so it can never be true. Both are left
+ * exactly as they were: A4 moves a panel, it does not redraw a permission.
+ */
+export function AdmissionsPipelinePanel({ setError }) {
+  const { currentUser } = useUser();
+  const maySee = currentUser?.role === 'owner'
+    || ['principal', 'admission', 'receptionist'].includes(currentUser?.sub_category);
+  const [entities, setEntities] = useState([]);
+  const [entityId, setEntityId] = useState('');
+  const [leads, setLeads] = useState([]);
+  const [opportunities, setOpportunities] = useState([]);
+
+  const loadEntities = useCallback(async () => {
+    const body = await request('/commercial/entities');
+    setEntities(body.data || []);
+    const operating = (body.data || []).filter(item => !item.is_group && item.is_active !== false);
+    setEntityId(value => operating.some(item => item.id === value)
+      ? value : operating.find(item => item.is_default)?.id || operating[0]?.id || '');
+  }, []);
+
+  const loadDomain = useCallback(async () => {
+    if (!entityId) return;
+    const query = `entity_id=${encodeURIComponent(entityId)}`;
+    try {
+      const [leadBody, opportunityBody] = await Promise.all([
+        request(`/commercial/crm/leads?${query}`),
+        request(`/commercial/crm/opportunities?${query}`),
+      ]);
+      setLeads(leadBody.data || []);
+      setOpportunities(opportunityBody.data || []);
+    } catch (err) { setError(err.message); }
+  }, [entityId, setError]);
+
+  useEffect(() => {
+    if (maySee) loadEntities().catch(err => setError(err.message));
+  }, [maySee, loadEntities, setError]);
+  useEffect(() => { if (maySee) loadDomain(); }, [maySee, loadDomain]);
+
+  if (!maySee) return null;
+  const operatingEntities = entities.filter(item => !item.is_group && item.is_active !== false);
+  return <>
+    <label style={{ minWidth: 210, display: 'block', marginBottom: 14 }}>
+      <span style={labelStyle}>Operating legal entity</span>
+      <select aria-label="Operating legal entity" value={entityId} onChange={event => setEntityId(event.target.value)} style={inputStyle}>
+        {operatingEntities.map(item => <option key={item.id} value={item.id}>{item.name}{item.is_default ? ' (default)' : ''}</option>)}
+      </select>
+    </label>
+    <CrmPanel entityId={entityId} leads={leads} opportunities={opportunities}
+      onChanged={loadDomain} setError={setError} />
+  </>;
+}
+
 function CrmPanel({ entityId, leads, opportunities, onChanged, setError }) {
-  const emptyLead = { student_name: '', parent_name: '', phone: '', email: '', class_applying: '', source: 'walk_in', next_follow_up: '', estimated_value: '', probability: 0 };
+  // A3: mother and father sit alongside `parent_name` here too. This screen and the
+  // Enquiry Register write the same record through the same service, so one of them
+  // collecting both parents and the other not would put the gap back in a new place.
+  const emptyLead = { student_name: '', parent_name: '', mother_name: '', father_name: '', phone: '', email: '', class_applying: '', source: 'walk_in', next_follow_up: '', estimated_value: '', probability: 0 };
   const [form, setForm] = useState(emptyLead);
   const [selectedLeadId, setSelectedLeadId] = useState('');
   const [activities, setActivities] = useState([]);
   const [activity, setActivity] = useState({ activity_type: 'note', subject: '', notes: '', next_follow_up: '' });
   const [opportunity, setOpportunity] = useState({ title: '', amount: '', probability: 10, expected_close_date: '' });
-  const [conversion, setConversion] = useState({ application_id: '', student_id: '' });
   const selectedLead = leads.find(row => row.id === selectedLeadId);
   useEffect(() => {
     if (!selectedLeadId) { setActivities([]); return; }
@@ -140,11 +207,8 @@ function CrmPanel({ entityId, leads, opportunities, onChanged, setError }) {
   async function changeStatus(lead, status) {
     const lost_reason = status === 'lost' ? window.prompt('Why was this lead lost?') : undefined;
     if (status === 'lost' && !lost_reason) return;
-    if (status === 'enrolled' && (!conversion.application_id || !conversion.student_id)) {
-      setSelectedLeadId(lead.id); setError('Link the admission application and student before marking this lead enrolled.'); return;
-    }
     try {
-      await request(`/commercial/crm/leads/${lead.id}`, { method: 'PATCH', body: JSON.stringify({ status, lost_reason, ...(status === 'enrolled' ? conversion : {}) }) });
+      await request(`/commercial/crm/leads/${lead.id}`, { method: 'PATCH', body: JSON.stringify({ status, lost_reason }) });
       await onChanged();
     } catch (err) { setError(err.message); }
   }
@@ -168,6 +232,8 @@ function CrmPanel({ entityId, leads, opportunities, onChanged, setError }) {
     <form onSubmit={submit} className="responsive-form-grid" style={formPanel} data-testid="crm-lead-form">
       <FormField label="Student name" value={form.student_name} onChange={value => setForm(row => ({ ...row, student_name: value }))} required />
       <FormField label="Parent / guardian" value={form.parent_name} onChange={value => setForm(row => ({ ...row, parent_name: value }))} />
+      <FormField label="Mother's name" value={form.mother_name} onChange={value => setForm(row => ({ ...row, mother_name: value }))} />
+      <FormField label="Father's name" value={form.father_name} onChange={value => setForm(row => ({ ...row, father_name: value }))} />
       <FormField label="Phone" value={form.phone} onChange={value => setForm(row => ({ ...row, phone: value }))} />
       <FormField label="Email" type="email" value={form.email} onChange={value => setForm(row => ({ ...row, email: value }))} />
       <FormField label="Class applying" value={form.class_applying} onChange={value => setForm(row => ({ ...row, class_applying: value }))} />
@@ -182,7 +248,12 @@ function CrmPanel({ entityId, leads, opportunities, onChanged, setError }) {
       rows={leads.map(lead => [lead.student_name, lead.phone || lead.email || '-', lead.class_applying || '-',
         `${Math.max(0, Math.floor((Date.now() - new Date(lead.created_at || Date.now()).getTime()) / 86400000))}d`, money(lead.estimated_value_paise), lead.next_follow_up || '-',
         <select aria-label={`Change stage for ${lead.student_name}`} value={lead.status || 'new'} onChange={event => changeStatus(lead, event.target.value)} style={smallSelect}>
-          {['new', 'contacted', 'visit_scheduled', 'visited', 'documents_submitted', 'fee_paid', 'enrolled', 'lost'].map(value => <option key={value}>{value}</option>)}
+          {/* A2: "enrolled" is not on this list. A lead already enrolled still shows it,
+              greyed out, because hiding the stage a lead is actually in would be a
+              different lie from the one we are fixing. */}
+          {PICKABLE_LEAD_STAGES.map(value => <option key={value}>{value}</option>)}
+          {!PICKABLE_LEAD_STAGES.includes(lead.status || 'new')
+            && <option key={lead.status} disabled>{lead.status}</option>}
         </select>, <button type="button" style={linkButton} onClick={() => setSelectedLeadId(lead.id)}>Activity & opportunity</button>])} emptyMsg="No CRM leads for this entity" />
     {selectedLead && <div className="responsive-form-grid" style={twoPanels} data-testid="crm-detail-workspace">
       <form onSubmit={addActivity} style={formPanel}>
@@ -200,8 +271,10 @@ function CrmPanel({ entityId, leads, opportunities, onChanged, setError }) {
         <FormField label="Amount (₹)" type="number" value={opportunity.amount} onChange={value => setOpportunity(row => ({ ...row, amount: value }))} required />
         <FormField label="Probability %" type="number" value={opportunity.probability} onChange={value => setOpportunity(row => ({ ...row, probability: value }))} />
         <FormField label="Expected close" type="date" value={opportunity.expected_close_date} onChange={value => setOpportunity(row => ({ ...row, expected_close_date: value }))} />
-        <FormField label="Application ID" value={conversion.application_id} onChange={value => setConversion(row => ({ ...row, application_id: value }))} />
-        <FormField label="Student ID" value={conversion.student_id} onChange={value => setConversion(row => ({ ...row, student_id: value }))} />
+        {/* A2: the "Application ID" and "Student ID" boxes that stood here are gone.
+            They were never sent with the opportunity; their only use was the hand-made
+            enrolment this item removes, so they had become two boxes a person could
+            type into that did nothing at all. */}
         <ActionBtn label="Add opportunity" type="submit" />
       </form>
     </div>}

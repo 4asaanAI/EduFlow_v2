@@ -38,6 +38,22 @@ class EnquiryConflictError(Exception):
     """Reverting an enrolled enquiry with a linked student record → HTTP 409."""
 
 
+# A2: `enrolled` is NOT a stage anybody picks. It appears on an enquiry only when that
+# family's admission application creates the child record, which `enroll_application`
+# does in one transaction and writes to the enquiry itself. Before this, `fee_paid` to
+# `enrolled` was an ordinary move with no check that a child existed, so the funnel could
+# report an enrolment that had never happened and nobody looking could tell the
+# difference. `enrolled` stays a key here because enquiries are already in that state.
+ENROLLED = "enrolled"
+
+# The one refusal, said the same way wherever a person tries it: a screen, the REST API,
+# the CRM lead route, or Flo.
+ENROLLED_IS_NOT_A_CHOICE = (
+    "An enquiry cannot be moved to enrolled by hand. A family becomes enrolled when "
+    "their admission application creates the child's record. Start an application for "
+    "this enquiry and enrol from there."
+)
+
 # Aligned with frontend pipeline stages (+ legacy backward-compat stages).
 ALLOWED_TRANSITIONS = {
     "new": {"contacted", "lost"},
@@ -45,15 +61,34 @@ ALLOWED_TRANSITIONS = {
     "visit_scheduled": {"visited", "lost"},
     "visited": {"documents_submitted", "lost"},
     "documents_submitted": {"fee_paid", "lost"},
-    "fee_paid": {"enrolled", "lost"},
+    "fee_paid": {"lost"},
     "enrolled": {"lost"},
     "lost": set(),
-    "applied": {"admitted", "enrolled", "lost"},
-    "admitted": {"enrolled", "lost"},
+    "applied": {"admitted", "lost"},
+    "admitted": {"lost"},
     "closed": set(),
 }
 
-_MUTABLE_FIELDS = {"status", "assigned_to", "source", "class_applying", "phone", "parent_name"}
+# A3. The school's own admission form asks for the mother and the father separately, and
+# their records fill both in on essentially every enquiry. The platform held ONE
+# `parent_name`, so starting an application carried one of the two parents across with no
+# way to tell which. It also asks for the child's date of birth, gender and previous
+# school at enquiry time, all of which were then retyped onto the application.
+#
+# `parent_name` STAYS. It is the contact the office deals with, it is what messaging and
+# every export already read, and 102 existing records carry it. The new fields sit
+# alongside it rather than replacing it.
+#
+# Deliberately NOT added: Aadhaar, religion, category and family income. They are on the
+# paper form and are effectively never filled in, and storing them is a decision about a
+# duty of care, not a form-matching exercise. See
+# `_bmad-output/implementation-artifacts/admissions-funnel/the-schools-own-admission-form-2026-08-14.md`.
+FAMILY_FIELDS = ("mother_name", "father_name", "dob", "gender", "previous_school")
+
+_MUTABLE_FIELDS = {
+    "status", "assigned_to", "source", "class_applying", "phone", "parent_name",
+    *FAMILY_FIELDS,
+}
 
 
 def _session_kwargs(session) -> dict:
@@ -62,7 +97,11 @@ def _session_kwargs(session) -> dict:
 
 async def create_enquiry(db, actor_ctx: ActorContext, params: dict, *, session=None,
                          extra_fields: dict | None = None) -> dict:
-    """Create an admission enquiry. params: {student_name, parent_name?, phone?, class_applying?, source?}"""
+    """Create an admission enquiry.
+
+    params: {student_name, parent_name?, phone?, class_applying?, source?,
+             mother_name?, father_name?, dob?, gender?, previous_school?}
+    """
     if not params.get("student_name"):
         raise EnquiryValidationError("student_name is required")
     enquiry = {
@@ -75,6 +114,10 @@ async def create_enquiry(db, actor_ctx: ActorContext, params: dict, *, session=N
         "class_applying": params.get("class_applying", ""),
         "status": "new",
         "source": params.get("source", "walk_in"),
+        # A3. Stored as None when not given rather than left off the document, so a
+        # record that was never asked for the mother's name looks different from a
+        # record written before these fields existed.
+        **{field: params.get(field) or None for field in FAMILY_FIELDS},
         "assigned_to": actor_ctx.user_id,
         "created_at": actor_ctx.now_iso(),
         **(extra_fields or {}),
@@ -119,6 +162,11 @@ async def update_enquiry(db, actor_ctx: ActorContext, params: dict, *, session=N
     new_status = update.get("status")
     if new_status and new_status != existing.get("status"):
         current = existing.get("status", "new")
+        # A2. This sits ABOVE the owner branch on purpose. The owner may move an enquiry
+        # anywhere else, but not here: an enrolment is a child on the roll, and no role
+        # gets to assert one by typing.
+        if new_status == ENROLLED:
+            raise EnquiryValidationError(ENROLLED_IS_NOT_A_CHOICE)
         # EC-11.2: owner moves stages freely, except reverting an enrolled enquiry
         # that already has a linked student record.
         if actor_ctx.role == "owner":

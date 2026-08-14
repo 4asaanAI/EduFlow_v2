@@ -104,7 +104,9 @@ export const PROFILE_MATRIX = {
       "add_transport_vehicle",
       "create_transport_route",
       "delete_transport_route",
+      "enroll_admission_application",
       "get_transport_status",
+      "issue_admission_offer",
       "update_transport_route"
     ],
     "extraTools": [],
@@ -114,7 +116,7 @@ export const PROFILE_MATRIX = {
     "screens": [
       "academic-structure",
       "academics-activities-hub",
-      "admission-funnel",
+      "admissions",
       "admissions-communication-hub",
       "announcement-broadcaster",
       "asset-custody",
@@ -129,7 +131,6 @@ export const PROFILE_MATRIX = {
       "custom-form-builder",
       "data-import",
       "document-scanner",
-      "enquiry-register",
       "exam-manager",
       "facility-requests",
       "governance-ai-hub",
@@ -219,9 +220,9 @@ export const PROFILE_MATRIX = {
     "mayWrite": false,
     "person": null,
     "screens": [
+      "admissions",
       "asset-tracker",
       "custom-form-builder",
-      "enquiry-register",
       "incident-tracker",
       "parent-message",
       "raise-maintenance",

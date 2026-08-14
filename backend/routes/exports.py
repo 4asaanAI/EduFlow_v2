@@ -99,7 +99,9 @@ EXPORT_SCREENS = {
     "staff": ("student-database", "staff-tracker"),
     "fee-transactions": ("fee-collection", "fee-tracker", "financial-reports"),
     "expenses": ("expense-tracker",),
-    "enquiries": ("enquiry-register", "admission-funnel"),
+    # A4: the two screens merged into "admissions". Nobody's export reach moves:
+    # every profile that held either old entry holds the merged one.
+    "enquiries": ("admissions",),
     "attendance": ("attendance-overview", "attendance-recorder"),
     "exam-results": ("exam-manager",),
     # Added with the whole-school workbook (Release 3). Both data sets already had a

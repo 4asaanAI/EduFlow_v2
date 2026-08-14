@@ -29,7 +29,7 @@ const ALL_TOOLS = [
   { id: 'announcement-broadcaster', name: 'Announcements',       subtitle: 'Broadcast messages',       icon: Megaphone,     roles: ['owner'] },
   { id: 'smart-fee-defaulter',    name: 'Fee Defaulters',        subtitle: 'Smart reminders via SMS',  icon: Bell,          roles: ['owner','admin'] },
   { id: 'admission-pipeline',     name: 'Admission Pipeline',    subtitle: 'Track conversions',        icon: Target,        roles: ['owner','admin'] },
-  { id: 'enquiry-register',       name: 'Enquiry Register',      subtitle: 'Admission leads',          icon: UserPlus,      roles: ['owner','admin'] },
+  { id: 'admissions',             name: 'Admissions',            subtitle: 'Enquiries and applications', icon: UserPlus,    roles: ['owner','admin'] },
   { id: 'incident-tracker',       name: 'Incidents & Visitors',  subtitle: 'Log & track incidents',    icon: AlertTriangle, roles: ['owner','admin'] },
   { id: 'transport-manager',      name: 'Transport',             subtitle: 'Routes & buses',           icon: Truck,         roles: ['owner','admin'] },
   { id: 'facility-requests',      name: 'Facility Requests',     subtitle: 'Maintenance queue',        icon: Wrench,        roles: ['owner','admin'] },

@@ -845,19 +845,28 @@ TOOL_CREATE_ENQUIRY = {
     "description": "Log a new admission enquiry or lead. Write action - requires confirmation.",
     "params_schema": {
         "student_name": "required - prospective student full name",
-        "parent_name": "optional - parent or guardian name",
+        "parent_name": "optional - the parent or guardian the office deals with",
         "phone": "optional - contact phone number",
         "class_applying": "optional - e.g. 'Class 5', 'LKG'",
         "source": "optional - walk_in | referral | online | phone (default: walk_in)",
+        "mother_name": "optional - the mother's name",
+        "father_name": "optional - the father's name",
+        "dob": "optional - the child's date of birth, YYYY-MM-DD",
+        "gender": "optional - male | female | other",
+        "previous_school": "optional - the school the child attends now",
         "notes": "optional - any additional notes",
     },
 }
 TOOL_UPDATE_ENQUIRY_STATUS = {
     "name": "update_enquiry_status",
-    "description": "Advance an admission enquiry through pipeline stages. Write action - requires confirmation.",
+    "description": (
+        "Advance an admission enquiry through pipeline stages. Write action - requires "
+        "confirmation. 'enrolled' is NOT a stage you can set: a family becomes enrolled "
+        "only when their admission application creates the child's record."
+    ),
     "params_schema": {
         "enquiry_id": "required - enquiry ID (use get_enquiries to find IDs)",
-        "status": "required - new | contacted | visit_scheduled | visited | documents_submitted | fee_paid | enrolled | lost",
+        "status": "required - new | contacted | visit_scheduled | visited | documents_submitted | fee_paid | lost",
         "notes": "optional - notes about this stage",
         "assigned_to": "optional - staff to assign",
     },
@@ -1415,7 +1424,7 @@ NAVIGATE_PANELS = [
     "staff-leave-manager",
     "staff-performance",
     "announcements",
-    "enquiry-register",
+    "admissions",
     "admission-pipeline",
     "class-list",
     "transport-manager",
@@ -1518,6 +1527,8 @@ TRANSPORT & INVENTORY:
 ENTERPRISE SCHOOL WORKFLOWS:
 - Admissions funnel: use get_admissions_pipeline
 - Create or advance admissions CRM leads: use create_crm_lead or update_crm_lead. Confirm before writing.
+- The second half of the funnel, from application to a child on the roll: create_admission_application (it can carry an enquiry's family across with enquiry_id), then update_admission_application_status, record_admission_assessment and issue_admission_offer. A family becomes ENROLLED only through enroll_admission_application, which creates the child's record and asks for confirmation first. Nobody sets "enrolled" by hand on an enquiry or an application.
+- Who is owed a follow-up call: the "who to call" list on the Admissions screen reads the next_follow_up date. Set one by adding a CRM activity with next_follow_up in YYYY-MM-DD form; without a date on the record nobody is scheduled to call that family at all.
 - Resources, asset custody, procurement, inventory ledger, library circulation and student leave: use get_enterprise_operations
 - Accounting periods, fee schedule versions and payroll status: use get_finance_controls
 - Admission leads and legal-entity reporting (the "Legal Entities & Admissions" screen): use get_commercial_operations

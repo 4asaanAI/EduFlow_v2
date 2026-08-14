@@ -105,6 +105,12 @@ def test_the_confirm_set_did_not_grow_to_accommodate_them():
         # tool that sends anything out of the school, and the confirm card is how a
         # person tells "Flo helped me" from "Flo told my supplier what I was doing".
         "report_platform_problem",
+        # A6, 2026-08-14. The set grew by one again, and again the Release 2 concern is
+        # unharmed. `enroll_admission_application` is not an ordinary school write made
+        # to feel safer: it is the one write that brings a person into existence, and
+        # nothing takes it back. The other four admissions tools added in the same run
+        # are ordinary single-record writes and are deliberately NOT here.
+        "enroll_admission_application",
     }
 
 
