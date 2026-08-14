@@ -100,3 +100,45 @@ Not touched, and each needs a decision rather than a guess. Put in front of Abhi
   receipt. Genuine ERP machinery. Whether the school buys this way is a question for them.
 - **The word "commercial" itself.** With the shop gone, that screen is admission enquiries
   and legal entities. Naming it Commercial Operations now describes nothing it does.
+
+---
+
+## A second sweep found five leftovers, after the first pass looked done
+
+Abhimanyu asked directly whether it had been removed everywhere including the frontend and
+Flo's knowledge. **The honest answer was no**, and asking was worth it. The first pass took
+out the routes, the service, the tools and the screen, and left five things behind:
+
+1. **The sidebar still advertised it, in words, on two profiles.** Commercial Operations was
+   subtitled "CRM, entities & campus sales" in both the owner's and the admin's menus. **The
+   only user-visible leftover**, and the sort of thing that survives because the removal
+   happened in a different file. Now "Admissions CRM & legal entities".
+2. **Flo still carried the six dead tools in its required-parameter map** (`routes/chat.py`).
+   Harmless in itself, since the tools were gone from the registry, but it is exactly the
+   half-removed state that makes somebody later think a feature still exists.
+3. **Flo's own wording on `delete_legal_entity`** told a person an entity is blocked while an
+   "enquiry, product or till shift is booked to it". Two thirds of that sentence described
+   things the platform no longer has, and Flo would have said it out loud.
+4. **Eight database indexes** for the shop collections. Nothing writes to them any more.
+5. **The reason the front desk is kept out of Commercial Operations was written in terms of
+   the till**, which no longer exists. See below, because this one is not cosmetic.
+
+## The consequence nobody would have derived: Release 4 (access) just lost its largest item
+
+Release 4 (access) lists **"Split Commercial Operations"** as its biggest single piece of
+work. The reason was decision 4: the front desk runs the shop counter, so she should get the
+till and nothing else, and the screen had to be split first because giving her the whole
+thing would hand the front desk the school's legal-entity records.
+
+**There is no till. That work is no longer needed at all.** What is left on the screen is the
+admissions CRM and the legal entities, and neither is front-desk work, so she holds none of
+it for a simpler reason and no split is required to keep it that way.
+
+This is recorded here and in `profile_matrix.py` rather than left for somebody to trip over,
+because the plan still reads as though the largest item in the next release is outstanding.
+
+## Gate after the second sweep
+
+Backend **3,676 passed / 0 failed**. Frontend **793 passed / 0 failed**. Build and lint
+clean. The generated permission mirror regenerated to **no change**, which is the proof that
+none of this moved anybody's access.

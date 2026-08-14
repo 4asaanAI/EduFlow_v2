@@ -357,12 +357,20 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
             # Student Transfer is how a Transfer Certificate is issued, and ending a
             # child's enrolment is not a front-desk decision.
             #
-            # Commercial Operations is more nuanced: the front desk DOES run the shop
-            # counter, so she is to get the till and nothing else. The screen is one
-            # screen today, covering the till, the school's legal entities and the
-            # commercial reporting, so it has to be split before she can hold half of
-            # it. Until then she holds none of it. Giving her the whole screen to reach
-            # the till would hand the front desk the school's legal-entity records.
+            # Commercial Operations: she holds none of it, and the REASON changed on
+            # 2026-08-14 in a way worth reading rather than skimming.
+            #
+            # It used to read: the front desk runs the shop counter, so she is to get the
+            # till and nothing else, and the screen must be split before she can hold half
+            # of it. **That reasoning is dead. There is no till.** Campus retail was
+            # removed because The Aaryans runs no shop and the canteen is an outside
+            # vendor renting space.
+            #
+            # So she holds none of this screen for a simpler reason: what is left on it is
+            # the admissions CRM and the school's legal-entity records, and neither is
+            # front-desk work. **The split that Release 4 (access) listed as its largest
+            # item is no longer needed at all** - it existed only to separate the till from
+            # the legal entities.
             "asset-tracker",
             "incident-tracker",
             "raise-maintenance",

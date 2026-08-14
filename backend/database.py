@@ -522,28 +522,16 @@ async def _create_indexes():
     # weaker, not stronger, and rebuilding a live unique index buys nothing.
     await db.crm_contact_keys.create_index("contact_hash", unique=True)
     await db.crm_opportunities.create_index([("entity_id", 1), ("stage", 1), ("updated_at", -1)])
-    await db.commercial_products.create_index(
-        [("schoolId", 1), ("branch_id", 1), ("entity_id", 1), ("sku", 1)], unique=True
-    )
-    await db.pos_shifts.create_index([("entity_id", 1), ("cashier_id", 1), ("status", 1)])
-    await db.pos_shifts.create_index(
-        [("schoolId", 1), ("branch_id", 1), ("entity_id", 1), ("cashier_id", 1)],
-        name="uniq_open_pos_shift", unique=True,
-        partialFilterExpression={"status": "open"},
-    )
-    await db.retail_sales.create_index(
-        [("schoolId", 1), ("branch_id", 1), ("entity_id", 1), ("receipt_number", 1)], unique=True
-    )
-    await db.retail_returns.create_index(
-        [("schoolId", 1), ("branch_id", 1), ("entity_id", 1), ("return_number", 1)], unique=True
-    )
-    await db.retail_returns.create_index([("sale_id", 1), ("status", 1)])
-    await db.retail_idempotency.create_index(
-        [("schoolId", 1), ("branch_id", 1), ("key", 1)], unique=True
-    )
-    await db.retail_return_idempotency.create_index(
-        [("schoolId", 1), ("branch_id", 1), ("key", 1)], unique=True
-    )
+    # Eight campus-retail indexes stood here until 2026-08-14 and went with the feature:
+    # commercial_products, pos_shifts (x2), retail_sales, retail_returns (x2) and the two
+    # retail idempotency collections. Nothing writes to those collections any more, so an
+    # index on them buys nothing.
+    #
+    # Note for anyone tidying further: whatever rows those collections already hold are
+    # NOT deleted, and any indexes already built on the live database are NOT dropped by
+    # removing these lines. This function does not run in production at all (see
+    # CREATE_INDEXES_ON_STARTUP below). Dropping a live index would be its own deliberate
+    # migration, and nobody has asked for one.
     await db.salary_disbursement_corrections.create_index(
         [("disbursement_id", 1), ("revision", 1)], unique=True
     )

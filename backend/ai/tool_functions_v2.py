@@ -7184,7 +7184,7 @@ TOOL_REGISTRY = {
         "description": (
             "Permanently delete a legal entity. Destructive - requires a second "
             "confirmation. Blocked while it is the operating default or while any sale, "
-            "enquiry, product or till shift is booked to it."
+            "enquiry is booked to it."
         ),
         "dispatch_type": "write",
         "requires_confirmation": True,
