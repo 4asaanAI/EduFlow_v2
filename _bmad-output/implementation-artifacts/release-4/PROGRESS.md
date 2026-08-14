@@ -670,3 +670,45 @@ and it is the one that works.
 **All four Release 4 leftovers are now closed:** ticket email works and was seen in a real
 inbox, the dead Resend sender is removed and deployed, `stat.layaa.ai` is live and serving
 over a valid certificate, and the secret rotation is dropped by decision.
+
+### 2026-08-14 (evening) - are messages in the audit trail? Asked, checked, two gaps found
+
+Abhimanyu asked whether messages are recorded in the audit trail, both the ones sent to
+families and the ones staff send each other. **Nothing was changed. This is a finding.**
+
+**The answer as designed.** Decision 13 says a write that IS the record is not copied into
+the audit trail, and what must still be recorded is anything that CHANGES or REMOVES that
+record. So:
+
+| | Recorded? |
+|---|---|
+| A staff message being sent | No, on purpose. The message row is the record. |
+| A staff message being EDITED | Yes, `message_edit`. |
+| Changing who is in a group | Yes, `message_thread_update`. |
+| A parent message batch being sent | Yes, `send_parent_message` in `messaging_service.py`. |
+| Creating or changing a message template | Yes. |
+| Fee reminders and bulk sends through `routes/sms.py` | No. `routes/sms.py` is on the excused list. |
+
+**Gap 1: deleting a staff message is not recorded, while editing the same message is.**
+`DELETE /api/messaging/messages/{id}` blanks the text and stamps `deleted_at`, and writes
+nothing to the audit trail. The only two audit actions in the whole file are the edit and
+the group-membership change. That contradicts the rule written into
+`services/audit_coverage.py`: a removal is exactly the part the existing record cannot tell
+you about itself. The message row survives with an empty body, so the fact of a deletion is
+not lost, but **who deleted it and when is nowhere in the school's history.**
+
+**Gap 2: "the SMS log IS the record" holds for ninety days, and the audit trail holds two
+years.** `routes/sms.py` is excused because every send writes an SMS log row. That row is
+on a ninety-day expiry (`database.py`, `sms_logs`, `expireAfterSeconds=7776000`). So a fee
+reminder sent to a family stops being answerable after three months, while every other
+recorded change is answerable for two years. The excuse is sound in shape and wrong in
+duration, and nobody noticed because the two numbers live in different files.
+
+**Not verified, and do not assume either way:** whether that ninety-day expiry is actually
+running on the live system. Index creation is deliberately switched off in production
+(`CREATE_INDEXES_ON_STARTUP`), so indexes only reach the live database through a migration.
+If the expiry never landed, the reminders are still there and the gap is theoretical. If it
+did, three months of history is already gone. **Check before deciding anything.**
+
+Neither gap is urgent and neither was fixed. Both are recorded here so the next person does
+not have to find them again.
