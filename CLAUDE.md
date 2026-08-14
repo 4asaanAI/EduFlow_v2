@@ -52,6 +52,43 @@
 > `_bmad-output/planning-artifacts/inspection-findings-2026-08-04.md`.
 > Logs in `_bmad-output/implementation-artifacts/inspection-2026-08-04/`.
 
+> ## ✅ SHIPPED - Admissions stage one: the two halves of the funnel are joined (deployed 2026-08-14)
+>
+> **LIVE.** A1 to A6 went out together on 2026-08-14 as `52dc341`. Backend
+> `eduflow-admissions-20260814-52dc341`, frontend Amplify job 158. **Rollback target:
+> `eduflow-noshop-20260814-484135d`.** Proven live rather than assumed: the new
+> `/api/commercial/crm/follow-ups` answers 401 while a route that does not exist answers
+> 404 from the same server.
+>
+> **Start here:** `_bmad-output/implementation-artifacts/admissions-funnel/PROGRESS.md`
+> is the ONLY record of what is done. The plan is
+> `_bmad-output/planning-artifacts/admissions-funnel-end-to-end-2026-08-14.md`, and its
+> Part 1 decisions are Abhimanyu's and are settled.
+>
+> **The one idea.** The platform had two carefully built halves of the admissions journey
+> and nothing joining them, so **the funnel could report a child as enrolled when no child
+> existed**. The test for every item: can a person tell "this child joined the school" from
+> "somebody moved a row to the last column"?
+>
+> **Six things you will trip over if you do not know them:**
+>
+> - **Enrolment has exactly ONE source, `enroll_application`.** `enrolled` was removed as a
+>   choice from every path including the owner's, and from Flo. Do not put it back.
+> - **`admission` is NOT a sub-category this platform recognises.** It is named in
+>   `_can_enroll` and in the CRM gate and can never be true. **There is no admissions desk
+>   profile.** Do not invent one and do not write a gate that depends on it.
+> - **`sub_categories` on a registry entry does NOT refuse the management head.**
+>   `profile_authorization_decision` ignores it for the domain profiles by design. The
+>   mechanism that works is `denied_tools` in `profile_matrix.py`, where a denial wins.
+>   Without it, Flo would have let him enrol a child the server refuses him.
+> - **TWO generated mirrors, never hand-edited**, each with a drift test:
+>   `profileMatrix.generated.js` and `admissionsJourney.generated.js`.
+> - **TWO different pinned count tests.** `EXPECTED_REACH` counts Flo TOOLS;
+>   `ProfileMenuSweep.test.js` counts SCREENS. They are not the same thing.
+> - **Stage two (B1 to B4: entrance tests as records, the paper, marking, enquiry families
+>   as a messaging audience) is NOT built.** Part 4 of the plan, whether an applicant may
+>   have a sign-in to sit a test on screen, is an open question and is not settled.
+>
 > ## ✅ SHIPPED - Release 4: the platform can account for itself (deployed 2026-08-13)
 >
 > **LIVE.** All six parts went out together on 2026-08-13. Backend

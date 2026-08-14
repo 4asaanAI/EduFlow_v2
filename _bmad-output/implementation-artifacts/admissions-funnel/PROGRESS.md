@@ -7,15 +7,26 @@ Plan: `_bmad-output/planning-artifacts/admissions-funnel-end-to-end-2026-08-14.m
 
 | Item | State |
 |---|---|
-| A1 Start an application from an enquiry | DONE 2026-08-14, green, not deployed |
-| A2 The enrolled stage comes off the list | DONE 2026-08-14, green, not deployed |
-| A3 The stages, said once, **plus mother and father, date of birth, gender and previous school on the enquiry** (Abhimanyu, 2026-08-14) | DONE 2026-08-14, green, not deployed |
-| A4 One admissions screen | DONE 2026-08-14, green, not deployed |
-| A5 Who to call today | DONE 2026-08-14, green, not deployed |
-| A6 Flo can work the second half | DONE 2026-08-14, green, not deployed |
+| A1 Start an application from an enquiry | SHIPPED 2026-08-14 |
+| A2 The enrolled stage comes off the list | SHIPPED 2026-08-14 |
+| A3 The stages, said once, **plus mother and father, date of birth, gender and previous school on the enquiry** (Abhimanyu, 2026-08-14) | SHIPPED 2026-08-14 |
+| A4 One admissions screen | SHIPPED 2026-08-14 |
+| A5 Who to call today | SHIPPED 2026-08-14 |
+| A6 Flo can work the second half | SHIPPED 2026-08-14 |
 | B1 to B4 (stage two) | not to be started yet |
 
-Nothing here has been deployed. No live school database was read or touched.
+## Deployed 2026-08-14, on Abhimanyu's instruction
+
+All six went out together as commit `52dc341`.
+
+- **Backend:** `eduflow-admissions-20260814-52dc341`, environment Ready and Green.
+- **Frontend:** Amplify job 158, SUCCEED, on the same commit.
+- **Rollback target: `eduflow-noshop-20260814-484135d`.**
+- **Proven live, not assumed.** The new follow-up route answers 401 while a route that
+  does not exist answers 404 from the same server, which is the difference between "the
+  new code is there and still guarded" and "the deploy did not land".
+
+No live school database was read or modified. No migration was run.
 
 ## The machine's baseline, read before starting
 
@@ -335,7 +346,7 @@ exist), `tests/backend/parity/admissions_parity_test.py` (new, 12 tests),
 **Gate for A5 and A6 together.** Backend 3,733 passed / 1 failed (the machine's
 `uharfbuzz` one, unchanged from the baseline of 3,709 before this run). Frontend 806
 passed across 68 suites. Lint and production build clean. No live school database was read
-or touched. Nothing is deployed.
+or touched. Deployed the same day; see the deploy block at the top of this file.
 
 ## Noticed while reading, not fixed, not in A1's scope
 
