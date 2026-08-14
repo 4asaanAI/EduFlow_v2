@@ -69,10 +69,14 @@ test('the enquiries tab shows one position per family, and both parents', async 
   expect(screen.getByText('Mother One and Father One')).toBeInTheDocument();
 });
 
-test('there is no Tests tab yet, because entrance tests are not built', async () => {
-  // Asserted rather than left to absence. A tab that opened onto nothing would be a
-  // button that looks like a feature, which is the exact fault this work removes.
+test('the Tests tab is here now, and it opens onto a real screen', async () => {
+  // This test asserted the OPPOSITE until 2026-08-15, and the reason it existed still
+  // holds: a tab that opens onto nothing is a button that looks like a feature. B1 built
+  // entrance tests as real records, so the assertion flips rather than being deleted. If
+  // the tab is ever added back before its screen exists, this fails on the empty panel
+  // instead of passing on the tab alone.
   render(<Admissions />);
-  await waitFor(() => expect(screen.getByRole('tab', { name: 'Enquiries' })).toBeInTheDocument());
-  expect(screen.queryByRole('tab', { name: /test/i })).not.toBeInTheDocument();
+  fireEvent.click(await screen.findByRole('tab', { name: 'Tests' }));
+  expect(await screen.findByRole('region', { name: 'Entrance tests' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Test/ })).toBeInTheDocument();
 });

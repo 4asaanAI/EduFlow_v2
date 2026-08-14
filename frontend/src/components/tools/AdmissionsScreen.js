@@ -4,6 +4,7 @@ import { ToolPage } from './ToolPage';
 import { EnquiriesPanel } from './AdminTools';
 import { AdmissionsPipelinePanel } from './CommercialOperations';
 import AdmissionsWorkflow from './AdmissionsWorkflow';
+import AdmissionTests from './AdmissionTests';
 
 /**
  * A4: one admissions screen.
@@ -25,9 +26,10 @@ import AdmissionsWorkflow from './AdmissionsWorkflow';
  * read-only funnel counts are the header of the enquiries tab, which is the same
  * figures with the ability to act on them.
  *
- * There is deliberately no "Tests" tab yet. Entrance tests are stage two of this work
- * and are not built. A tab that opened onto nothing would be exactly the fault this
- * release exists to remove: a button that looks like a feature.
+ * The Tests tab was deliberately ABSENT until 2026-08-15, and there was a test asserting
+ * its absence, because a tab opening onto nothing is exactly the fault this work removes:
+ * a button that looks like a feature. B1 built the thing, so the tab is real now and that
+ * test was flipped to assert it works rather than deleted.
  */
 export function Admissions() {
   const { currentUser } = useUser();
@@ -43,6 +45,11 @@ export function Admissions() {
   const availableTabs = [
     ['enquiries', 'Enquiries'],
     ['applications', 'Applications'],
+    // B1. Everybody who reaches this screen reaches Tests, because the routes behind it
+    // carry the same gate the assessment route has always had. Grouping still grants
+    // nothing: a desk that could record one child's score can now record the same scores
+    // from a list.
+    ['tests', 'Tests'],
     ...(maySeePipeline ? [['pipeline', 'Pipeline value']] : []),
   ];
 
@@ -60,6 +67,7 @@ export function Admissions() {
         <EnquiriesPanel onStarted={() => setApplicationsKey(key => key + 1)} />
       )}
       {tab === 'applications' && <AdmissionsWorkflow reloadKey={applicationsKey} />}
+      {tab === 'tests' && <AdmissionTests />}
       {tab === 'pipeline' && maySeePipeline && <AdmissionsPipelinePanel setError={setError} />}
     </ToolPage>
   );

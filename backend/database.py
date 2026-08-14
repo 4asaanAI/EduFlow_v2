@@ -476,6 +476,15 @@ async def _create_indexes():
     await db.admission_applications.create_index(
         [("schoolId", 1), ("enquiry_id", 1)], unique=True, sparse=True
     )
+    # B1, 2026-08-15: entrance tests as records. The list for a given day is the query the
+    # office actually runs, so it is the index.
+    await db.admission_tests.create_index([("branch_id", 1), ("scheduled_for", -1)])
+    await db.admission_test_seats.create_index([("branch_id", 1), ("test_id", 1)])
+    # One seat per applicant per test, enforced by the database and not only by the check
+    # in the service, so a double submit cannot put a child on the same list twice.
+    await db.admission_test_seats.create_index(
+        [("schoolId", 1), ("test_id", 1), ("application_id", 1)], unique=True
+    )
     await db.student_leave_requests.create_index(
         [("student_id", 1), ("start_date", 1), ("end_date", 1), ("status", 1)]
     )

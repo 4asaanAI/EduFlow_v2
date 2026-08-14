@@ -55,6 +55,9 @@ RECORDS = {
     "services/payroll_service.py", "services/platform_ticket_service.py",
     "services/academic_structure_service.py", "services/account_management_service.py",
     "services/accounting_period_service.py", "services/admission_charge_service.py",
+    # B1, 2026-08-15. All five writes audit: creating a test, changing it, seating
+    # applicants, taking somebody off the list, and marking attendance or a score.
+    "services/admission_test_service.py",
     "services/admissions_service.py", "services/announcement_service.py",
     "services/approvals_service.py", "services/asset_service.py",
     "services/attendance_correction_service.py", "services/attendance_service.py",

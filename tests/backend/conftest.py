@@ -664,6 +664,9 @@ class FakeDb:
         self.quiz_attempts = FakeCollection()
         self.enquiries = FakeCollection()
         self.admission_applications = FakeCollection()
+        # B1, 2026-08-15: an entrance test is a record now, with a list of who sits it.
+        self.admission_tests = FakeCollection()
+        self.admission_test_seats = FakeCollection()
         self.student_leave_policies = FakeCollection()
         self.student_leave_requests = FakeCollection()
         self.student_leave_days = FakeCollection()

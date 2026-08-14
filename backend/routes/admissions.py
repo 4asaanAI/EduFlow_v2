@@ -8,6 +8,15 @@ from database import get_db, get_txn_session
 from middleware.auth import require_role
 from services.actor_context import actor_ctx_from_user
 from services.admissions_journey import describe_position
+from services.admission_test_service import (
+    create_test as svc_create_test,
+    get_test as svc_get_test,
+    list_tests as svc_list_tests,
+    mark_seat as svc_mark_seat,
+    remove_seat as svc_remove_seat,
+    seat_applicants as svc_seat_applicants,
+    update_test as svc_update_test,
+)
 from services.admissions_service import (
     AdmissionConflictError,
     AdmissionNotFoundError,
@@ -43,6 +52,93 @@ def _can_enroll(user: dict) -> bool:
     return user.get("role") == "owner" or (
         user.get("role") == "admin" and user.get("sub_category") in {"principal", "admission"}
     )
+
+
+# ───────────────────────────── B1: entrance tests ─────────────────────────────
+#
+# All of these carry `require_role("owner", "admin")`, which is **exactly the gate the
+# assessment route below has always had**. Running the test list and entering the marks
+# from it are the same job, and this grants nobody anything they did not already have: a
+# desk that could record a score one child at a time can now record the same scores from a
+# list. Issuing an offer and enrolling stay narrower, on `_can_enroll`, untouched.
+#
+# `/tests` is declared before `/applications/{application_id}` in this module, but the two
+# cannot collide: they sit under different path segments.
+
+
+@router.get("/tests")
+async def list_admission_tests(request: Request, status: str | None = None,
+                               user: dict = Depends(require_role("owner", "admin"))):
+    data = await svc_list_tests(get_db(), _actor(user), {"status": status})
+    return {"success": True, "data": data["tests"], "meta": {"count": data["count"]}}
+
+
+@router.post("/tests")
+async def post_admission_test(request: Request,
+                              user: dict = Depends(require_role("owner", "admin"))):
+    try:
+        row = await svc_create_test(get_db(), _actor(user), await request.json())
+    except (AdmissionValidationError, AdmissionNotFoundError, AdmissionConflictError) as exc:
+        raise _map_error(exc)
+    return {"success": True, "data": row}
+
+
+@router.get("/tests/{test_id}")
+async def get_admission_test(test_id: str, request: Request,
+                             user: dict = Depends(require_role("owner", "admin"))):
+    """The list for a given test: who is sitting it, who turned up, and who is marked."""
+    try:
+        data = await svc_get_test(get_db(), _actor(user), test_id)
+    except (AdmissionValidationError, AdmissionNotFoundError, AdmissionConflictError) as exc:
+        raise _map_error(exc)
+    return {"success": True, "data": data, "meta": data["counts"]}
+
+
+@router.patch("/tests/{test_id}")
+async def patch_admission_test(test_id: str, request: Request,
+                               user: dict = Depends(require_role("owner", "admin"))):
+    try:
+        row = await svc_update_test(get_db(), _actor(user), test_id, await request.json())
+    except (AdmissionValidationError, AdmissionNotFoundError, AdmissionConflictError) as exc:
+        raise _map_error(exc)
+    return {"success": True, "data": row}
+
+
+@router.post("/tests/{test_id}/seats")
+async def post_admission_test_seats(test_id: str, request: Request,
+                                    user: dict = Depends(require_role("owner", "admin"))):
+    """Put applicants on a test. Returns who was seated AND who was refused, with reasons."""
+    try:
+        data = await svc_seat_applicants(get_db(), _actor(user), test_id, await request.json())
+    except (AdmissionValidationError, AdmissionNotFoundError, AdmissionConflictError) as exc:
+        raise _map_error(exc)
+    return {"success": True, "data": data, "meta": data["counts"]}
+
+
+@router.patch("/tests/{test_id}/seats/{seat_id}")
+async def patch_admission_test_seat(test_id: str, seat_id: str, request: Request,
+                                    user: dict = Depends(require_role("owner", "admin"))):
+    """Mark somebody present or absent, and record their score.
+
+    A score is refused unless that applicant is marked present, and it is written to the
+    application through the same `record_assessment` the application screen uses. If that
+    refuses, nothing at all is stored.
+    """
+    try:
+        data = await svc_mark_seat(get_db(), _actor(user), test_id, seat_id, await request.json())
+    except (AdmissionValidationError, AdmissionNotFoundError, AdmissionConflictError) as exc:
+        raise _map_error(exc)
+    return {"success": True, "data": data["seat"], "meta": {"changed": data["changed"]}}
+
+
+@router.delete("/tests/{test_id}/seats/{seat_id}")
+async def delete_admission_test_seat(test_id: str, seat_id: str, request: Request,
+                                     user: dict = Depends(require_role("owner", "admin"))):
+    try:
+        data = await svc_remove_seat(get_db(), _actor(user), test_id, seat_id)
+    except (AdmissionValidationError, AdmissionNotFoundError, AdmissionConflictError) as exc:
+        raise _map_error(exc)
+    return {"success": True, "data": data["removed"]}
 
 
 @router.get("/applications")

@@ -13,7 +13,8 @@ Plan: `_bmad-output/planning-artifacts/admissions-funnel-end-to-end-2026-08-14.m
 | A4 One admissions screen | SHIPPED 2026-08-14 |
 | A5 Who to call today | SHIPPED 2026-08-14 |
 | A6 Flo can work the second half | SHIPPED 2026-08-14 |
-| B1 to B4 (stage two) | not to be started yet |
+| B1 A test is a record | DONE 2026-08-15, green, **NOT deployed** |
+| B2 to B4 (rest of stage two) | not started |
 
 ## Deployed 2026-08-14, on Abhimanyu's instruction
 
@@ -347,6 +348,138 @@ exist), `tests/backend/parity/admissions_parity_test.py` (new, 12 tests),
 `uharfbuzz` one, unchanged from the baseline of 3,709 before this run). Frontend 806
 passed across 68 suites. Lint and production build clean. No live school database was read
 or touched. Deployed the same day; see the deploy block at the top of this file.
+
+## B1: a test is a record (done 2026-08-15, NOT deployed)
+
+**The fault.** `assessment_scheduled` was a status on an application and nothing else. No
+date, no place, no list of who was sitting it. The only test data the platform held was
+the score, entered afterwards, one child at a time. **The school could not pull a list for
+Sunday**, so the list lived on paper, and the platform used the word "scheduled" about
+something it knew nothing about.
+
+**What a person can now do.** A Tests tab on the Admissions screen. Create a test with a
+title, a date, a start time, a place and a total; put applicants on it from the
+applications already in the system; mark who turned up; enter the marks from the list.
+
+### The two rules this is built on
+
+**1. "Nobody has marked this yet" is not "absent".** Attendance starts as nothing and
+stays there until a person says otherwise. If it defaulted to absent, a register nobody
+had got round to filling in would be indistinguishable from a test where no child turned
+up, and the second is a reason to ring twelve families. Every list returns and shows
+`not_yet_marked` as its own number, the same shape as A5's "no follow-up date set".
+
+**2. The seat and the application can never disagree about a mark.** A score is not stored
+on the list and copied to the application later. It goes through
+`admissions_service.record_assessment`, the same function the application screen has always
+used, **in the same call**. If that refuses, the whole thing is refused and nothing is
+written, **including the attendance that came with it**. There is one assessment per
+application and this did not become a second one. A test pins exactly this: score a
+`draft` application and the seat is left with no mark AND no attendance.
+
+### A correctness win that came free
+
+The paper's total now lives on the TEST. `record_assessment` takes a `maximum` per call,
+so before this **two children sitting the same paper could be recorded out of different
+totals** and their percentages would disagree with nothing saying so. Now everyone on one
+test is marked out of one number, and **that number is frozen the moment the first mark is
+entered**: changing it afterwards is refused, because it would silently rewrite every
+percentage already recorded.
+
+### Other refusals, each with a reason a person would accept
+
+- **A test with no place is refused.** A list of children with a date and no place on it is
+  not something the office can hand to a parent, and half a summons reads as a whole one.
+- **A score for somebody not marked present is refused**, whether they are marked absent or
+  nobody has said yet. It would be a mark from an empty chair.
+- **A marked applicant cannot be removed from the list.** Their mark is already on their
+  application; removing the seat would leave a mark with nothing explaining where it came
+  from. Correct the mark instead.
+- **A test that has been marked cannot be cancelled.** Those marks are on real
+  applications, so a status change must not claim the test never happened.
+- **Seating reports both halves.** Applicants who could not be added are returned by name
+  with the reason. A partly refused request that reported only its successes would read as
+  a complete one.
+- **The applicant's name is not copied onto the seat.** It is read from the application
+  when the list is drawn, so a corrected spelling shows up rather than the list keeping the
+  old one. If the application has gone, the row is still shown and marked, not dropped from
+  a list somebody printed on Friday.
+
+### Nothing was widened
+
+Every test route carries `require_role("owner", "admin")`, **exactly the gate the
+assessment route has always had**. Running the list and entering the marks from it are the
+same job: a desk that could record one child's score can now record the same scores from a
+list. Issuing an offer and enrolling stay on `_can_enroll`, untouched.
+
+**The Tests tab existed as an assertion of ABSENCE until today.** A4 deliberately left it
+out and wrote a test proving it was not there, because a tab opening onto nothing is a
+button that looks like a feature. That test was **flipped, not deleted**: it now opens the
+tab and asserts the panel behind it is real.
+
+### Deliberately not done
+
+- **No Flo tools for entrance tests.** A6 gave Flo the application half; tests are a new
+  surface and adding tools fires four separate guards, each wanting its own decision. Worth
+  doing, not worth bolting on at the end of this item.
+- **B2 (generate the paper) and B3 (marking on screen) are not started.** B3's on-screen
+  half is still blocked by the unsettled applicant sign-in question, Part 4 of the plan.
+  The paper route ships without it, and that is what B1 supports.
+
+**Files.** New `backend/services/admission_test_service.py`, new
+`frontend/src/components/tools/AdmissionTests.js`; `backend/routes/admissions.py` (seven
+routes), `backend/database.py` (three indexes, including a unique one so a double submit
+cannot seat a child twice), `backend/services/audit_coverage.py` (the R4-2 guard caught the
+new module and it is declared as recording, which it does on all five writes),
+`tests/backend/conftest.py` (two collections), `AdmissionsScreen.js`. Tests:
+`tests/backend/api/test_admission_tests.py` (37 new, including the unauthenticated and
+wrong-role pair across all seven routes),
+`frontend/src/components/__tests__/AdmissionTests.test.js` (7 new), and one flipped
+assertion in `AdmissionsScreen.test.js`.
+
+**Gate.** Backend 3,770 passed / 1 failed (the machine's `uharfbuzz` one, unchanged from
+the 3,733 baseline before this run). Frontend 813 passed across 69 suites. Lint and
+production build clean. No live school database was read or touched. **Not deployed.**
+
+## The documentation pass (2026-08-14, commit `6802f6e`)
+
+Stage one is documented in `docs/`. Checking each page against the code turned up **four
+claims that were wrong rather than merely stale**, and they are recorded here because two
+of them were promises about privacy.
+
+**Admissions, newly written down.** `docs/api-contracts-backend.md` had **no entry at all**
+for `/api/admissions` or `/api/commercial/crm`; both are now documented, including who may
+issue an offer and enrol, the one-source rule, and the follow-up worklist with the reason
+its counts exist. `docs/data-models-backend.md` gained `admission_applications`,
+`crm_activities` and `crm_opportunities`, and its `enquiries` entry was corrected: it
+listed a `name` field **that has never existed** and a status list that was never right.
+`docs/admin-role-guide.md` had TWO "Enquiry Register" sections and TWO "Admission Pipeline"
+sections, one pair for the principal and one for the receptionist; both pairs are now the
+merged screen, and the new-student walkthrough had the office creating the child by hand,
+which is no longer how anybody joins the roll.
+
+**Four corrections of fact:**
+
+1. **`docs/deployment-runbook.md` section 2 was fiction.** It said `make package-backend`,
+   `eb use eduflow-prod`, `eb deploy` and `api.example.com`. There is no Makefile target,
+   no configured `eb` CLI and no such host. Rewritten against the deploy actually run that
+   day: the AWS login that fails silently halfway, the missing `zip` on this machine, the
+   bundle diff against the last good one, watching events rather than
+   `describe-environments` (which lagged for minutes on the old label), and proving a
+   deploy landed by comparing a 401 on a new route against a 404 on a made-up one.
+2. **"20+ named tools"** in the overview. There are about 170, roughly 100 of them writes.
+3. **"The AI chat does not store conversation content beyond your active session."** False.
+   Chat messages are written to `db.messages` and kept against the account, and
+   `recall_history` exists to read them back.
+4. **"Staff names, phone numbers, and student addresses are never included in AI logs."**
+   False, and necessarily so: the assistant cannot answer "call Aarav's mother" without a
+   name and a number. What `ai/redaction.py` actually withholds is narrower and
+   deliberate, and the page now says so: addresses, dates of birth, Aadhaar and other
+   government numbers, health data and secrets.
+
+Also corrected: the guide told staff the platform is desktop only with mobile for two
+roles, which stopped being true with Release 3 on 2026-08-12. Every correction states what
+the page used to say, so nobody restores the old wording thinking it was lost by accident.
 
 ## Noticed while reading, not fixed, not in A1's scope
 
