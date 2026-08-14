@@ -142,6 +142,12 @@ function StaffModal({ initialStaff, canEditLeaveBalances, onClose, onSaved }) {
   const [form, setForm] = useState(() => initialStaff ? { ...blankForm, ...initialStaff } : blankForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // Creating a staff member also MINTS A LOGIN, and the server hands back the
+  // one-time password exactly once. This screen used to close on success and
+  // drop it, so the colleague got an account nobody could sign in to and no
+  // sign that an account existed at all. It is shown, and the modal stays open
+  // until it is dismissed on purpose.
+  const [issued, setIssued] = useState(null);
 
   const setField = (key) => (event) => {
     const value = event.target.value;
@@ -176,7 +182,15 @@ function StaffModal({ initialStaff, canEditLeaveBalances, onClose, onSaved }) {
       const res = editing ? await updateStaff(initialStaff.id, payload) : await createStaff(payload);
       if (res.success) {
         onSaved(res.data);
-        onClose();
+        if (!editing && res.data && res.data.temporary_password) {
+          setIssued({
+            name: res.data.name || form.name,
+            username: res.data.username || '',
+            password: res.data.temporary_password,
+          });
+        } else {
+          onClose();
+        }
       } else {
         setError(res.detail || 'Unable to save staff profile');
       }
@@ -185,6 +199,33 @@ function StaffModal({ initialStaff, canEditLeaveBalances, onClose, onSaved }) {
     }
     setSaving(false);
   };
+
+  if (issued) {
+    return (
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 220, padding: 16 }}>
+        <div data-testid="staff-credentials-issued" style={{ background: 'var(--c-input)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 24, width: 460, maxWidth: '100%' }}>
+          <h3 style={{ margin: '0 0 6px', color: 'var(--c-text)', fontSize: 16 }}>{issued.name} can now sign in</h3>
+          <div style={{ color: 'var(--c-faint)', fontSize: 12, marginBottom: 16 }}>
+            Write these down or send them to {issued.name} now. This is the only time the
+            password is shown. If it is lost, use Reset Password on their profile.
+          </div>
+          <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 14, marginBottom: 16 }}>
+            <div style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>USERNAME</div>
+            <div data-testid="issued-username" style={{ color: 'var(--c-text)', fontSize: 15, fontFamily: 'monospace', marginBottom: 12, wordBreak: 'break-all' }}>{issued.username}</div>
+            <div style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>PASSWORD</div>
+            <div data-testid="issued-password" style={{ color: 'var(--c-text)', fontSize: 15, fontFamily: 'monospace', wordBreak: 'break-all' }}>{issued.password}</div>
+          </div>
+          <div style={{ color: 'var(--c-muted)', fontSize: 11, marginBottom: 16 }}>
+            They can change this password themselves at any time from Settings.
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <ActionButton variant="secondary" onClick={() => navigator.clipboard && navigator.clipboard.writeText(`Username: ${issued.username}\nPassword: ${issued.password}`)}>Copy</ActionButton>
+            <ActionButton onClick={onClose}>Done</ActionButton>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 220, padding: 16 }}>
@@ -372,6 +413,10 @@ export default function StaffTracker() {
   // person among 89 meant paging through them.
   const [search, setSearch] = useState('');
   const canResetPassword = currentUser.role === 'owner' || (currentUser.role === 'admin' && currentUser.sub_category === 'principal');
+  // Abhimanyu, 2026-08-15: adding a colleague creates a LOGIN, so it is the
+  // school's owner and the principal only. The server refuses everyone else, and
+  // this hides the button rather than leaving one that is always refused.
+  const canCreateStaff = canResetPassword;
   const [attendanceStreamUpdatedAt, setAttendanceStreamUpdatedAt] = useState(null);
   const [, setClockTick] = useState(0);
   const canEditLeaveBalances = currentUser.role === 'owner' || currentUser.sub_category === 'principal';
@@ -649,7 +694,7 @@ export default function StaffTracker() {
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <ActionButton variant="secondary" onClick={loadData}><RefreshCw size={13} />Refresh</ActionButton>
-          <ActionButton onClick={() => setShowAdd(true)}><Plus size={13} />Add Staff</ActionButton>
+          {canCreateStaff && <ActionButton onClick={() => setShowAdd(true)}><Plus size={13} />Add Staff</ActionButton>}
         </div>
       </div>
 

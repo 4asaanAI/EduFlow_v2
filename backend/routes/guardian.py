@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from database import get_db
 from middleware.auth import require_role
 from ai.fee_metrics import fee_totals_from_txns
+from services import photo_url_service
 from tenant import scoped_query
 
 
@@ -28,6 +29,11 @@ async def _ward(db, user: dict, student_id: str) -> dict:
     )
     if not student:
         raise HTTPException(404, "Student not found")
+    # Photographs are answered as freshly signed links to the school's own bucket, the
+    # same as everywhere else. Without this the parent portal handed a browser the
+    # previous vendor's public CDN address for the child and both parents, which is the
+    # exact exposure `photo_url_service` exists to close.
+    photo_url_service.apply(student)
     return student
 
 
@@ -42,6 +48,7 @@ async def list_wards(request: Request, user: dict = Depends(require_role("parent
     students = await db.students.find(
         scoped_query({"id": {"$in": student_ids}}, branch_id=bid), {"_id": 0}
     ).to_list(len(student_ids) or 1)
+    photo_url_service.apply_many(students)
     relation = {row["student_id"]: row.get("relation") for row in links if row.get("student_id")}
     data = [{**student, "guardian_relation": relation.get(student["id"])} for student in students]
     return {"success": True, "data": data, "meta": {"count": len(data)}}

@@ -115,10 +115,11 @@ async def _add_class_and_guardians(db, student: dict, include_guardians: bool = 
             {"_id": 0},
         ).to_list(10)
         # A guardian's photograph is served the same way as everyone else's - signed,
-        # from our own bucket. Guardian rows carry no S3 key of their own, but the copy
-        # of the same image on the child's record does, so the parent fields are
-        # resolved on the student below and the guardian falls back to no photo rather
-        # than to the vendor's public link.
+        # from our own bucket. (This comment used to say guardian rows carry no S3 key
+        # of their own and always fall back to no photo. That stopped being true: 255
+        # guardian rows now hold their own `photo_url_s3_key`, checked live 2026-08-15,
+        # so they resolve to a real signed link. The parent fields on the child's record
+        # resolve separately below.) Either way the vendor's public link never leaves.
         photo_url_service.apply_many(guardians, fields=("photo_url",))
         student["guardians"] = guardians
     photo_url_service.apply(student)
@@ -495,6 +496,10 @@ async def update_my_guardian(guardian_id: str, request: Request, user: dict = De
     updated = await db.guardians.find_one(
         scoped_filter({"id": guardian_id}, get_school_id()), {"_id": 0}  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
     )
+    # Same rule as every other read of a person: a photograph leaves as a signed link to
+    # our own bucket, never as the previous vendor's public CDN address. This response
+    # was the one guardian read that skipped it.
+    photo_url_service.apply(updated, fields=("photo_url",))
     return {"success": True, "data": updated}
 
 

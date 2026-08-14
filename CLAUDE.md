@@ -36,8 +36,18 @@
 > Decomposes the owner's reported defects into epics; same 7 standing rules and one-epic-per-run
 > discipline. Plan: `_bmad-output/planning-artifacts/epics-ui-sweep-2026-07-22.md`; live logs in
 > `_bmad-output/implementation-artifacts/ui-sweep/`. As of 2026-07-23, Epics 1–6, 8, 9, 10 are
-> shipped and Epic 7 (School Directory) is built and gate-green, awaiting deploy. The remaining
-> open work is the deeper tool-merge consolidation (`epic-7-tool-merge-impact-note.md`, D-44).
+> shipped and Epic 7 (School Directory) is built and gate-green, awaiting deploy.
+> **D-44 is CLOSED, both parts, since 2026-08-04.** *(This line said the tool-merge
+> consolidation was "the remaining open work" until 2026-08-15, four months after it
+> finished, and it sent a session looking for work that was already done.)* One merge was
+> made (Fee Receipts into Fee Collection, one screen offered under two names) and six tools
+> were examined and deliberately left separate, each with its reason pinned in
+> `ToolMerge.test.js`. **One thing is genuinely left, and it is a decision, not a build:**
+> `announcement-broadcaster` and `circular-sender` are near-identical but NOT a lossless
+> merge. The broadcaster can target parents and the circular cannot; the circular can target
+> the owner role and the broadcaster cannot; and the two write class labels in different
+> formats (`1-A` against `1 A`), so merging means choosing one, and choosing wrong
+> silently mis-targets circulars. Needs Abhimanyu.
 > **Baseline note (corrected 2026-08-04):** the "25 pinned failures" phrasing below is
 > historical, and so is the "2–3 order-dependent failures" note that replaced it - D-03 ×2 and
 > D-35 were all fixed on 2026-07-23. **The suite baseline is 0 failures.** It was 1967 passed /
@@ -238,15 +248,25 @@
 > the admin staff have never been catered for**, while the numbering makes it look as
 > though they were passed two releases ago.
 >
-> **The live consequence, found 2026-08-14 and never written down before.** Migration 041
-> was applied to the live school database on 2026-08-12 and created seven office logins.
-> Four of them were given the `accountant` or `management` profile, which are Sonu's and
-> Lalit's. So **two assistant accountants hold exactly what the accountant head holds**,
-> every teacher's salary included, and two admin office staff hold exactly what the
-> management head holds. Never designed, never discussed. All seven carry
-> `must_change_password` and the one-time passwords went to a handover file outside the
-> repo, so **whether anyone has ever signed in depends on whether those were distributed.**
-> Establish that before anything else.
+> **✅ CLOSED 2026-08-15. The seven office logins have been REMOVED.** *(This section
+> previously described them as a live exposure needing investigation. That was true when
+> written.)* Migration 041 created seven office logins on 2026-08-12, four of them carrying
+> the `accountant` or `management` profile, which are Sonu's and Lalit's. So two assistant
+> accountants held exactly what the accountant head holds, salaries included, and two admin
+> staff held exactly what the management head holds. Never designed, never discussed.
+>
+> Abhimanyu confirmed on 2026-08-15 that **the one-time passwords were never handed out**;
+> only four handovers went out and they stop at Lalit. Proven read-only before anything was
+> deleted: all seven were still on their one-time password with **zero sessions ever**. The
+> seven logins and the seven `users` profile rows that migration 047 created for them are
+> gone; the seven staff records are untouched and still on the roll. Each of those people
+> gets a proper profile in their own release.
+>
+> Full record, including the trap that `users.id` is NOT `auth_users.id`:
+> `implementation-artifacts/release-3-access/unused-office-logins-removed-2026-08-15.md`.
+>
+> ⛔ **Never close this with `041_office_staff_logins.py --rollback`.** That file also clears
+> the staff link for Adesh Singh and Lalit Thomas, who both sign in for real.
 >
 > **"Dormant" is documentation, not a lock.** Nothing in the running code reads the
 > `status` field; it appears only in tests and the mirror generator. A dormant profile with
@@ -275,12 +295,12 @@
 > when written.)* A credential goes out only once that person's profile is ready, so a lock
 > refusing a not-ready profile never fires.
 >
-> **The consequence is ACCEPTED, not closed.** "Dormant" still means nothing at runtime, so
-> the seven office logins created by migration 041 reach real screens and can write if
-> anybody ever signs in on one. The control is now the handover process, not the code, and
-> the remaining risk is a handover mistake at the school rather than a bug. The cheap
-> alternative, if that ever feels too large, is to change those seven passwords to something
-> nobody holds; that removes the same risk without touching a permission gate.
+> **The consequence is now CLOSED (2026-08-15).** *(It read "ACCEPTED, not closed" until the
+> seven accounts were removed.)* "Dormant" still means nothing at runtime, so a dormant
+> profile with a login would still reach real screens and still write. There is simply no
+> such login any more: the seven were deleted rather than left resting on the handover
+> process. If a dormant profile is ever given a login again, this risk comes straight back,
+> because nothing in the running code reads the `status` field.
 >
 > The twenty questions R3-0 raised are KEPT, named test by test, in
 > `implementation-artifacts/release-3-access/R3-0-retired-and-the-twenty-questions-2026-08-14.md`.
@@ -723,10 +743,21 @@ invented bus routes with real Joya stop names (004), NCERT library books (005), 
 as "Republic Day Celebration" (008), and expenses billed to UPPCL (009). `002` reassigns houses
 to students who already have them.
 
-The tracking collection now records 28 of 29, each entry carrying a category and evidence, with
-`marked_without_running: true` where nothing was executed. **`012_migrate_uploads_to_s3` is the
-only one still pending** and is genuinely outstanding; its own docstring says to rehearse it
-against a copy of production first.
+The tracking collection records each entry with a category and evidence, with
+`marked_without_running: true` where nothing was executed.
+
+**`012_migrate_uploads_to_s3` is CLOSED as NOT APPLICABLE (2026-08-15).** *(It was described
+here as "the only one still pending" and "genuinely outstanding". Checked, and it has nothing
+to move.)* Production holds **five** upload records: three are already on S3, and **none**
+carries binary data in Mongo. The other two are from April 2026 and their `path` points at a
+developer's own Mac (`/Users/shashisharma/...`), so those bytes never existed on the server;
+012 would report them "missing" and change nothing. Recorded in `_migrations` with that
+evidence. Do not schedule a rehearsal against a copy of production for it.
+
+**What IS left from those two rows, and it is small:** they are broken file links on two
+student records, a photo and a character certificate, pointing at files that cannot be
+retrieved. Leaving them or clearing them is a data-quality decision for Abhimanyu, not a
+migration.
 
 ```bash
 # Correct: read the file, then run that one migration and record it.

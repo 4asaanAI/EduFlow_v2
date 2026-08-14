@@ -280,13 +280,13 @@ async def _create_or_link_user(db, actor_ctx: ActorContext, body: dict, *, sessi
         if not existing:
             raise LinkedUserNotFoundError("Linked user account not found")
         await _assert_login_is_linkable(db, actor_ctx, existing)
-        return body["user_id"], None
+        return body["user_id"], None, existing.get("username", "")
 
     username = _default_username(body)
     existing = await db.auth_users.find_one({"username_lower": username.lower()}, {"_id": 0})
     if existing:
         await _assert_login_is_linkable(db, actor_ctx, existing)
-        return existing["id"], None
+        return existing["id"], None, existing.get("username", username)
 
     temp_password = body.get("password") or (None if body.get("password_hash") else f"EduFlow-{uuid.uuid4().hex[:8]}")
     password_hash = body.get("password_hash") or hash_password(temp_password)
@@ -311,7 +311,7 @@ async def _create_or_link_user(db, actor_ctx: ActorContext, body: dict, *, sessi
         "created_by": actor_ctx.user_id,
         "created_at": actor_ctx.now_iso(),
     }, **_session_kwargs(session))
-    return user_id, temp_password
+    return user_id, temp_password, username
 
 
 async def create_staff(
@@ -350,12 +350,18 @@ async def create_staff(
     # Authority BEFORE validation, deliberately: a caller who may not set these
     # fields at all should not be handed an error message enumerating the values
     # that would have been accepted.
-    if not _is_owner_or_principal(actor_ctx) and (requested_role == "admin" or requested_sub):
-        raise StaffAuthorizationError("Only owner or principal can create privileged staff accounts")
+    # Abhimanyu, 2026-08-15: creating a colleague is owner and principal only, not
+    # "any admin desk". This gate used to fire only for a PRIVILEGED account (an
+    # admin role or any sub_category), which left every office desk - support staff
+    # included - able to create a plain teacher. Creating a staff record always
+    # mints a LOGIN (`_create_or_link_user` below), so that was a way into the
+    # platform issued by someone who was never given that authority.
+    if not _is_owner_or_principal(actor_ctx):
+        raise StaffAuthorizationError("Only the school's owner or principal can create a staff login")
     # Story 1.2 - a value the permission system does not recognize grants nothing.
     _validate_role_and_sub_category(effective, existing=None)
 
-    user_id, temp_password = await _create_or_link_user(db, actor_ctx, effective, session=session)
+    user_id, temp_password, username = await _create_or_link_user(db, actor_ctx, effective, session=session)
     staff = Staff(
         user_id=user_id,
         name=params["name"],
@@ -392,7 +398,10 @@ async def create_staff(
             branch_id=actor_ctx.branch_id or "",
             changes={"credential_type": "temporary_password", "issued_to_staff_id": staff.id},
         )
-    return {"staff": staff_doc, "temporary_password": temp_password}
+    # The username travels with the password deliberately. A one-time password on
+    # its own is not a way in, and the caller cannot derive the username reliably -
+    # it comes from whichever of email, phone, employee ID or name was supplied.
+    return {"staff": staff_doc, "temporary_password": temp_password, "username": username}
 
 
 async def update_staff(

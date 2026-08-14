@@ -110,6 +110,13 @@ def _can_manage(user: dict) -> bool:
     return user.get("role") in ADMIN_ROLES
 
 
+def _is_owner_or_principal_user(user: dict) -> bool:
+    """Mirror of ``staff_service._is_owner_or_principal`` for the raw user dict."""
+    if user.get("role") == "owner":
+        return True
+    return user.get("role") == "admin" and (user.get("sub_category") or "principal") == "principal"
+
+
 def _public_staff(staff: dict) -> dict:
     staff = {k: v for k, v in staff.items() if k != "_id"}
     return staff
@@ -342,8 +349,11 @@ async def list_staff(
 async def create_staff(request: Request):
     db = get_db()
     user = get_user(request)
-    if not _can_manage(user):
-        raise HTTPException(403, "Forbidden")
+    # Abhimanyu, 2026-08-15: owner and principal only. `_can_manage` is "any admin
+    # role", which passed every office desk. The service refuses the same callers,
+    # so this is the honest 403 rather than the only one.
+    if not _can_manage(user) or not _is_owner_or_principal_user(user):
+        raise HTTPException(403, "Only the school's owner or principal can create a staff login")
 
     # Thin adapter over services.staff_service.create_staff - the SAME write path
     # as the AI `create_staff` tool (Story J.2 / AD7). Privileged-field gating and
@@ -363,6 +373,8 @@ async def create_staff(request: Request):
     except LinkedUserNotFoundError as e:
         raise HTTPException(404, str(e))
     data = _public_staff(result["staff"])
+    if result.get("username"):
+        data["username"] = result["username"]
     if result.get("temporary_password"):
         data["temporary_password"] = result["temporary_password"]
     return {"success": True, "data": data}
