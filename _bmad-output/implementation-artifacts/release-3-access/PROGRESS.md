@@ -230,3 +230,38 @@ per-child fee status and discount lookups, and the student attendance bulk write
 
 **No code changed, so the test suite is untouched.** The two probe files were temporary and
 were deleted; only their results were kept, as JSON, beside the survey.
+
+### 2026-08-14 (evening) - Sonu and Lalit now hold passwords, so part of the survey became urgent
+
+Abhimanyu handed out their credentials. Nothing in the survey changed; what changed is that
+two of the eight office desks stopped being theoretical.
+
+**Their profiles need NO change. The table describing them is correct.** The server does
+not read it, which is a different problem and the one to fix.
+
+**Two corrections to the survey, made by reading rather than assuming, and the false alarm
+matters more than the finding.** `GET /api/fees/status/{student_id}` and
+`GET /api/fees/discounts/{student_id}` are **fine**: both narrow inside the handler, fee
+status returns a paid-or-unpaid flag with no amount to the management head exactly as
+decision 1 asks, and every dormant desk is refused. The survey had flagged them as needing
+a look; the look was done and somebody had already built them properly.
+`POST /api/attendance/student/bulk` IS genuinely open to every admin desk, confirmed.
+
+**Confirmed and worse than first written: `GET /api/sms/logs` hands the management head fee
+amounts.** The stored reminder row carries an `amount` field and the full message text, and
+the route returns the rows unfiltered to every admin desk. That is a direct breach of
+decision 1, live today.
+
+**Also confirmed fine: the certificate route.** Lalit and Sonu pass its gate, but the
+approval rule lives in the service, so what they create is marked waiting for approval
+exactly as R2-9 intended. Only the owner and the principal issue outright.
+
+**Proposed next, awaiting Abhimanyu's decision: R3-1a.** Five items, about seventeen
+routes, every one a narrowing, chosen as the only ones both wrong AND reachable by somebody
+who now has a password: the SMS log, transport off the management head, the year-end
+transition back to the owner, the two attendance writes off the accountant head, and the
+branch records back to the owner. Detail and harm ranking in the survey.
+
+**Carried from R3-0, because it will apply again:** narrowing these may turn existing tests
+red. If it does, do not make them green to make the suite green. Decide what the person may
+do first.
