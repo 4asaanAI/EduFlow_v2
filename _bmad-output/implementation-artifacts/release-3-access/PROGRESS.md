@@ -101,3 +101,13 @@ looks broken rather than not-yet-theirs. It now reads the same `status` field th
 
 **Gates:** backend 3,611 passed / 0 failed / 15 deselected. Frontend 777 passed / 0 failed.
 Production build clean including lint. **Not deployed.**
+
+### 2026-08-14 (later still) - the teacher question, closed
+
+Abhimanyu confirmed that admin staff and teachers are **counted together**, meaning
+governed by the same rule, and asked directly whether that also merged their two steps of
+the ladder. It does not. **Steps 4 and 5 stay separate** (decision 20). Both stay out of
+the staff room and the menus until their own step lands.
+
+No code change. The behaviour shipped earlier today was already correct under either
+reading; only the roadmap was in question, and it is unchanged.

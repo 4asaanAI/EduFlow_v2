@@ -26,6 +26,7 @@ Numbered from 15 to continue the Release 4 (audit) list rather than restart and 
 | 17 | **Messaging stops at teachers.** Students never get it, and it is therefore not part of the students release. Staff only. | Abhimanyu 2026-08-14 |
 | 18 | **Release 3 and as much of Release 4 as possible should be finished before Sonu's and Lalit's credentials go out**, with the doubtful parts left open rather than guessed. | Abhimanyu 2026-08-14 |
 | 19 | Carried from 2026-08-11, answers 1 to 12 of `staff-profiles-draft-for-aman-2026-08-10.md`. All twelve stand. | Abhimanyu 2026-08-11 |
+| 20 | **Admin staff and teachers are governed by the same rule but remain two separate steps.** Both stay out of the staff room and the menus until their own step lands. Steps 4 and 5 do NOT merge. | Abhimanyu 2026-08-14 |
 
 **Decision 17 closes the question that had blocked Release 5 since 10 August.** Teachers
 are already inside the staff messaging group (`STAFF_ROLES` in `routes/messaging.py`
