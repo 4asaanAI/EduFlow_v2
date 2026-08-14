@@ -562,3 +562,111 @@ failed writes, one active ingest key.
 still in the LOCAL clone, so the values remain readable from this machine despite the
 history rewrite. GitHub could not be reached from here to see whether it is still served
 publicly, so assume it is.
+
+### 2026-08-14 - ticket email is fixed and the route is unbroken end to end
+
+Item 1 of "Left after this release" is **DONE**. The Gmail step that had been failing
+silently is gone; the email now goes out through Zoho Mail from `support@layaa.ai` to
+Abhimanyu and Shubham. Full detail, including the credential and what was verified, is in
+`ticket-email-via-zoho-2026-08-14.md` in this folder.
+
+The proof is a real send, not a green screen: a POST to the production webhook returned
+200 and n8n execution `5` finished `success`. The two attempts on 12 August both ended in
+`error`. **What is still outstanding is a human confirming the message reached the inbox
+rather than a spam folder.** Until that happens, do not describe ticket email as working.
+
+Items 2 to 4 are unchanged: `CRON_SECRET` on LayaaStat is still exposed and unrotated, the
+dead Resend route is still there, and LayaaStat still has no proper address.
+
+**Confirmed the same day:** Abhimanyu received the test email. Ticket email is working.
+Shubham's copy is unconfirmed and worth one question, since both addresses ride on the
+same send.
+
+### 2026-08-14 - the dead Resend sender is gone from the code
+
+Item 3 of "Left after this release" is **done in code, committed on LayaaStat as
+`13fc674`, and NOT yet deployed.** Types, lint and all 165 LayaaStat tests are clean.
+
+The `email` channel in LayaaStat's notification dispatch used to POST to Resend. Its key
+had been answering 403 for a long while, so those alerts were failing in silence while
+the channel still read as configured. The branch now returns a plain "channel retired"
+reason instead of pretending to send, and `RESEND_API_KEY` / `ALERT_EMAIL_FROM` are out
+of the environment list because nothing reads them. If they are still set on the host
+they are inert and should be deleted there too.
+
+**Two things found while doing it, both worth knowing.**
+
+**LayaaStat runs on AWS Amplify, app `ddsqdblq9ge74`, not on Vercel.** An earlier note in
+this session said Vercel because the repository carries a `vercel.json`. It is wrong, and
+it matters: **`CRON_SECRET` must be rotated in the Amplify console**, not in Vercel. The
+Vercel account holds one unrelated project called `timetable`.
+
+**There is still one enabled `email` alert route in the live LayaaStat database**, id
+`41303e25-e227-4a55-9b19-6f0d67a76d48`, pointing at `hello@layaa.ai`. It was left
+untouched on purpose. After this change it records an honest skip reason instead of a
+silent 403, so nothing is hidden, but it delivers nothing either. **Deciding whether to
+switch it off or point it somewhere real is Abhimanyu's.** The `webhook` route beside it
+is the one that reaches n8n and now works.
+
+### 2026-08-14 - the proper address for LayaaStat is BLOCKED on permission
+
+Item 4 cannot be done from here. `stat.layaa.ai` does not exist yet, and the deploy
+identity (`claude-hosting`) is refused both `amplify:CreateDomainAssociation` and every
+Route 53 read. The domain `layaa.ai` is served by AWS name servers, so if its hosted zone
+sits in the same AWS account, Amplify will write the DNS records itself and the whole job
+is a two minute form in the console. Steps are in the handover message of 2026-08-14.
+
+**Do not widen IAM for this.** A 2026-08-08 session lost a day widening permissions for
+what turned out to be the wrong login, and this is a one-off task better done by hand than
+by granting a standing power.
+
+### 2026-08-14 (later) - the address is being activated, and the secret rotation is dropped
+
+**`stat.layaa.ai` is set up** on the LayaaStat Amplify app, branch `main`. The certificate
+was issued and configured; only the content network propagation was outstanding at the
+time of writing, which Amplify gives as up to thirty minutes. Item 4 is effectively done.
+
+Nothing needs changing in the code for it. The route that builds ticket links works out
+the site's address from the request it is handed rather than from a setting, so it starts
+writing `https://stat.layaa.ai` links by itself once the address answers.
+
+**Rotating `CRON_SECRET` is DROPPED. Abhimanyu's decision, 2026-08-14.** It is off the
+list and should not be raised again as an outstanding task.
+
+Recorded once, plainly, so nobody later mistakes it for an oversight: the value was pushed
+to a public repository on 13 August and has not been changed, so it must be treated as
+known to others. It is the shared secret guarding LayaaStat's scheduled jobs, which means
+somebody holding it could trigger those jobs, including the one that sends notifications.
+It gives no access to any school data and none to the school's platform. That is the whole
+exposure, it was weighed, and the decision is to live with it.
+
+### 2026-08-14 (later still) - Resend removal DEPLOYED, and the dead email route switched off
+
+**Deployed.** LayaaStat Amplify app `ddsqdblq9ge74`, build 40, SUCCEED, on commit
+`13fc674`. Checked against the job list rather than assumed from the push.
+
+**The `hello@layaa.ai` route was investigated before being touched, and the investigation
+is the reason it could be switched off with confidence.** What was found:
+
+- **Created by the same insert as the working webhook route**, both stamped
+  `2026-08-12 21:34:18.178539+00` to the microsecond. It was part of setting the ticket
+  feature up, not a later choice by anybody.
+- **It fires on exactly the same events.** Same tenant (The Aaryans), no severity limit,
+  no product limit. Every ticket produced one of each, so it was always a duplicate and
+  never a distinct audience.
+- **It sent to `hello@layaa.ai` from `hello@layaa.ai`.** The recipient in the route and
+  the sender in the old environment variable were the same address.
+- **It has delivered NOTHING, ever.** Three attempts, all on 12 August, all
+  `skipped / http 403`, on test tickets 1, 3 and 4. The webhook route delivered all three
+  successfully at the same moments. So no message has ever depended on it and nothing was
+  lost.
+
+**Switched OFF, not deleted** (`enabled = false`, id
+`41303e25-e227-4a55-9b19-6f0d67a76d48`). Off keeps it visible on the alerting screen and
+one click from returning if a second destination is ever wanted; deleting would have
+removed the evidence along with the route. The school now has exactly one enabled route
+and it is the one that works.
+
+**All four Release 4 leftovers are now closed:** ticket email works and was seen in a real
+inbox, the dead Resend sender is removed and deployed, `stat.layaa.ai` is live and serving
+over a valid certificate, and the secret rotation is dropped by decision.

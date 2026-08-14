@@ -91,3 +91,36 @@ invented. Needed as the `fromEmail` value.
 | Date | Change |
 |---|---|
 | 2026-08-14 | Written. Decision taken, both blockers identified, nothing changed yet. |
+
+---
+
+## 2026-08-14 - DONE, and proven by a real send
+
+Both blockers were cleared by Abhimanyu: an app password named `LayaaStat` was generated
+in Zoho, and the sending mailbox is `support@layaa.ai`. The `Zoho Mail` SMTP credential
+now exists in n8n (id `26Z6RrgNqWrdDkJ9`), pointed at `smtp.zoho.in` on port 465 with SSL.
+
+The Gmail step in workflow `zGBva8cGLZybDhEh` was replaced with `n8n-nodes-base.emailSend`
+v2.1 carrying that credential. Subject, body and both recipients are unchanged:
+`abhimanyu.singh@layaa.ai, shubham.sharma@layaa.ai`. Sender is
+`Layaa AI Support <support@layaa.ai>`. n8n's own "sent automatically with n8n" footer is
+switched off. The new version is PUBLISHED, not merely saved as a draft.
+
+**Proven, not assumed.** A real POST to the production webhook returned 200 and execution
+`5` finished `success` at 08:56 UTC. The two prior attempts on 12 August, executions `3`
+and `4`, both ended in `error`, which is the dead Gmail sign-in. Zoho accepted the message,
+so the route from the school to our inbox is now unbroken at every hop.
+
+**Still worth one human check:** a successful SMTP hand-off is not the same as an email
+landing in the inbox rather than a spam folder. Confirm the test message titled
+"TEST: ticket email now goes through Zoho" actually arrived before treating this as closed.
+
+**One caution.** The app password appeared in the chat record when the line was selected in
+the editor. Nothing went anywhere public, and the value is not in this repository, but
+generating a fresh app password in Zoho and swapping it into the n8n credential removes the
+doubt for the cost of a minute.
+
+**Confirmed in the inbox, same day.** Abhimanyu received the test message. That is the
+check this file insisted on, so ticket email may now be described as working. **Shubham's
+copy has not been confirmed**; both addresses are on the same single send, so it almost
+certainly arrived, but ask him rather than assume.
