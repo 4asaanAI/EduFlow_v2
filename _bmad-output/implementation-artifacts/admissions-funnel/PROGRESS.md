@@ -14,7 +14,7 @@ Plan: `_bmad-output/planning-artifacts/admissions-funnel-end-to-end-2026-08-14.m
 | A5 Who to call today | SHIPPED 2026-08-14 |
 | A6 Flo can work the second half | SHIPPED 2026-08-14 |
 | B1 A test is a record | SHIPPED 2026-08-15 |
-| B2 to B4 (rest of stage two) | not started |
+| B2 to B4 (rest of stage two) | **ON HOLD by Abhimanyu, 2026-08-15**, waiting on the school |
 
 ## Deployed 2026-08-14, on Abhimanyu's instruction
 
@@ -348,6 +348,35 @@ exist), `tests/backend/parity/admissions_parity_test.py` (new, 12 tests),
 `uharfbuzz` one, unchanged from the baseline of 3,709 before this run). Frontend 806
 passed across 68 suites. Lint and production build clean. No live school database was read
 or touched. Deployed the same day; see the deploy block at the top of this file.
+
+## B2 to B4 are ON HOLD, and this is a decision rather than a pause (Abhimanyu, 2026-08-15)
+
+**Do not start B2, B3 or B4.** Abhimanyu is asking the school whether the entrance test
+should be sat **on the platform or on paper**, and the answer decides what gets built. The
+work resumes when that answer comes back, not before.
+
+**Why this is a sound place to stop, and not work left half done.** B1 supports the written
+test **completely on its own**. A test has a date, a time, a place, a total and a list; the
+office marks who turned up and enters the marks; each mark lands on the child's application
+and feeds the offer decision that already existed. Nothing in it waits on anything else, and
+nothing on screen points at a feature that is not there.
+
+**What each held item depends on:**
+
+- **B2, generate the paper on the platform.** Wanted either way, and the generator already
+  exists (`POST /api/academics/question-papers/generate` writes a CBSE paper with the AI and
+  is not tied to children on the roll). Held only so it is built to match the answer.
+- **B3, marking.** The paper half is close to what `record_assessment` already does and B1
+  now feeds it from a list. **The on-screen half is the part that is genuinely blocked**: an
+  applicant is neither a student nor staff and has no sign-in, which is Part 4 of the plan
+  and is not settled. If the school says paper, this question may never need answering.
+- **B4, enquiry families as a messaging audience.** Independent of the test question, but
+  held with the rest so stage two ships as one decision.
+
+**The question to bring back from the school, in the words that matter:** does an applicant
+sit the entrance test on a device at the school, or on paper? If on a device, we then have
+to decide whether somebody outside the school gets a login, and that is a new category of
+account this platform has never had.
 
 ## B1: a test is a record (done 2026-08-15, NOT deployed)
 

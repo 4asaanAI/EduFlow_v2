@@ -76,7 +76,7 @@ The Principal manages academic and operational oversight.
 **Key capabilities:**
 - **Announcements** - Create school notices.
 - **Incident Tracker** - Log visitor entries and complaints.
-- **Admissions** - Enquiries, the day's follow-up calls, and applications, on one screen since 2026-08-14. Start an application from an enquiry row and the family carries across. Marking a family "enrolled" is not something anybody does by hand; the child joins the roll through their application. See the Admin Role Guide.
+- **Admissions** - Enquiries, the day's follow-up calls, applications and entrance tests, on one screen since 2026-08-14. Start an application from an enquiry row and the family carries across. Marking a family "enrolled" is not something anybody does by hand; the child joins the roll through their application. The Tests tab (added 2026-08-15) holds each entrance test with its date, time, place and total, the list of who is sitting it, and the marks. See the Admin Role Guide.
 - **AI Chat** - Quick look-ups and draft announcements.
 
 ---

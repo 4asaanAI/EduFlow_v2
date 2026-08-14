@@ -30,7 +30,8 @@ EduFlow is a **school management platform** built around an AI chat assistant. S
 |--------|---------|
 | **Authentication** | JWT + httpOnly refresh tokens, role-based access, brute-force lockout, password reset via email |
 | **Students** | CRUD, guardian contacts, photos, class management, GDPR erasure |
-| **Admissions** | One screen (added 2026-08-14) carrying enquiries, applications and pipeline value. Enquiry stages, follow-up call worklist, applications through assessment and offer, and enrolment that creates the child and the guardians in one transaction. **Enrolment has exactly one source and nobody can set it by hand.** |
+| **Admissions** | One screen (added 2026-08-14) carrying enquiries, applications, entrance tests and pipeline value. Enquiry stages, follow-up call worklist, applications through assessment and offer, and enrolment that creates the child and the guardians in one transaction. **Enrolment has exactly one source and nobody can set it by hand.** |
+| **Entrance tests** | Added 2026-08-15. A test with a date, a time, a place and a total, the list of who is sitting it, attendance, and marks that write through to each applicant's application in the same call. "Not yet marked" is its own state and is never drawn as absent. Generating the paper and sitting the test on screen are **not built and are on hold** pending the school's decision on paper versus platform. |
 | **Staff** | CRUD, leave request management, attendance |
 | **Attendance** | Bulk recording (student + staff), corrections, SSE real-time stream, low-attendance alerts |
 | **Fees** | Fee structures, payment recording, discounts, SSE stream, per-student status |
@@ -95,10 +96,16 @@ prints. See `CLAUDE.md` for the commands.
 | Release 3 (2026-08-12) | The whole list on any device: filters, complete-or-refused downloads, "All" views, phone and tablet touch floors |
 | Release 4 (2026-08-13) | The platform can account for itself: audit trail, undo, honest menus |
 | Admissions stage one (2026-08-14) | The two halves of the admissions funnel joined, on one screen |
+| Entrance tests (2026-08-15) | A test became a record instead of a word: date, place, who is sitting it, attendance, marks |
 
-**Not built:** admissions stage two (entrance tests as records, the paper, marking, and
-enquiry families as a messaging audience). Whether an applicant may hold a sign-in to sit a
-test on screen is an open question and is not settled.
+**On hold, by decision of 2026-08-15:** generating the entrance paper on the platform,
+marking on screen, and enquiry families as a messaging audience. The school is being asked
+**whether the entrance test is sat on paper or on a device**, and the answer decides what
+gets built. What shipped supports the written test completely on its own.
+
+**The open question behind it:** an applicant is neither a student nor staff and has no
+sign-in, so letting one sit a test on a device means creating a new category of account.
+Not settled. If the school chooses paper, it may never need to be.
 
 ---
 

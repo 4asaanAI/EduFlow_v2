@@ -218,6 +218,49 @@ one of them refuses with the same message. Before 2026-08-14 an enquiry could be
 | `PATCH` | `/api/commercial` | `/crm/opportunities/{id}` | Bearer, owner or principal | Move an opportunity's stage. A lost one needs a reason. |
 | `GET` | `/api/commercial` | `/crm/pipeline` | Bearer (owner/principal/receptionist) | Stage counts and weighted values. |
 
+#### Entrance tests, `/api/admissions/tests` (added 2026-08-15)
+
+Before this, `assessment_scheduled` was a status on an application and nothing else, so the
+school could not pull a list for a given day. A test is now a record with a date, a time, a
+place and a total, and a list of who is sitting it.
+
+Every route below carries `require_role("owner", "admin")`, **the same gate the assessment
+route above has always had**. Running the list and entering the marks from it are the same
+job, so this grants nobody anything new. Issuing an offer and enrolling stay narrower.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/tests` | List tests, newest first, each with its counts. Optional `status` filter. |
+| `POST` | `/tests` | Create one. `title`, `scheduled_for` (YYYY-MM-DD), `place` and `maximum_marks` are required; `start_time` (HH:MM), `class_applying` and `notes` are optional. **A test with no place is refused**: a list of children with a date and no place is not something the office can hand to a parent. |
+| `GET` | `/tests/{id}` | The list for that test: every applicant with their guardian's name and phone, whether they turned up, and their mark. Names are read from the application each time, never copied, so a corrected spelling shows up. |
+| `PATCH` | `/tests/{id}` | Change the date, time, place, title, notes or `status` (`planned`, `held`, `cancelled`). |
+| `POST` | `/tests/{id}/seats` | Put applicants on the test. Takes `application_ids`. |
+| `PATCH` | `/tests/{id}/seats/{seat_id}` | Record `attendance` (`present` or `absent`) and/or a `score`. |
+| `DELETE` | `/tests/{id}/seats/{seat_id}` | Take somebody off the list. |
+
+**The two rules the endpoints exist to hold.**
+
+1. **"Not yet marked" is a third state and is never the same as absent.** `attendance` is
+   `null` until a person says otherwise, and every response carries `not_yet_marked` as its
+   own count alongside `present` and `absent`. A register nobody filled in and a test nobody
+   came to are opposite facts, and the second is a reason to ring twelve families.
+2. **A mark reaches the application in the same call.** The score goes through
+   `admissions_service.record_assessment`, the same function the application screen uses. If
+   that refuses (for example the application is still a draft), the request is refused and
+   **nothing at all is stored, including the attendance sent with it**. There is one
+   assessment per application; this is not a second one.
+
+**The total lives on the test and freezes at the first mark.** `record_assessment` takes a
+`maximum` per call, so before this two children sitting one paper could be recorded out of
+different totals with their percentages silently disagreeing. Changing `maximum_marks` after
+any mark exists is refused with a 409.
+
+Other refusals, each with a 400 or 409 that says why: a score for somebody not marked
+present, a score outside the paper's total, removing an applicant whose mark is already on
+their application, cancelling a test that has already been marked, and anything at all on a
+cancelled test. **Seating returns both halves**: `seated` and `refused`, the latter naming
+each applicant and the reason, so a partly refused request cannot read as a complete one.
+
 #### `GET /api/commercial/crm/follow-ups`
 
 Optional `entity_id`, `today` (defaults to the real one) and `upcoming_days` (0 to 90,

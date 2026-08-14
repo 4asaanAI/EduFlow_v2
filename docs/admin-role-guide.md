@@ -142,8 +142,52 @@ wrote down. "Log call" records what was said and sets the next date.
 **Applications.** The second half of the journey: application, documents, entrance
 assessment, offer, acceptance, and the child joining the roll.
 
+**Tests.** Entrance tests, added 15 August 2026. See below.
+
 **Pipeline value.** The money view of the same leads. Not everyone who reaches this screen
 sees this tab; it keeps the permission it has always had.
+
+---
+
+#### Entrance tests
+
+**New on 15 August 2026.** Until then the platform could say an applicant was "scheduled for
+assessment" and knew nothing else about it: no date, no place, no list. **The office could
+not print a list for Sunday**, so it lived on paper.
+
+**Setting one up.** On the Tests tab, create a test with a title, the date, the start time,
+the place, and the total marks on the paper. Then add applicants to it from the applications
+already in the system.
+
+**On the day.** Open the test and mark each applicant Present or Absent, then type the marks
+straight into the same list.
+
+**Three things worth knowing, because they are deliberate:**
+
+1. **Nobody is shown as absent until you say so.** A name you have not touched reads "not
+   marked yet", and the count line shows that as its own number. This matters: a register
+   nobody has filled in and a test where nobody turned up look identical otherwise, and the
+   second one means twelve families need a phone call.
+2. **The total belongs to the test, not to each child.** Everyone sitting one paper is marked
+   out of one number. Once the first mark is entered the total locks, because changing it
+   would quietly change every percentage already recorded.
+3. **A mark you enter here goes onto the child's application at the same moment.** If it
+   cannot be saved there, the screen tells you and nothing is saved here either. So the test
+   list and the application can never tell you two different things.
+
+**What the platform will refuse, and why:**
+
+| It refuses | Because |
+|---|---|
+| A test with no place | A date with no place is not something you can hand to a parent |
+| A mark for somebody not marked Present | That is a mark from an empty chair |
+| Removing an applicant who already has a mark | Their mark is on their application; correct the mark instead |
+| Cancelling a test that has already been marked | Those marks are real and on real applications |
+
+**Not built yet:** the entrance paper is not generated on the platform, and applicants do not
+sit the test on a screen. Both are on hold until the school says whether the test should be
+on paper or on a device. **What is here supports the written test completely.** Flo cannot
+run entrance tests either; use this tab.
 
 ---
 
@@ -377,6 +421,12 @@ payment received.
 button is not there for anyone. A family joins the roll through their application. Start
 one from the enquiry row with "Start application", and the child's name, the parents and
 the phone number come across on their own.
+
+**Entrance tests are on the Tests tab of the same screen** (new on 15 August 2026). Create
+the test with its date, time, place and total marks, add the applicants, then mark who
+turned up and enter the marks on the day. The full explanation is in the Principal section
+above, and the one thing to remember is that a name you have not touched reads "not marked
+yet" rather than absent, on purpose.
 
 ---
 

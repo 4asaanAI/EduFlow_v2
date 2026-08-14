@@ -91,9 +91,19 @@
 > **The Tests tab was asserted ABSENT by a test until B1 built it.** That assertion was
 > flipped, not deleted. Keep it that way: it now fails if the tab exists without its panel.
 >
-> **Not built:** no Flo tools for tests yet, and B2 (generate the paper) and B3 (marking)
-> are not started. B3's on-screen half is still blocked by the unsettled applicant sign-in
-> question, Part 4 of the plan.
+> **Not built:** no Flo tools for tests yet.
+>
+> ## ⛔ B2, B3 and B4 are ON HOLD by Abhimanyu's decision of 2026-08-15. Do not start them.
+>
+> He is asking the school **whether the entrance test is sat on the platform or on paper**,
+> and the answer decides what gets built. **B1 supports the written test completely on its
+> own**, so this is a finished place to stop rather than work left half done.
+>
+> **B3's on-screen half is the genuinely blocked one**: an applicant is neither a student
+> nor staff and has no sign-in, which is Part 4 of the plan and is not settled. If the
+> school says paper, that question may never need answering. B2 (generate the paper) and B4
+> (enquiry families as a messaging audience) are held with it so stage two ships as one
+> decision.
 >
 > ## ✅ SHIPPED - Admissions stage one: the two halves of the funnel are joined (deployed 2026-08-14)
 >

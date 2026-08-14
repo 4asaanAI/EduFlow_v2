@@ -55,8 +55,8 @@ says what was last checked against the code and when._
 - [Architecture - Backend](./architecture-backend.md) - FastAPI architecture, multi-tenancy, auth, AI layer, security controls
 
 ### API & Data
-- [API Contracts - Backend](./api-contracts-backend.md) - All 180+ endpoints by domain with auth requirements. **Admissions (`/api/admissions` and `/api/commercial/crm`) documented 2026-08-14**, including who may enrol and the follow-up worklist
-- [Data Models - Backend](./data-models-backend.md) - All MongoDB collections, fields, indexes, migration history. **Admissions collections corrected and expanded 2026-08-14**
+- [API Contracts - Backend](./api-contracts-backend.md) - All 180+ endpoints by domain with auth requirements. **Admissions (`/api/admissions` and `/api/commercial/crm`) documented 2026-08-14**, including who may enrol and the follow-up worklist; **entrance tests added 2026-08-15**
+- [Data Models - Backend](./data-models-backend.md) - All MongoDB collections, fields, indexes, migration history. **Admissions collections corrected and expanded 2026-08-14; `admission_tests` and `admission_test_seats` added 2026-08-15**
 
 ### Integration
 - [Integration Architecture](./integration-architecture.md) - Frontend↔Backend REST+SSE, Backend↔MongoDB/S3/OpenAI/Gemini/Twilio
@@ -71,7 +71,7 @@ _These pages existed but were missing from this index until 2026-08-14._
 - [Operations](./operations.md) - Backups, restore procedure, monitoring
 
 ### For the People Using It
-- [Admin Role Guide](./admin-role-guide.md) - Every admin desk, screen by screen, in plain language. **Admissions rewritten 2026-08-14**: one screen, the follow-up call list, and why nobody can mark a family enrolled by hand
+- [Admin Role Guide](./admin-role-guide.md) - Every admin desk, screen by screen, in plain language. **Admissions rewritten 2026-08-14**: one screen, the follow-up call list, and why nobody can mark a family enrolled by hand. **Entrance tests added 2026-08-15**, including what the platform refuses and why
 - [Staff Onboarding](./staff-onboarding.md) - Getting a new staff member started
 - [Tools - Student and Teacher](./tools-student-teacher.md) - The student and teacher screens
 

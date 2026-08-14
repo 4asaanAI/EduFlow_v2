@@ -496,6 +496,47 @@ One call, visit, meeting or note about a family.
 A money value against a lead. Stages `qualification`, `visit`, `application`, `offer`,
 `won`, `lost`; amounts in integer paise; a lost one needs a reason.
 
+### `admission_tests` (added 2026-08-15)
+An entrance test as a record. Before this it was a word: `assessment_scheduled` was a status
+on an application with no date, no place and no list behind it.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `id`, `schoolId`, `branch_id` | string | |
+| `title` | string | Required. |
+| `scheduled_for` | string | Required, `YYYY-MM-DD`. |
+| `start_time` | string? | `HH:MM`. |
+| `place` | string | **Required.** A date with no place is half a summons that reads as a whole one. |
+| `class_applying`, `notes` | string? | |
+| `maximum_marks` | number | Required, above zero. **The paper's total lives here, not on each child**, and it is frozen once any mark is recorded: changing it would silently rewrite every percentage already on an application. |
+| `status` | string | `planned`, `held`, `cancelled`. A cancelled test takes no applicants and no marks, and a test that has been marked cannot be cancelled. |
+| `created_by`, `created_at`, `updated_at` | mixed | |
+
+Indexes: `(branch_id, scheduled_for)`.
+
+### `admission_test_seats` (added 2026-08-15)
+One applicant on one test. The join between a test and an application.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `id`, `schoolId`, `branch_id` | string | |
+| `test_id`, `application_id` | string | |
+| `attendance` | string? | `present`, `absent`, or **`null`, which is its own state and means nobody has said yet**. It is never drawn as absent, and every count includes `not_yet_marked` separately. |
+| `score` | number? | `null` until marked. Refused unless `attendance` is `present`. |
+| `attendance_marked_by/_at`, `scored_by/_at`, `created_by`, `created_at` | mixed | |
+
+**The applicant's name is deliberately NOT stored here.** It is read from the application
+whenever the list is drawn, so a corrected spelling appears rather than the list keeping the
+old one forever. If the application has gone, the row is still returned and flagged
+`application_found: false` rather than vanishing from a list somebody printed on Friday.
+
+**A score is not stored here and copied to the application later.** It goes through
+`admissions_service.record_assessment` in the same call, and if that refuses nothing is
+written at all, including the attendance. The seat and the application can never disagree.
+
+Indexes: `(branch_id, test_id)`, and `(schoolId, test_id, application_id)` unique, so a
+double submit cannot seat the same child twice.
+
 ### `audit_log`
 | Field | Type | Notes |
 |-------|------|-------|
