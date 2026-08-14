@@ -172,3 +172,37 @@ names, one of them the same name as the other's tab.
 This is the same shape as the duplicate student and staff directories the school's owner had
 merged on 2026-08-07: "let's just have a single place with all the information rather than
 3 places."
+
+---
+
+## LIVE, 2026-08-14
+
+**Backend `eduflow-noshop-20260814-484135d`**, environment Ready and Green.
+**Frontend Amplify job 155 SUCCEED** on the same commit. `main` is at `484135d`, pushed.
+
+**Rollback target: `eduflow-r31a-20260814-d571571`.**
+
+The bundle's file list was compared against the last good deploy before upload: **identical,
+240 entries either way.** Nothing dropped, nothing stray swept in.
+
+**Verified against the running system, and this deploy could be verified more strongly than
+most.** A removal proves itself better than an addition does:
+
+| Probe | Answer | What it proves |
+|---|---|---|
+| `/api/health/ready` | 200 | The site is up |
+| `/api/commercial/products` | **404** | The shop route is GONE, not merely refused |
+| `/api/commercial/pos/shifts` | **404** | ditto |
+| `/api/commercial/pos/sales` | **404** | ditto |
+| `/api/commercial/entities` | 401 | Still there and still guarded |
+| `/api/commercial/crm/leads` | 401 | Still there and still guarded |
+| `/api/sms/logs` | 401 | The earlier narrowing is undisturbed |
+
+The 404 and 401 answers together are the point: they prove the shop went and the rest
+stayed, in one pass, against the live system rather than off a status page.
+
+**What this does NOT prove**, said plainly so nobody reads more into it: nothing here logs
+in. The screen's new name and the missing Retail tab are proven by tests and by the build,
+not by a person looking at the live platform. Worth one glance from Abhimanyu.
+
+**No school data was touched by this deploy.** No migration was run.
