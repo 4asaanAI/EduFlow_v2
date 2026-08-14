@@ -312,6 +312,17 @@ function getGroupConfig(user, tools) {
     groups: [
       ...groups.map(asGroup),
       ...lonelyHubs,
+      // The "More" tab is a SAFETY NET, and as of 2026-08-14 it should never appear.
+      //
+      // Abhimanyu asked for it to go: the only thing in it was Staff Tracker, and a whole
+      // tab holding one screen reads as a leftovers drawer. It is gone because that screen
+      // now has a home in People & Attendance, not because the net was cut.
+      //
+      // Deleting the net instead would mean a tool with no hub silently vanishes from the
+      // menu, and a menu that quietly loses an entry is indistinguishable from access being
+      // taken away. That is the mistake this whole layout was written to stop.
+      // `OneLayoutForEveryProfile.test.js` fails if any profile produces a leftover, so the next
+      // unplaced tool is caught while it is being written rather than appearing here.
       ...(leftOver.length
         ? [{ id: 'more', name: 'More', color: 'var(--color-text-secondary)', icon: MoreHorizontal, tools: leftOver.map(tool => tool.id) }]
         : []),
@@ -398,7 +409,14 @@ export default function Sidebar({ onSelectTool, onSelectConv, onNewChat, activeT
   // Whether the Recent Chats section is open at all. Collapsing belongs on the
   // heading - that is where people reach for it - not on a link buried under the
   // list, which you had to scroll past the whole list to reach.
-  const [chatsSectionOpen, setChatsSectionOpen] = useState(true);
+  //
+  // Abhimanyu, 2026-08-14: Recent Chats starts CLOSED and Tools starts OPEN, for every
+  // profile. Both used to start open, so the two sections split the sidebar and the tool
+  // list opened already scrolled, with the tabs a person is looking for pushed off the
+  // bottom. What somebody comes to the sidebar for is a screen, not yesterday's chat.
+  // There is no per-person memory of this, deliberately: the same profile opens the same
+  // way on every device, and the section is one click from open.
+  const [chatsSectionOpen, setChatsSectionOpen] = useState(false);
   // Tools collapses exactly like Recent Chats - same control, same behaviour.
   const [toolsSectionOpen, setToolsSectionOpen] = useState(true);
   const [schoolName, setSchoolName] = useState('');

@@ -72,6 +72,19 @@ describe('one layout for every profile', () => {
           expect((group.tools || []).length).toBeGreaterThan(0);
         });
       });
+
+      test('no leftovers tab, because every screen has a home', () => {
+        // Abhimanyu, 2026-08-14: the "More" tab held exactly one screen, Staff Tracker,
+        // and a whole tab holding one entry reads as a drawer rather than a place. It was
+        // removed by giving that screen a home in People & Attendance.
+        //
+        // The fallback in `getGroupConfig` STAYS, because deleting it would mean the next
+        // tool with no hub silently disappears from the menu, which to the person looking
+        // is identical to access being taken away. This test is what keeps the net empty:
+        // it fails on the tool, at the moment it is added, naming it.
+        const leftovers = (config.groups || []).find(group => group.id === 'more');
+        expect(leftovers?.tools || []).toEqual([]);
+      });
     });
   });
 });

@@ -67,6 +67,12 @@ export const MANAGEMENT_HUBS = [
   {
     id: 'people-operations-hub', name: 'People & Attendance', subtitle: 'Staff attendance, leave and performance', color: 'var(--tool-hex-22d3ee)',
     items: [
+      // Staff Tracker is NOT listed here on purpose, and it is not an omission. It sits
+      // under this tab in the sidebar via `HUB_TAB_FOR_TOOL` below. Adding it here would
+      // also paint a tile on the People & Attendance landing page, giving staff records a
+      // second front door beside School Directory - the exact duplication the school's
+      // owner asked to be removed on 2026-08-07, and which
+      // `ManagementHubs.test.js::the merged directory is the only front door` guards.
       ['staff-attendance-tracker', 'Staff Attendance', 'Presence and late patterns', 'owner'],
       ['staff-performance', 'Staff Performance', 'Performance overview and trends', 'both'],
       ['staff-leave-manager', 'Staff Leave', 'Review and decide leave requests', 'both'],
@@ -120,7 +126,16 @@ export const MANAGEMENT_HUBS = [
 export const MANAGEMENT_HUB_IDS = MANAGEMENT_HUBS.map(hub => hub.id);
 
 /**
- * Where a classroom-side screen belongs, for the teacher, student and guardian menus.
+ * Which sidebar tab a screen sits under, when it has no tile in a hub.
+ *
+ * Renamed from `HUB_FOR_CLASSROOM_TOOL` on 2026-08-14: it is no longer classroom-only.
+ * The distinction it draws is not "classroom or office", it is **tab placement without a
+ * landing-page tile**, and Staff Tracker needs exactly that. Reading this map decides
+ * where an entry appears in the sidebar; `hubItemsForUser`, which paints the hub landing
+ * pages, does NOT read it, so nothing here can add a second front door to a record.
+ *
+ * Originally: where a classroom-side screen belongs, for the teacher, student and
+ * guardian menus.
  *
  * Reported 2026-08-12: every profile except the owner's and the principal's showed one
  * long flat list, and the decision was that all profiles carry THE SAME tab names, with
@@ -134,7 +149,17 @@ export const MANAGEMENT_HUB_IDS = MANAGEMENT_HUBS.map(hub => hub.id);
  * before, so regrouping a menu can never widen anybody's reach - a thing worth keeping
  * true, because a menu is the easiest place to hand out access by accident.
  */
-export const HUB_FOR_CLASSROOM_TOOL = {
+export const HUB_TAB_FOR_TOOL = {
+  // People & Attendance - the staff and the register.
+  //
+  // Abhimanyu, 2026-08-14: Staff Tracker belonged to no hub, so it was the only entry in
+  // a "More" tab of its own. A whole tab holding one screen reads as a leftovers drawer
+  // rather than a place, so it moves in with the rest of the staff screens.
+  //
+  // This GRANTS it to nobody. `groupToolsIntoHubs` only buckets the list a profile already
+  // holds, so this decides which tab it sits under and nothing else.
+  'staff-tracker': 'people-operations-hub',
+
   // People & Attendance - being present, and being away.
   'class-attendance-marker': 'people-operations-hub',
   'substitution-viewer': 'people-operations-hub',
@@ -186,7 +211,7 @@ export function groupToolsIntoHubs(tools) {
   const grouped = MANAGEMENT_HUBS.map(hub => {
     const hubItemIds = new Set(hub.items.map(([id]) => id));
     const inHub = (tools || []).filter(
-      tool => hubItemIds.has(tool?.id) || HUB_FOR_CLASSROOM_TOOL[tool?.id] === hub.id,
+      tool => hubItemIds.has(tool?.id) || HUB_TAB_FOR_TOOL[tool?.id] === hub.id,
     );
     return inHub.length ? { ...hub, tools: inHub.map(tool => tool.id) } : null;
   }).filter(Boolean);

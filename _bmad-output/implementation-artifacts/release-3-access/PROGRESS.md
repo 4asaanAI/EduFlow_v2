@@ -317,3 +317,39 @@ clearest sign that they are narrowings the codebase already believed in.
 
 **NOT DEPLOYED.** Waiting on Abhimanyu. This matters more than usual: Sonu and Lalit already
 hold their passwords, so until this ships the fee-amount leak in item 1 is live.
+
+### 2026-08-14 (evening) - three sidebar changes Abhimanyu asked for
+
+**1. The "More" tab is gone, and Staff Tracker moved into People & Attendance.** It was the
+only entry in that tab, and a whole tab holding one screen reads as a leftovers drawer.
+
+**The fallback that CREATES a "More" tab stays in the code, deliberately.** Deleting it
+would mean the next tool with no hub silently vanishes from the menu, and a menu that
+quietly loses an entry is indistinguishable from access being taken away. The tab is gone
+because the screen now has a home, not because the net was cut. A new test,
+`OneLayoutForEveryProfile::no leftovers tab`, fails on any profile that produces a leftover,
+so the next unplaced tool is caught while somebody is writing it.
+
+**An existing test caught a real mistake, and it was right.** The first attempt added Staff
+Tracker to the hub's `items` list, which also paints a tile on the People & Attendance
+landing page. `ManagementHubs::the merged directory is the only front door to student and
+staff records` went red, because that is the exact duplication the school's owner asked to
+be removed on 2026-08-07 ("let's just have a single place... rather than 3 places"). The
+fix was to place it in the tab map instead, which decides sidebar placement only and is not
+read by the landing pages. **The test was not touched.**
+
+`HUB_FOR_CLASSROOM_TOOL` was renamed to `HUB_TAB_FOR_TOOL`: it is no longer classroom-only,
+and the distinction it actually draws is "tab placement without a landing-page tile".
+
+**2 and 3. Recent Chats now starts closed and Tools starts open, for every profile.** Both
+used to start open, so the two sections split the sidebar and the tool list opened already
+scrolled, with the tabs a person came for pushed below the fold. There is no per-person
+memory of the setting, on purpose: the same profile opens the same way on every device, and
+either section is one click away. Pinned by `SidebarSectionDefaults.test.js`, which renders
+the real sidebar and reads the headings rather than checking a variable's starting value.
+
+**Nothing here grants anybody anything.** Tab placement is decided after each profile's own
+tool list is resolved, so a layout change cannot widen the permission table.
+
+**Gate: frontend 792 passed / 0 failed, production build clean including lint.** No backend
+change. **Not deployed.**
