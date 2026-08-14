@@ -1,0 +1,110 @@
+[
+ {
+  "method": "POST",
+  "path": "/api/settings/year-end-transition",
+  "principal": 400,
+  "accountant": 400,
+  "management": 400,
+  "transport_head": 400,
+  "receptionist": 400,
+  "it_tech": 400,
+  "maintenance": 400,
+  "support_staff": 400
+ },
+ {
+  "method": "POST",
+  "path": "/api/ops/certificates",
+  "principal": 200,
+  "accountant": 200,
+  "management": 200,
+  "transport_head": 200,
+  "receptionist": 200,
+  "it_tech": 200,
+  "maintenance": 200,
+  "support_staff": 200
+ },
+ {
+  "method": "POST",
+  "path": "/api/sms/send-bulk",
+  "principal": 400,
+  "accountant": 400,
+  "management": 400,
+  "transport_head": 400,
+  "receptionist": 400,
+  "it_tech": 400,
+  "maintenance": 400,
+  "support_staff": 400
+ },
+ {
+  "method": "POST",
+  "path": "/api/notifications",
+  "principal": 400,
+  "accountant": 400,
+  "management": 400,
+  "transport_head": 400,
+  "receptionist": 400,
+  "it_tech": 400,
+  "maintenance": 400,
+  "support_staff": 400
+ },
+ {
+  "method": "POST",
+  "path": "/api/auth/admin/students/s1/login",
+  "principal": 404,
+  "accountant": 403,
+  "management": 404,
+  "transport_head": 403,
+  "receptionist": 403,
+  "it_tech": 403,
+  "maintenance": 403,
+  "support_staff": 403
+ },
+ {
+  "method": "POST",
+  "path": "/api/ops/announcements",
+  "principal": 200,
+  "accountant": 200,
+  "management": 200,
+  "transport_head": 200,
+  "receptionist": 200,
+  "it_tech": 200,
+  "maintenance": 200,
+  "support_staff": 200
+ },
+ {
+  "method": "POST",
+  "path": "/api/academics/timetable",
+  "principal": 400,
+  "accountant": 400,
+  "management": 400,
+  "transport_head": 400,
+  "receptionist": 400,
+  "it_tech": 400,
+  "maintenance": 400,
+  "support_staff": 400
+ },
+ {
+  "method": "POST",
+  "path": "/api/attendance/staff/bulk",
+  "principal": 200,
+  "accountant": 200,
+  "management": 200,
+  "transport_head": 200,
+  "receptionist": 200,
+  "it_tech": 200,
+  "maintenance": 200,
+  "support_staff": 200
+ },
+ {
+  "method": "POST",
+  "path": "/api/admissions/applications",
+  "principal": 400,
+  "accountant": 400,
+  "management": 400,
+  "transport_head": 400,
+  "receptionist": 400,
+  "it_tech": 400,
+  "maintenance": 400,
+  "support_staff": 400
+ }
+]
