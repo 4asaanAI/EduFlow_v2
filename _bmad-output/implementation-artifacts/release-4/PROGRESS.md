@@ -512,8 +512,46 @@ credentials fresh from their source each time they are needed.
 #### Left after this release
 
 1. **Reconnect Gmail in n8n** (Abhimanyu), then watch one real ticket reach the inbox.
-2. **Rotate the secret and delete the old Supabase project** (above).
+2. **Rotate `CRON_SECRET`** (above). **The old Supabase project is DELETED**, done by
+   Abhimanyu on 2026-08-14 and confirmed here: it no longer appears in the account, and
+   the live project kept ingesting straight through with zero failed writes. That kills
+   the leaked database key. **It does NOT touch `CRON_SECRET`**, which was the third line
+   of the leaked file, is not tied to any Supabase project, and is still live.
 3. **Decide the Resend route**: delete it, or point it at a verified domain. The key has
    been dead with a 403 for a while, so those alert emails were failing in silence.
 4. **Give LayaaStat a proper address** such as `stat.layaa.ai`. Can be done without
    Abhimanyu.
+
+### 2026-08-14 - the old LayaaStat database is deleted
+
+Checked before it went, rather than after. The old project was `ojfqroafgxcipjxbzgfi`,
+named "Monitor Dashboard", in a different Supabase organisation from the new one.
+
+Four things were confirmed first:
+
+- **Nothing pointed at it.** No reference to the old address survives anywhere in the
+  LayaaStat tree. EduFlow never spoke to the database at all, only to LayaaStat's web
+  address, so it was unaffected either way.
+- **The new project was genuinely doing the job**, not merely existing: events arriving
+  the same morning, zero rows in `failed_writes`, and the registry, the school's ingest
+  key and the alert routes all present.
+- **Nothing was recoverable from the old one.** It refused connections outright
+  (`the database system is not accepting connections`), which is the disk-full state it
+  died in. The only loss is the old telemetry history, already a recorded decision.
+- **The leaked key really did belong to the OLD project.** This was checked by reading the
+  leaked blob, which still exists locally, rather than trusting the earlier account. Worth
+  the two minutes: the leak happened on 13 August and the rebuild on the 12th, so the
+  values could plausibly have been the NEW project's, in which case deleting the old one
+  would have fixed nothing while leaving the live database exposed.
+
+**The leaked file had three lines, not two.** The third is `CRON_SECRET`, which guards
+LayaaStat's scheduled jobs, belongs to no Supabase project, and is untouched by the
+deletion. It is still live and still exposed until rotated.
+
+After deletion the live project was re-checked: still healthy, still ingesting, zero
+failed writes, one active ingest key.
+
+**Also still true and easy to misread as fixed:** the commit holding the leaked file is
+still in the LOCAL clone, so the values remain readable from this machine despite the
+history rewrite. GitHub could not be reached from here to see whether it is still served
+publicly, so assume it is.
