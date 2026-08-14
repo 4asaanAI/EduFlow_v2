@@ -174,15 +174,87 @@ def verify_password(password: str, hashed: str) -> bool:
 
 # ─── Core auth dependency ────────────────────────────────────────────────────
 
+def _refuse_if_release_has_not_landed(user: dict) -> None:
+    """R3-0, 2026-08-14. An office profile that is not switched on yet is turned away here.
+
+    **The problem this closes.** Until today "dormant" was documentation. Nothing at
+    runtime read the `status` field in `profile_matrix`; it appeared only in tests and in
+    the script that generates the frontend mirror. Being dormant hid a profile from the
+    menus and starved it of Flo tools, and that was all. Proven by probe on 2026-08-14: a
+    `support_staff` account could create a school bus route through the API, and every
+    dormant office profile could read the whole student and staff lists, because the route
+    gates say `require_role("owner", "admin")` and that ignores the sub-category.
+
+    Seven office logins already exist in the live database (migration 041, applied
+    2026-08-12) and four shared desk accounts beside them. The only thing keeping any of
+    that harmless is that their one-time passwords were never handed out. That is not a
+    control, it is a coincidence, and it expires the first time somebody is given a
+    password by mistake.
+
+    **Why this is deliberately narrow.**
+
+    It refuses ONLY an `admin` whose sub-category names a profile the table marks dormant.
+    It does not touch teachers, students or guardians. Their rows are dormant too, but
+    they are reached through their own routes, student logins can already be created
+    through a real endpoint, and refusing them here would take out the child-facing side
+    of the platform to fix an office problem.
+
+    It also does NOT refuse an admin whose sub-category is unrecognised, which is the one
+    place this falls short of default-deny on purpose. Three of the four shared desks
+    (`transport`, `reception`, `ittech`) carry sub-categories that are not profile names,
+    and a generic admin with no sub-category at all is treated as principal-like by the
+    hand-written helpers in `routes/issues.py`. Refusing the unknown would be the stricter
+    rule and might lock a working account out of a live school, so those are LOGGED
+    instead. Tighten it once the log says who they actually are; do not tighten it blind.
+
+    Raises 403 rather than 401: their sign-in is genuine, and telling somebody their
+    password is wrong when it is right sends them to reset a password that works.
+    """
+    if user.get("role") != "admin":
+        return
+
+    from services.profile_matrix import PROFILE_MATRIX
+
+    sub_category = user.get("sub_category")
+    entry = PROFILE_MATRIX.get(sub_category) if sub_category else None
+
+    if entry is None:
+        logger.info(
+            "admin with an unrecognised profile allowed through: sub=%s user=%s. "
+            "R3-0 logs these rather than refusing them; see the docstring.",
+            sub_category, user.get("user_id"),
+        )
+        return
+
+    if entry["status"] != "live":
+        logger.info(
+            "refused: profile not switched on yet. sub=%s user=%s",
+            sub_category, user.get("user_id"),
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Your profile is not switched on yet. Nothing is wrong with your "
+                "sign-in. Please ask the school office when your access begins."
+            ),
+        )
+
+
 def get_current_user(request: Request) -> dict:
     """
     Extract current user from JWT in Authorization: Bearer <token> header.
     Raises 401 if no valid token found.
+
+    R3-0: also refuses an office profile whose release has not landed. Every guarded
+    route funnels through here, which is the point: one check rather than a rule
+    repeated across 27 route files, where the next new route would forget it.
     """
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
-        return decode_jwt(token)
+        user = decode_jwt(token)
+        _refuse_if_release_has_not_landed(user)
+        return user
 
     raise HTTPException(status_code=401, detail="Not authenticated", headers={"WWW-Authenticate": "Bearer"})
 
