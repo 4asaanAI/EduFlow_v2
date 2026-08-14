@@ -51,6 +51,11 @@ and two admin office staff hold Lalit's set, the moment either is given a passwo
 
 ## What to do next, in order
 
+> ⚠️ **This section was overtaken on the evening of 2026-08-14. R3-0 is PARKED by
+> Abhimanyu's instruction and must not be started. Begin at R3-1 instead, and hand out no
+> new credentials. See the update at the bottom of this file before acting on the order
+> below.**
+
 **R3-0 first, before any credential goes out.** One central check that refuses a profile
 marked dormant at the door, so a dormant account gets a plain "not switched on yet" rather
 than a half-working platform. Small, and it removes the class rather than the instances.
@@ -66,10 +71,10 @@ with no money anywhere), R3-3 (the drivers and conductors profile, defined only)
 - **Which profile Vipin Kumar should hold.** He is the social media executive and was given
   a `support_staff` login one day after the answer that said support staff get no logins.
   Probably a mapping choice, but confirm it.
-- **The leaked `CRON_SECRET` on LayaaStat**, still live and still unrotated. Unrelated to
-  this work and more urgent than it.
-- **The Zoho app password and sending mailbox** for ticket emails. See
-  `implementation-artifacts/release-4/ticket-email-via-zoho-2026-08-14.md`.
+*(Two items that stood here are now settled and were removed on 2026-08-14, rather than
+left to be chased: the Zoho app password and sending mailbox arrived, so ticket email
+works and was seen in a real inbox; and rotating the leaked `CRON_SECRET` is DROPPED by
+Abhimanyu's decision. Do not reinstate either as an open task.)*
 
 ## Settled on 14 August. Do not reopen.
 
@@ -108,3 +113,45 @@ Release 4 asked whether a person can tell "nothing happened" from "we did not re
 This release asks the neighbouring one: **can a person tell "I am not allowed" from "this
 is broken"?** A dormant account that reaches six read-only screens and a Flo that can do
 nothing answers that question badly.
+
+---
+
+## Update, 2026-08-14 evening: Release 4 is fully closed, and R3-0 is parked by decision
+
+**R3-0 is PARKED on Abhimanyu's instruction**, not because it failed. It is built and
+pushed on branch `r3-0-dormant-lock` (`033ef40`) and its own 35 tests pass. It turns 20
+existing tests red, and each of those is a permission judgement rather than a chore, which
+is why it was not forced through. See `implementation-artifacts/release-3-access/PROGRESS.md`
+for the file-by-file list and the two questions to ask of each.
+
+**The consequence of parking it, stated plainly so nobody has to work it out later: no
+credential may be handed to anybody new.** R3-0 was the thing that made a handover safe.
+Sonu and Lalit are the exception the plan already allows, because their profiles were
+built and proven in Release 2 and are live. Chaman (R3-4) and the four office accounts
+whose profiles the school has not yet defined must all wait.
+
+**What holds the line meanwhile is unchanged and is not code:** nobody has a password.
+
+### Release 4 leftovers, all four now closed
+
+- **Ticket email works.** Through Zoho Mail, sending from `support@layaa.ai` to Abhimanyu
+  and Shubham, and a real message was received. "Reconnect Gmail" is dead wording.
+- **The dead Resend sender is removed and deployed.** LayaaStat commit `13fc674`, Amplify
+  build 40.
+- **`stat.layaa.ai` is live** over a valid certificate.
+- **Rotating `CRON_SECRET` is DROPPED** by decision. Off the list for good.
+
+### Two corrections worth carrying
+
+- **LayaaStat is on AWS Amplify (`ddsqdblq9ge74`), not Vercel.** The repository's leftover
+  `vercel.json` reads as authoritative and is not.
+- **The `hello@layaa.ai` alert route is switched off**, after tracing both ends: it was a
+  duplicate of the working webhook route, sent to itself, and delivered nothing in three
+  attempts. Off rather than deleted, so it stays visible and one click from returning.
+
+### Next
+
+**R3-1, the survey.** Read-only, deploys nothing, and answers the question currently being
+guessed at: how many server routes let the wrong office desk through. `POST /api/transport`
+is the proven example. Nothing is widened; where a route is wrong it is written down, not
+changed on the spot.

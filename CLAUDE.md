@@ -66,10 +66,22 @@
 > 14 August. Verified live: `/api/audit-log/{retention/plan,my-changes-today,school-summary}`,
 > `/api/issues/platform` and `/api/operator/platform-health` all answer 401.
 >
-> **One hop is still broken and it is not in this repository.** The school can raise a
-> ticket and it is stored in LayaaStat under The Aaryans, but the notification email does
-> not send until the Gmail sign-in is renewed in n8n. Do not describe ticket email as
-> working until one real ticket has been watched into the inbox.
+> **The ticket route now works end to end (fixed 2026-08-14).** *(This paragraph said the
+> last hop was broken and waiting on a Gmail sign-in in n8n. That was true when written and
+> is no longer. The fix is not Gmail: email goes through ZOHO MAIL now, and "reconnect
+> Gmail" is dead wording that must not be carried forward.)* The school raises a ticket, it
+> is stored in LayaaStat under The Aaryans, and n8n emails Abhimanyu and Shubham from
+> `support@layaa.ai`. **Proven, not assumed:** a real send succeeded and the message was
+> received. Detail in `implementation-artifacts/release-4/ticket-email-via-zoho-2026-08-14.md`.
+>
+> **All four Release 4 leftovers are closed.** Ticket email works; the dead Resend sender
+> is removed from LayaaStat and deployed; `stat.layaa.ai` is live over a valid certificate;
+> and rotating `CRON_SECRET` is DROPPED by Abhimanyu's decision of 2026-08-14, so do not
+> raise it again as outstanding.
+>
+> **LayaaStat runs on AWS Amplify, app `ddsqdblq9ge74`, NOT Vercel.** The repository carries
+> a leftover `vercel.json` that reads as authoritative and is not. The Vercel account holds
+> one unrelated project. Going to the wrong console cost time on 14 August.
 >
 > **Start here:** `_bmad-output/implementation-artifacts/release-4/PROGRESS.md` is the ONLY
 > record of what is done, including what is left. The work itself is

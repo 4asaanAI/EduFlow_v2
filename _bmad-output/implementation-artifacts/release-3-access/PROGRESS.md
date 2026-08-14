@@ -18,14 +18,14 @@ both live.
 
 | Part | What it is | State |
 |---|---|---|
-| R3-0 | Make dormant mean something, at the door | **Built, PARKED on branch `r3-0-dormant-lock`. Turns 20 existing tests red; see below.** |
+| R3-0 | Make dormant mean something, at the door | **Built, PARKED on branch `r3-0-dormant-lock`. Parked by Abhimanyu's instruction on 2026-08-14 evening, NOT because it failed. Do not start it. Turns 20 existing tests red; see below.** |
 | R3-M | The staff room holds only profiles whose release has landed | **LIVE 2026-08-14** |
 | R3-1 | Close the gap between the matrix and the REST API | Not started (survey first, read only) |
 | R3-2 | Chaman's profile built properly, no money anywhere | Not started |
 | R3-3 | The tenth profile: drivers and conductors, defined only | Not started |
 | R3-4 | Switch Chaman on and watch him sign in | Not started |
 
-Nothing is built. No live school data has been read or changed by this release.
+Nothing beyond R3-M is built. No live school data has been read or changed by this release.
 
 ---
 
@@ -151,3 +151,31 @@ do something. Each needs the same judgement made individually:
 
 **Do not resolve these by making the suite green.** Making a red test pass is not the same
 as deciding what a person may do, and this is a permission change on a live school platform.
+
+### 2026-08-14 (evening) - R3-0 parked by instruction; next is R3-1
+
+Abhimanyu asked for R3-0 to be paused regardless of what the handoff says. **That is an
+instruction, not a failure.** The branch stands as built and the 20 red tests stay an open
+question, listed above, for whoever resumes it.
+
+**The consequence, so nobody has to derive it: no new credential may be handed out.** R3-0
+was the thing that made a handover safe. Sonu and Lalit are the exception the plan already
+allows, since their profiles were built and proven in Release 2 and are live. Chaman (R3-4)
+and the four office accounts whose profiles the school has not defined must wait.
+
+**Everything else in this release is safe to do with R3-0 parked**, because none of it
+hands anybody a password:
+
+- **R3-1**, the survey. Read-only. This is next.
+- **R3-2**, Chaman's profile. Better after R3-1, which tells you which gates it touches.
+- **R3-3**, drivers and conductors, defined only. Fully independent.
+- **R3-4**, the handover. **BLOCKED while R3-0 is parked.** This is the one that must wait.
+
+Release 4 (access), the whole admin staff, is also unaffected. Its two blockers are the
+school's answers, not R3-0.
+
+**Unrelated work closed the same evening**, recorded here only so a cold reader is not left
+wondering: all four Release 4 leftovers are done. Ticket email works through Zoho and was
+seen in a real inbox, the dead Resend sender is removed and deployed, `stat.layaa.ai` is
+live, and rotating `CRON_SECRET` is dropped by decision. Detail lives in
+`implementation-artifacts/release-4/PROGRESS.md`, not here.
