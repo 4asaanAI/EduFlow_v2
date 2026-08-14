@@ -397,8 +397,8 @@ Where the money in this release actually goes, and what to do about it:
 | The exact list of "things that hurt the platform" for R4-4 | Abhimanyu | Proposal is in R4-4. Confirm or change it before that part starts. |
 | ~~Screenshots and children's data~~ | Closed 2026-08-12 | Decision 14. Sent unblanked. Not to be reopened. |
 | Borrowing Peppermint's design | Abhimanyu | Peppermint is archived, last code change 21 Sep 2025, 101 issues open forever, licence unidentified by GitHub, 112 MB for a tenth of which we need. Proposal: **read its code and take its data model and ticket states**, adopt nothing. Costs no licence, no hosting, no second login. Awaiting a yes. Does not block R4-1. |
-| Does an `eduflow` product and an Aaryans tenant exist in LayaaStat? | Verify | Only `layaa-internal` is in the seed file, so the rest were made at runtime and cannot be read from the repository. Check, do not assume. |
-| Does the LIVE EduFlow ingest key point at that tenant? | Verify | A key pointing at `layaa-internal` files every school's ticket under Layaa's own tenant and looks like it is working. |
+| ~~Does an `eduflow` product and an Aaryans tenant exist in LayaaStat?~~ | **VERIFIED 2026-08-14** | Yes. Product `layaaos-eduflow`, tenant `the-aaryans` ("The Aaryans"). Read from the live database, not assumed. |
+| ~~Does the LIVE EduFlow ingest key point at that tenant?~~ | **VERIFIED 2026-08-14** | Yes. There is exactly ONE unrevoked key, "The Aaryans (EduFlow) production", bound to `the-aaryans` under `layaaos-eduflow`. Not `layaa-internal`, which was the feared case. |
 | Reading live database and audit size | Granted, read only | Nothing written, migrated or deleted without a fresh yes. |
 | LayaaStat and n8n changes | Different repositories | The LayaaStat work is real work in `E:\Github\Aasaan AI\LayaaStat`, and the n8n workflow lives outside both. Neither is covered by EduFlow's test suite, so each needs its own proof that it works. |
 

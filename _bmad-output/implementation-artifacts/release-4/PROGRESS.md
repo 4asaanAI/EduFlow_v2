@@ -18,7 +18,7 @@ reports after it are live.
 | R4-2 | Everything is recorded | **Live** |
 | R4-3 | Two years in full, a summary forever | **Live** |
 | R4-4 | Undo what hurts, guide the rest | **Live** |
-| R4-5 | Flo watches the platform and can reach us | **Live except the final email**, which waits on the Gmail reconnection in n8n |
+| R4-5 | Flo watches the platform and can reach us | **Live except the final email**, which moves to Zoho Mail (see `ticket-email-via-zoho-2026-08-14.md`) |
 | R4-6 | Honest menus, one layout | **Live** |
 
 **All six parts went out on 2026-08-13.** Backend `eduflow-release4-20260813-fec72a7`,
@@ -36,8 +36,10 @@ Rollback target: `eduflow-msgfix-20260812-6520aed`.
 R4-5 is the one that reaches outside this repository. The ticket route works end to end
 inside our own systems: the button is live, the school can raise a ticket and it is stored
 in LayaaStat under The Aaryans. **The only hop still broken is the final email**, waiting
-on the Gmail sign-in being renewed in n8n. Do not describe the email as working until one
-real ticket has been watched into the inbox.
+on that last step being pointed at **Zoho Mail**, decided 2026-08-14. *(It previously said
+Gmail; that is dead and must not be carried forward.)* The instruction sheet, including the
+two things blocked on Abhimanyu, is `ticket-email-via-zoho-2026-08-14.md` in this folder.
+Do not describe the email as working until one real ticket has been watched into the inbox.
 
 ---
 
@@ -460,7 +462,8 @@ records, where the old one had 405,000.
 
 #### Left
 
-1. **Abhimanyu reconnects the Gmail credential in n8n.** Then the email hop is proven.
+1. ~~**Abhimanyu reconnects the Gmail credential in n8n.**~~ **Superseded 2026-08-14:** the
+   email goes through Zoho Mail instead. See `ticket-email-via-zoho-2026-08-14.md`.
 2. **Deploy EduFlow's backend**, which is the only way the button inside the school's
    platform starts working. Not done: it touches the live platform and needs his say-so.
 3. **Delete the old Supabase project** once 1 is confirmed.
@@ -511,14 +514,18 @@ credentials fresh from their source each time they are needed.
 
 #### Left after this release
 
-1. **Reconnect Gmail in n8n** (Abhimanyu), then watch one real ticket reach the inbox.
+1. **Ticket email moves to ZOHO MAIL, not Gmail** (Abhimanyu, 2026-08-14). "Reconnect
+   Gmail" is dead and must not be carried forward. Instruction sheet, including the two
+   things blocked on him: `ticket-email-via-zoho-2026-08-14.md` in this folder.
 2. **Rotate `CRON_SECRET`** (above). **The old Supabase project is DELETED**, done by
    Abhimanyu on 2026-08-14 and confirmed here: it no longer appears in the account, and
    the live project kept ingesting straight through with zero failed writes. That kills
    the leaked database key. **It does NOT touch `CRON_SECRET`**, which was the third line
    of the leaked file, is not tied to any Supabase project, and is still live.
-3. **Decide the Resend route**: delete it, or point it at a verified domain. The key has
-   been dead with a 403 for a while, so those alert emails were failing in silence.
+3. **Delete the Resend route.** No longer a decision: with ticket email going through Zoho,
+   nothing needs it, and its key has been dead with a 403 for a while so those alerts were
+   failing in silence. A configured but dead sender reads as working, which is worse than
+   none.
 4. **Give LayaaStat a proper address** such as `stat.layaa.ai`. Can be done without
    Abhimanyu.
 
