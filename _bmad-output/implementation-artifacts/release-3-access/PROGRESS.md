@@ -353,3 +353,32 @@ tool list is resolved, so a layout change cannot widen the permission table.
 
 **Gate: frontend 792 passed / 0 failed, production build clean including lint.** No backend
 change. **Not deployed.**
+
+### 2026-08-14 (evening) - R3-1a and the sidebar changes are LIVE
+
+**Deployed on Abhimanyu's go-ahead.** Backend `eduflow-r31a-20260814-d571571`, environment
+Ready and Green. Frontend Amplify job **151 SUCCEED** on the same commit. `main` is at
+`d571571`, pushed.
+
+**Rollback target: `eduflow-msgrelease-20260814-2619d16`.**
+
+**The bundle was checked before it was uploaded**, as the rule requires: the file list was
+compared against the last good deploy and came back **identical, 240 entries either way**.
+Nothing was dropped and no stray file was swept in.
+
+**Verified against the running system, not the status page.** `/api/health/ready` answers
+200, and all five narrowed routes answer 401: `/api/sms/logs`, `/api/ops/transport`,
+`/api/settings/branches`, `POST /api/settings/year-end-transition` and
+`POST /api/attendance/staff/bulk`. A 401 proves the new code is live and still guarded; a
+404 would have meant it never shipped.
+
+**What that verification does NOT prove, said plainly.** It proves the routes are live and
+refuse a stranger. It does **not** prove on the live system that the management head is now
+refused transport, or that he is refused the message log, because proving that needs a
+signed token for a real profile and the signing secret is not something to go and fetch or
+write down. **The narrowings themselves are proven by tests, not by a live probe.** If
+somebody wants a live proof, ask Abhimanyu to sign in as Lalit and open Transport.
+
+**The money leak is closed as of this deploy.** Until now the management head could read
+every fee reminder ever sent, with the amount and the child's name, and he has held a
+password since earlier today.
