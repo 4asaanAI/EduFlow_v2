@@ -5,6 +5,7 @@ import hashlib
 import re
 import uuid
 
+from fastapi.responses import JSONResponse
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 
 from pagination import clamp_page, clamp_page_size
@@ -13,6 +14,13 @@ from middleware.auth import get_current_user, require_owner, require_owner_or_pr
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification
 from services.actor_context import actor_ctx_from_user
+from services.profile_change_service import (
+    decide_profile_change as svc_decide_profile_change,
+    ProfileChangeValidationError,
+    ProfileChangeNotFoundError,
+    ProfileChangeConflictError,
+    ProfileChangeAuthorizationError,
+)
 from services.leave_service import (
     decide_leave,
     LeaveValidationError,
@@ -26,6 +34,7 @@ from services.staff_service import (
     update_staff as update_staff_service,
     set_enrolment_state as set_staff_enrolment_state_service,
     delete_staff as delete_staff_service,
+    StaffApprovalRequired,
     StaffFieldValidationError,
     StaffValidationError,
     StaffNotFoundError,
@@ -114,7 +123,10 @@ def _is_owner_or_principal_user(user: dict) -> bool:
     """Mirror of ``staff_service._is_owner_or_principal`` for the raw user dict."""
     if user.get("role") == "owner":
         return True
-    return user.get("role") == "admin" and (user.get("sub_category") or "principal") == "principal"
+    # Default deny: an admin account with no sub_category is NOT the principal. The old
+    # `or "principal"` fallback handed principal powers to any office account whose job
+    # title happened to be blank.
+    return user.get("role") == "admin" and user.get("sub_category") == "principal"
 
 
 def _public_staff(staff: dict) -> dict:
@@ -540,79 +552,32 @@ async def list_profile_change_requests(
 async def decide_profile_change_request(
     request_id: str, request: Request, user: dict = Depends(require_owner_or_principal),
 ):
-    """Approve or reject a requested correction. Only here does anything change."""
+    """Approve or reject a requested correction.
+
+    Approvals workflow, 2026-08-15: the body of this route moved into
+    `profile_change_service.decide_profile_change`, so the shared approvals queue
+    decides a correction through exactly this code and not a second copy. The gate
+    above is unchanged, and the "you cannot decide your own" rule travelled with the
+    record, so it now guards both entrances.
+    """
     db = get_db()
     body = await request.json()
-    decision = (body.get("status") or "").strip().lower()
-    if decision not in ("approved", "rejected"):
-        raise HTTPException(422, "status must be 'approved' or 'rejected'")
-
-    req = await db.profile_change_requests.find_one(_staff_query({"id": request_id}), {"_id": 0})
-    if not req:
-        raise HTTPException(404, "Request not found")
-    if req.get("status") != "pending":
-        raise HTTPException(409, "That request has already been %s" % req.get("status"))
-
-    # A Principal is an administrator, so without this they could raise a
-    # request and wave it through themselves - which is precisely the
-    # self-editing this whole feature exists to prevent. The Owner decides theirs.
-    if req.get("user_id") == user.get("id"):
-        raise HTTPException(
-            403,
-            "You cannot decide your own request. The Owner will look at it.",
-        )
-
-    now = datetime.now(timezone.utc).isoformat()
-    settled = {
-        "status": decision,
-        "decided_by": user.get("id"),
-        "decided_by_role": user.get("role"),
-        "decided_at": now,
-        "rejection_reason": (body.get("rejection_reason") or "").strip() or None,
-    }
-
-    if decision == "approved":
-        staff = await db.staff.find_one(_staff_query({"id": req["staff_id"]}), {"_id": 0})
-        if not staff:
-            raise HTTPException(404, "That member of staff no longer has a record")
-        update = dict(req.get("requested") or {})
-        await db.staff.update_one(
-            _staff_query({"id": staff["id"]}), {"$set": {**update, "updated_at": now}}
-        )
-        # The login record carries the name and phone the sign-in token is built
-        # from, so an approved correction that skipped it would vanish at the
-        # next sign-in.
-        if staff.get("user_id") and ({"name", "phone"} & set(update)):
-            auth_user = await db.auth_users.find_one({"id": staff["user_id"]}, {"_id": 0})
-            if auth_user:
-                user_info = {**(auth_user.get("user_info") or {}), "id": staff["user_id"]}
-                for field in ("name", "phone"):
-                    if field in update:
-                        user_info[field] = update[field]
-                await db.auth_users.update_one(
-                    {"id": staff["user_id"]}, {"$set": {"user_info": user_info}}
-                )
-
-    await db.profile_change_requests.update_one(
-        _staff_query({"id": request_id}), {"$set": settled}
-    )
-    await _audit(
-        db, action=f"profile_change_{decision}", staff_id=req["staff_id"], user=user,
-        changes={"request_id": request_id, "requested": req.get("requested")},
-    )
-    await create_notification(
-        db,
-        user_id=req.get("user_id"),
-        notification_type="profile_change_decision",
-        title="Your requested correction was %s" % decision,
-        message=("Your details have been updated." if decision == "approved"
-                 else "Your requested correction was not approved."
-                      + (" Reason: %s" % settled["rejection_reason"] if settled["rejection_reason"] else "")),
-        source_id=request_id,
-        source_type="profile_change_request",
-        school_id=get_school_id(),
-    )
-    return {"success": True, "data": {**req, **settled}}
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        settled = await svc_decide_profile_change(db, actor_ctx, {
+            "request_id": request_id,
+            "status": body.get("status"),
+            "rejection_reason": body.get("rejection_reason"),
+        })
+    except ProfileChangeValidationError as e:
+        raise HTTPException(422, str(e))
+    except ProfileChangeNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except ProfileChangeConflictError as e:
+        raise HTTPException(409, str(e))
+    except ProfileChangeAuthorizationError as e:
+        raise HTTPException(403, str(e))
+    return {"success": True, "data": settled}
 
 
 @router.get("/{staff_id}")
@@ -667,6 +632,16 @@ async def delete_staff(staff_id: str, request: Request):
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
     try:
         await delete_staff_service(db, actor_ctx, {"staff_id": staff_id})
+    except StaffApprovalRequired as e:
+        # R3-2, 2026-08-15: the transport head asked to remove one of his own drivers or
+        # conductors. Recorded and waiting on Aman or Adesh, which is a success with a
+        # next step, not a refusal. 202 so the screen can tell "sent for agreement" apart
+        # from "removed" - they are different facts.
+        return JSONResponse(
+            status_code=202,
+            content={"success": True, "awaiting_approval": True,
+                     "data": {"approval_id": e.approval_id}, "message": e.message},
+        )
     except StaffNotFoundError:
         raise HTTPException(404, "Staff not found")
     except StaffAuthorizationError:

@@ -90,13 +90,82 @@ def _is_owner(actor_ctx: ActorContext) -> bool:
 
 
 def _is_owner_or_principal(actor_ctx: ActorContext) -> bool:
+    # Default deny: an admin account with no sub_category is NOT the principal. The old
+    # `or "principal"` fallback handed principal powers to any office account whose job
+    # title happened to be blank.
     return actor_ctx.role == "owner" or (
-        actor_ctx.role == "admin" and (actor_ctx.sub_category or "principal") == "principal"
+        actor_ctx.role == "admin" and actor_ctx.sub_category == "principal"
     )
 
 
 def _is_accounts(actor_ctx: ActorContext) -> bool:
     return actor_ctx.role == "admin" and actor_ctx.sub_category in ("accounts", "accountant")
+
+
+# R3-2, 2026-08-15: the transport head keeps his own team's records.
+#
+# Abhimanyu's answer 10 of 2026-08-11 took drivers and conductors out of support staff and
+# gave them a place of their own; his answer of 2026-08-15 put them on the STAFF ROLL, so
+# they appear in the directory and the headcounts like every other colleague, and settled
+# that they get NO LOGIN.
+#
+# That last part is why this is a separate path rather than a wider gate. Creating a staff
+# record MINTS A LOGIN - that is what `_create_or_link_user` does, and it is precisely the
+# fault closed on 2026-08-15 when creating a colleague was narrowed to the owner and the
+# principal. Simply letting the transport head through that gate would have re-opened it
+# and handed him a way to issue credentials, on the same day it was shut.
+#
+# So he creates a person WITHOUT a login, and only a transport person.
+TRANSPORT_STAFF_TYPE = "transport"
+
+
+def _is_transport_head(actor_ctx: ActorContext) -> bool:
+    return actor_ctx.role == "admin" and actor_ctx.sub_category == "transport_head"
+
+
+class StaffApprovalRequired(Exception):
+    """A removal was asked for that needs Aman or Adesh to agree → HTTP 202.
+
+    NOT an error and it must never be shown as one. The request is recorded and waiting.
+    Same shape as `TransportApprovalRequired` in `transport_service`, deliberately: a
+    person should get the same answer for "remove this bus" and "remove this driver".
+    """
+
+    def __init__(self, approval_id: str, message: str):
+        super().__init__(message)
+        self.approval_id = approval_id
+        self.message = message
+
+
+async def _ask_to_remove_a_colleague(db, actor_ctx: ActorContext, staff: dict):
+    """Record the request and hand back the exception the caller raises.
+
+    R3-2, 2026-08-15. Routed `owner_and_principal` so EITHER Aman or Adesh can decide it,
+    which is Abhimanyu's rule for every deletion the transport head asks for.
+    """
+    from services.approvals_service import create_approval_request_doc
+
+    name = staff.get("name") or staff.get("id")
+    approval_id = await create_approval_request_doc(
+        db, actor_ctx,
+        title=f"Take {name} off the roll",
+        description=(
+            f"The transport head has asked for {name}, a member of the transport team, "
+            "to be taken off the roll. Nobody has been removed yet."
+        ),
+        estimated_impact=(
+            "They stop appearing on the staff roll and their login, if they had one, is "
+            "closed. Their attendance and pay history are kept."
+        ),
+        note="Requested by the transport head. Nobody has been removed yet.",
+        routing="owner_and_principal",
+        pending_action={"kind": "remove_staff_member", "staff_id": staff.get("id")},
+    )
+    return StaffApprovalRequired(
+        approval_id,
+        f"Taking {name} off the roll needs the school's owner or the principal to agree, "
+        "so it has been sent to both of them and nobody has been removed yet.",
+    )
 
 
 def _norm(value) -> Optional[str]:
@@ -356,12 +425,46 @@ async def create_staff(
     # included - able to create a plain teacher. Creating a staff record always
     # mints a LOGIN (`_create_or_link_user` below), so that was a way into the
     # platform issued by someone who was never given that authority.
-    if not _is_owner_or_principal(actor_ctx):
+    #
+    # R3-2, 2026-08-15: the transport head is the one exception, and it is deliberately
+    # NOT a widening of the gate above. See `_is_transport_head`. He adds a driver or a
+    # conductor as a person on the roll, with no login and no way to ask for one, so the
+    # authority the gate protects - issuing a way into the platform - stays exactly where
+    # it was.
+    creates_without_login = _is_transport_head(actor_ctx)
+    if creates_without_login:
+        if _norm(params.get("staff_type")) != TRANSPORT_STAFF_TYPE:
+            raise StaffAuthorizationError(
+                "The transport head adds transport staff only. Ask the school's owner or "
+                "the principal for anybody else."
+            )
+        # Any hint of a login is refused outright rather than ignored. Silently dropping
+        # a password from a request that returned success would tell the caller a login
+        # was made when none was, and the next person to look would believe it.
+        for credential_field in ("password", "password_hash", "user_id"):
+            if params.get(credential_field):
+                raise StaffAuthorizationError(
+                    "Drivers and conductors do not get a login to the platform."
+                )
+        # A driver is not an office desk. Forced rather than trusted, so no request shape
+        # can turn this into a privileged account. `transport_staff` is the tenth profile,
+        # defined by R3-3 on the same day: answer 10 of 2026-08-11 took drivers and
+        # conductors OUT of support staff, so filing them there would have recorded the
+        # school's own shape wrongly even though nothing would have broken at runtime.
+        effective["role"] = requested_role = "admin"
+        effective["sub_category"] = requested_sub = "transport_staff"
+    elif not _is_owner_or_principal(actor_ctx):
         raise StaffAuthorizationError("Only the school's owner or principal can create a staff login")
     # Story 1.2 - a value the permission system does not recognize grants nothing.
     _validate_role_and_sub_category(effective, existing=None)
 
-    user_id, temp_password, username = await _create_or_link_user(db, actor_ctx, effective, session=session)
+    if creates_without_login:
+        # An empty `user_id` is how this platform already spells "this colleague has no
+        # login": the field is required on the record and the sign-in path looks people
+        # up BY it, so nothing can authenticate as a person carrying "".
+        user_id, temp_password, username = "", None, ""
+    else:
+        user_id, temp_password, username = await _create_or_link_user(db, actor_ctx, effective, session=session)
     staff = Staff(
         user_id=user_id,
         name=params["name"],
@@ -456,6 +559,23 @@ async def update_staff(
     # would be assuming something nobody asked for.
     if _is_accounts(actor_ctx) and not _is_owner(actor_ctx):
         allowed = {"salary"}
+    # R3-2, 2026-08-15: the transport head keeps his OWN TEAM's details right, and only
+    # theirs. Same shape as the accountant's salary-only edit above, and for the same
+    # reason: `update_staff` is one tool over every colleague in the school, and he was
+    # given his drivers and conductors, not the staff record generally.
+    #
+    # Two narrowings, and the first matters more. He may only touch a TRANSPORT person:
+    # without that, the tool he was given to correct a driver's phone number would also
+    # let him rewrite a teacher's. And no salary: what a driver is paid is Sonu's, which
+    # is the line the whole profile is drawn along.
+    if _is_transport_head(actor_ctx):
+        if _norm(existing.get("staff_type")) != TRANSPORT_STAFF_TYPE:
+            raise StaffAuthorizationError(
+                "That colleague is not transport staff. The transport head keeps the "
+                "records of his own drivers and conductors."
+            )
+        allowed = {"name", "employee_id", "phone", "email", "address",
+                   "qualification", "department", "join_date"}
     if not _is_owner_or_principal(actor_ctx) and any(f in body for f in LEAVE_BALANCE_FIELDS):
         raise StaffAuthorizationError("Forbidden")
 
@@ -649,6 +769,29 @@ async def delete_staff(
     # R2-4 / decision 4, 2026-08-10: the management head adds and edits colleagues; he
     # does not take them off the roll. Guarded HERE and not on the route, because the
     # route and the Flo `delete_staff` tool both come through this function.
+    # R3-2, 2026-08-15. Abhimanyu asked for the transport head to be able to remove a
+    # DRIVER OR CONDUCTOR, behind the same agreement gate as deleting a bus route: he
+    # raises it, and Aman or Adesh carries it out by agreeing.
+    #
+    # Checked BEFORE the deny below, so he gets "sent for agreement" rather than the flat
+    # refusal that rule would otherwise give him. He still may not delete anybody himself,
+    # which is why `may_delete_people` stays False for his profile.
+    #
+    # Narrowed to his own team, exactly as `update_staff` is. Without that, the path built
+    # so he could retire a bus driver would also let him ask for a teacher to be removed.
+    if _is_transport_head(actor_ctx) and not params.get("_approved"):
+        existing = await db.staff.find_one(
+            scoped_filter({"id": staff_id}, actor_ctx.school_id), {"_id": 0}
+        )
+        if not existing:
+            raise StaffNotFoundError("Staff not found")
+        if _norm(existing.get("staff_type")) != TRANSPORT_STAFF_TYPE:
+            raise StaffAuthorizationError(
+                "That colleague is not transport staff. The transport head asks about his "
+                "own drivers and conductors."
+            )
+        raise await _ask_to_remove_a_colleague(db, actor_ctx, existing)
+
     if not may_delete_people(user_from_actor(actor_ctx)):
         raise StaffAuthorizationError(
             "Only the school's owner or the principal can take a colleague off the roll"
