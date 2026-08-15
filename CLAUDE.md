@@ -4,7 +4,52 @@
 **Last updated:** 2026-08-05
 **Working agent:** any capable coding model (Anthropic Sonnet/Opus or other providers) - execution protocols are written model-agnostically
 
-> ## Approvals: one workflow for every approval - BUILT and green 2026-08-15, NOT DEPLOYED
+> ## ✅ SHIPPED - Approvals, the transport head, and searchable lists (deployed 2026-08-15)
+>
+> **LIVE.** Backend `eduflow-approvals-20260815-69a2705`, frontend Amplify job 166, commit
+> `69a2705`. **Rollback target: `eduflow-photoleak-20260815-36b04c7`.** Proven live: the
+> new `/api/approvals/*` routes answer 401 while a made-up path under the same prefix
+> answers 404. Bundle diffed before upload: 242 entries to 247, the five added being this
+> release's new backend files, nothing removed.
+>
+> **This one deploy carried everything that had been held back**: the approvals workflow,
+> R3-2 and R3-3 (Chaman's profile and the tenth profile for drivers and conductors), and
+> three leftovers closed on the day. They were held because the transport head would
+> otherwise have had buttons whose requests nobody could answer. That reason is gone.
+>
+> **The three leftovers, all closed.** A person can now RAISE a request and not only
+> answer one, offered only where the server says they may. "Bring somebody in" lists
+> colleagues BY NAME and narrows as you type, instead of asking for an account id nobody
+> knows; it is scoped to the record, never a staff directory, because these routes are
+> signed-in-only by design. An attachment shows its name and opens, instead of being a
+> count you cannot read.
+>
+> **The two staff leave decision paths are ONE.** `decide_leave` is deleted; everything
+> goes through `decide_leave_request`, which also marks the colleague away. Without that
+> row a colleague given leave still read as available everywhere else. Four things were
+> carried across from the deleted path so the merge lost nothing: the guard against
+> deciding twice, **branch scoping** (what stops one branch's principal deciding another
+> branch's leave), the older field names existing screens still read, and an audit action
+> name that tells an approval from a refusal. The operations screen keeps its stricter
+> "a reason either way" rule as its own rather than it being loosened by accident.
+>
+> **Every drop-down fed by school data is now type-to-search.** One shared control,
+> `frontend/src/components/ui/SearchableSelect.js`, in 50 drop-downs across 16 files.
+> **A short list is left exactly as it was** and the LIST decides that, not the author, so
+> any screen can adopt it without checking first. The match count is always visible, and
+> the chosen option is never filtered out from under the person. The fixed short lists it
+> deliberately skips (gender, house, blood group, payment mode, sort order) are recorded
+> in `implementation-artifacts/picklists-survey-2026-08-15.md` so nobody redoes them
+> thinking they were missed.
+>
+> Gate: backend 4,000 passed / 0 failed / 14 deselected; frontend 884 across 74 suites;
+> production build clean including lint.
+>
+> **Still open:** R3-4, handing Chaman his credentials, is a deliberate act nobody has
+> taken. Cover for absence when Aman or Adesh is away is still a later item. Nothing here
+> is proven by signing in as a real profile.
+>
+> ## Approvals: one workflow for every approval - the architecture
 >
 > **Record of what was done: `_bmad-output/implementation-artifacts/release-3-access/PROGRESS.md`,
 > the entry dated 2026-08-15 (later). Read it before touching any of this.**

@@ -923,3 +923,44 @@ R3-2 and R3-3 have to go out together.
   `issues.py` during R3-2. It does NOT affect approvals, which go through
   `middleware.auth.is_owner_or_principal` and require the sub-category exactly. Left
   alone because changing it is a permission decision on a live platform, not a tidy-up.
+
+### 2026-08-15 (deploy) - EVERYTHING HELD BACK IS NOW LIVE
+
+**Deployed on Abhimanyu's instruction to ship it all together.** Backend
+`eduflow-approvals-20260815-69a2705`, environment Ready and Green. Frontend Amplify job
+**166 SUCCEED** on the same commit. `main` is at `69a2705`, pushed.
+
+**Rollback target: `eduflow-photoleak-20260815-36b04c7`.**
+
+**What went out in one release**, all of it previously built, green and deliberately held:
+the approvals workflow, R3-2 (Chaman's profile), R3-3 (drivers and conductors), the three
+approvals leftovers closed the same day, and the platform-wide searchable drop-downs.
+
+**The reason for holding is gone.** R3-2 was held because the transport head would
+otherwise hold buttons whose requests nobody could answer. There is now a screen where
+Aman or Adesh answer them, and a form for raising one.
+
+**Verified against the running system, not the status page.** `/api/health/ready` answers
+200 with db, ai, s3 and sms all ok. `/api/approvals/kinds`, `/waiting-on-me`,
+`/raised-by-me` and `/{kind}/{id}/people` all answer 401, while a made-up path under the
+same prefix answers 404 from the same server. A 401 proves the code is live and still
+guarded; a 404 would have meant it never shipped.
+
+**The bundle was diffed before upload**, as the rule requires: 242 entries before, 247
+after. The five added are exactly this release's new backend files
+(`routes/approvals.py`, `services/approval_registry.py`,
+`services/approval_thread_service.py`, `services/profile_change_service.py`,
+`services/transport_scope.py`) and **nothing was removed**.
+
+**Gate at deploy: backend 4,000 passed / 0 failed / 14 deselected. Frontend 884 passed
+across 74 suites. Production build clean including lint.** No live school data was read
+or changed.
+
+**What this deploy does NOT prove, said plainly.** Everything is proven by tests plus a
+live route check. Nothing was proven by signing in as a real profile, because that needs
+a signing secret this session will not go and fetch. If somebody wants live proof, ask
+Abhimanyu to sign in and open Approvals.
+
+**R3-4 is the only thing left in this release**, and it is a deliberate act rather than a
+code change: create Chaman's account and hand over the password. It is no longer blocked
+by anything.

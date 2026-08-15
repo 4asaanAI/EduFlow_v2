@@ -2,7 +2,34 @@
 
 **This file is updated as the work happens.** Re-read it any time to see where things stand.
 
-Last updated: all three DONE and green. Surveying pick-lists next.
+Last updated: **ALL FOUR DONE AND DEPLOYED, 2026-08-15.**
+
+## DEPLOYED 2026-08-15
+
+**LIVE.** Backend `eduflow-approvals-20260815-69a2705`, environment Ready and Green.
+Frontend Amplify job **166 SUCCEED**. `main` is at `69a2705`, pushed.
+
+**Rollback target: `eduflow-photoleak-20260815-36b04c7`.**
+
+**This deploy also carried the work that had been deliberately held**: R3-2 and R3-3
+(the transport head's profile and the tenth profile), and the approvals workflow itself.
+They were held because shipping the transport head before there was a screen to answer
+his requests would have given him buttons that led nowhere. That reason is now gone, so
+they went out together as one release.
+
+**Proven against the running system, not the status page.** `/api/health/ready` answers
+200 with db, ai, s3 and sms all ok. The four new routes answer 401, and a made-up path
+under the same prefix answers 404 from the same server, which is what tells a live deploy
+apart from a failed one.
+
+**The bundle was diffed before it was uploaded**, as the rule requires: 242 entries
+before, 247 after, the five added ones being exactly this release's new backend files,
+and **nothing removed**.
+
+**What this does NOT prove.** Everything is proven by tests plus a live route check. No
+profile was signed in as, so the behaviour behind the sign-in is not live-proven. R3-4,
+handing Chaman his credentials, is still a deliberate act nobody has taken.
+
 
 | # | Task | State |
 |---|---|---|
