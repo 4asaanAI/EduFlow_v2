@@ -61,5 +61,7 @@ The seven people have no way to sign in until their release builds their profile
 the intended state, not an outage: they never had a working account, because they were
 never given the password.
 
-The **four shared desk accounts** (`transport`, `reception`, `ittech`, `maintenance`) are
-untouched. They are desks rather than people and were never part of the 041 handover.
+The **four shared desk accounts** (`transport`, `reception`, `ittech`, `maintenance`) were
+untouched by this removal. They are desks rather than people and were never part of the 041
+handover. *(They were deleted later the same day on Abhimanyu's instruction. See
+`shared-desk-logins-removed-2026-08-15.md`. This paragraph was true when written.)*

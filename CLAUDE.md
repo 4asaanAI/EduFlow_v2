@@ -412,6 +412,17 @@
 > Full record, including the trap that `users.id` is NOT `auth_users.id`:
 > `implementation-artifacts/release-3-access/unused-office-logins-removed-2026-08-15.md`.
 >
+> **✅ AND THE FOUR SHARED DESK LOGINS ARE GONE TOO (2026-08-15).** `transport`,
+> `reception`, `ittech` and `maintenance` were accounts standing for a department rather
+> than a person, and `Transport Desk` held `transport_head`, the same profile Chaman Singh
+> was given hours earlier. Removed by `050_remove_shared_desk_logins.py` after proving
+> read-only that they had zero sessions ever and that **no document anywhere in the
+> database** referenced them. **Every login on the platform now belongs to one named
+> person.** Do not create a department account again: the whole release plan is one profile
+> per person. Record:
+> `implementation-artifacts/release-3-access/shared-desk-logins-removed-2026-08-15.md`.
+> The four `sub_category` values stay in the code; this deleted accounts, not profiles.
+>
 > ⛔ **Never close this with `041_office_staff_logins.py --rollback`.** That file also clears
 > the staff link for Adesh Singh and Lalit Thomas, who both sign in for real.
 >
