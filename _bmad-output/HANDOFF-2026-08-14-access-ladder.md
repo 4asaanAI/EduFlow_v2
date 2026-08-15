@@ -61,7 +61,9 @@ marked dormant at the door, so a dormant account gets a plain "not switched on y
 than a half-working platform. Small, and it removes the class rather than the instances.
 
 Then R3-1 (a read-only survey of every route gated by role alone), R3-2 (Chaman's profile
-with no money anywhere), R3-3 (the drivers and conductors profile, defined only), R3-4
+with no money anywhere - **REVERSED on 2026-08-15: he holds FULL transport financial
+visibility, fares and who owes what included, and no other money at all**), R3-3 (the
+drivers and conductors profile, defined only), R3-4
 (switch Chaman on and watch him sign in). Details in the plan.
 
 ## Needs Abhimanyu, do not guess
@@ -185,3 +187,17 @@ asks, in
 
 **Also since that update:** R3-1 (the survey) is done, and R3-1a shipped five narrowings,
 live as `eduflow-r31a-20260814-d571571`.
+
+---
+
+## Correction, 2026-08-15
+
+**This handoff is now superseded for R3-2, R3-3 and R3-4.**
+
+- **R3-2 and R3-3 are BUILT, green and deliberately NOT deployed.** Full record:
+  `implementation-artifacts/release-3-access/PROGRESS.md`.
+- **The transport head sees transport money in full.** The "no money anywhere" line above
+  was true when written on 2026-08-14 and was reversed by Abhimanyu on 2026-08-15.
+- **R3-4 no longer waits on R3-2.** It waits on the approvals workflow,
+  `planning-artifacts/approvals-one-workflow-2026-08-15.md`, because there is no screen
+  anywhere for Aman or Adesh to approve or reject anything.

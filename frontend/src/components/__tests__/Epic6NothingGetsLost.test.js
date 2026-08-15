@@ -602,3 +602,91 @@ describe('6.5 every chat is reachable and clearable', () => {
     expect(window.localStorage.getItem('eduflow.table.notifications.pageSize')).toBeNull();
   });
 });
+
+// ── R3-2, 2026-08-15: the bell is split into approvals and everything else ────
+//
+// Abhimanyu, 2026-08-15: approvals of any kind reach Aman and Adesh separately from
+// ordinary notifications, in both the bell and the notifications screen.
+//
+// The reason this is worth a section of its own rather than a styling tweak: an approval
+// sitting unread is a PERSON BLOCKED. A transport head who has asked to delete a bus route
+// is waiting; a repair that cannot be paid for is waiting. Mixed into a list with
+// "attendance marked" and "circular sent", a request to decide something is exactly as
+// easy to scroll past as a receipt, and nobody finds out until somebody asks why nothing
+// happened.
+
+const approvalNotif = (i, over = {}) => notif(i, {
+  type: 'approval_submitted',
+  title: `Delete the bus route Joya Town ${i}`,
+  source_record_type: 'approval_request',
+  ...over,
+});
+
+describe('R3-2 the bell separates decisions from news', () => {
+  test('the two halves are offered, each with its own count', async () => {
+    getNotifications.mockResolvedValue(listResponse(
+      [approvalNotif(1), notif(2), notif(3)],
+      { total: 3, unread_total: 3 },
+    ));
+    renderHeader();
+    fireEvent.click(await screen.findByTestId('notifications-btn'));
+
+    // Renamed on 2026-08-15 at Abhimanyu's request, when the bell and the notifications
+    // window were made to carry the same two sub-tabs. The names now say what is IN each
+    // half rather than naming a feature: "Approvals" was accurate here and wrong in the
+    // window, where a request that has already been decided also appears. The labels come
+    // from KIND_TABS in notifKinds.js, so the two surfaces cannot drift apart again.
+    expect(await screen.findByTestId('notif-kind-approvals')).toHaveTextContent('Waiting on you (1)');
+    expect(screen.getByTestId('notif-kind-ordinary')).toHaveTextContent('Already happened (2)');
+  });
+
+  test('it opens on the approvals half, because that is where somebody is blocked', async () => {
+    getNotifications.mockResolvedValue(listResponse(
+      [approvalNotif(1), notif(2)],
+      { total: 2, unread_total: 2 },
+    ));
+    renderHeader();
+    fireEvent.click(await screen.findByTestId('notifications-btn'));
+
+    expect(await screen.findByText('Delete the bus route Joya Town 1')).toBeInTheDocument();
+    expect(screen.queryByText('Notification 2')).not.toBeInTheDocument();
+  });
+
+  test('switching to the other half shows the ordinary messages', async () => {
+    getNotifications.mockResolvedValue(listResponse(
+      [approvalNotif(1), notif(2)],
+      { total: 2, unread_total: 2 },
+    ));
+    renderHeader();
+    fireEvent.click(await screen.findByTestId('notifications-btn'));
+    fireEvent.click(await screen.findByTestId('notif-kind-ordinary'));
+
+    expect(await screen.findByText('Notification 2')).toBeInTheDocument();
+    expect(screen.queryByText('Delete the bus route Joya Town 1')).not.toBeInTheDocument();
+  });
+
+  test('with nothing to decide, no tabs appear and nothing changes', async () => {
+    // Most profiles will never have an approval. A permanently visible tab reading
+    // "Approvals (0)" is an invitation to a room with nothing in it.
+    getNotifications.mockResolvedValue(listResponse([notif(1)], { total: 1, unread_total: 1 }));
+    renderHeader();
+    fireEvent.click(await screen.findByTestId('notifications-btn'));
+
+    expect(await screen.findByText('Notification 1')).toBeInTheDocument();
+    expect(screen.queryByTestId('notif-kind-approvals')).not.toBeInTheDocument();
+  });
+
+  test('an outcome is news, not a decision, and stays in ordinary notifications', async () => {
+    // "Your request was approved" is something that happened. Counting it as waiting on
+    // you makes the number overstate, and a number that overstates is one people ignore.
+    getNotifications.mockResolvedValue(listResponse(
+      [notif(1, { type: 'approval_decision', title: 'Your request was approved' })],
+      { total: 1, unread_total: 1 },
+    ));
+    renderHeader();
+    fireEvent.click(await screen.findByTestId('notifications-btn'));
+
+    expect(await screen.findByText('Your request was approved')).toBeInTheDocument();
+    expect(screen.queryByTestId('notif-kind-approvals')).not.toBeInTheDocument();
+  });
+});

@@ -1150,6 +1150,85 @@ export async function decideApprovalRequest(approvalId, data) {
   return res.json();
 }
 
+// --- Approvals: one workflow for every approval (2026-08-15) ---
+//
+// The two functions above reach the GENERAL approval route only, and until this work
+// nothing on any screen called either of them: the platform could ask for permission
+// and could not receive it. Everything below goes through `/api/approvals`, which
+// covers all six kinds and names none of them, so a seventh kind appears on the screen
+// the day it is added to the registry on the server.
+
+export async function getApprovalKinds() {
+  const res = await apiFetch(`${API}/approvals/kinds`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function getApprovalsWaitingOnMe(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  const res = await apiFetch(`${API}/approvals/waiting-on-me?${qs}`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function getApprovalsIRaised(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  const res = await apiFetch(`${API}/approvals/raised-by-me?${qs}`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function getApproval(kind, recordId) {
+  const res = await apiFetch(`${API}/approvals/${kind}/${recordId}`, { headers: getHeaders() });
+  return res.json();
+}
+
+export async function decideApproval(kind, recordId, data) {
+  const res = await apiFetch(`${API}/approvals/${kind}/${recordId}/decide`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function replyToApproval(kind, recordId, data) {
+  const res = await apiFetch(`${API}/approvals/${kind}/${recordId}/reply`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function addApprovalParticipant(kind, recordId, data) {
+  const res = await apiFetch(`${API}/approvals/${kind}/${recordId}/participants`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+/**
+ * Who could be brought into this conversation, by name.
+ *
+ * Scoped to the one record rather than being a staff directory: every approvals route is
+ * signed-in-only by design, so a flat colleague list on that gate would be handing the
+ * school's staff list to any student or guardian with a login.
+ */
+export async function getApprovalPeople(kind, recordId) {
+  const res = await apiFetch(`${API}/approvals/${kind}/${recordId}/people`, {
+    headers: getHeaders(),
+  });
+  return res.json();
+}
+
+export async function reopenApproval(kind, recordId, data) {
+  const res = await apiFetch(`${API}/approvals/${kind}/${recordId}/reopen`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function editPendingApproval(kind, recordId, data) {
+  const res = await apiFetch(`${API}/approvals/${kind}/${recordId}`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
 // --- Settings ---
 export async function getSchoolSettings() {
   const res = await apiFetch(`${API}/settings/school`, { headers: getHeaders() });

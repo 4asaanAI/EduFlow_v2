@@ -213,6 +213,27 @@ def _can_access_upload(record: dict, user: dict) -> bool:
     return record.get("uploaded_by") == user.get("id") or can_cross_user
 
 
+async def _may_open(db, record: dict, user: dict) -> bool:
+    """The rule above, plus the one narrow extra way in that approvals need.
+
+    Approvals workflow, 2026-08-15. A quote or a bill attached to an approval has to be
+    openable by the people in that conversation. Under the ordinary rule the accountant
+    head, who is in a repair-cost conversation precisely because he is the one who pays
+    it, could see that a quote existed and could not open it.
+
+    The extra way in is deliberately narrow and is NOT a new class of file permission:
+    it applies only to a file attached to a message in a conversation this person is
+    entitled to read, and somebody added to a conversation without its history still
+    cannot open an attachment from before they joined. It is checked SECOND, so a file
+    with nothing to do with an approval behaves exactly as it did yesterday.
+    """
+    if _can_access_upload(record, user):
+        return True
+    from services.approval_thread_service import may_open_attachment
+
+    return await may_open_attachment(db, user, record.get("id"), get_school_id())
+
+
 @router.get("/serve/{filename}")
 async def serve_file(filename: str, user: dict = Depends(get_current_user)):
     db = get_db()
@@ -226,7 +247,7 @@ async def serve_file(filename: str, user: dict = Depends(get_current_user)):
     )
     if not record:
         raise HTTPException(404, "File not found")
-    if not _can_access_upload(record, user):
+    if not await _may_open(db, record, user):
         raise HTTPException(403, "Forbidden")
     if not record.get("s3_key"):
         raise HTTPException(409, "File has not been migrated to S3")
@@ -261,7 +282,7 @@ async def generated_file_link(file_id: str, user: dict = Depends(get_current_use
     )
     if not record:
         raise HTTPException(404, "That file could not be found. Please ask for it again.")
-    if not _can_access_upload(record, user):
+    if not await _may_open(db, record, user):
         raise HTTPException(403, "Forbidden")
     if not record.get("s3_key"):
         raise HTTPException(409, "File has not been migrated to S3")
@@ -300,7 +321,7 @@ async def generated_file_content(file_id: str, user: dict = Depends(get_current_
     )
     if not record:
         raise HTTPException(404, "That file could not be found. Please ask for it again.")
-    if not _can_access_upload(record, user):
+    if not await _may_open(db, record, user):
         raise HTTPException(403, "Forbidden")
 
     content = record.get("editable_html") or ""

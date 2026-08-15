@@ -34,7 +34,18 @@ def get_user(req: Request):
 FACILITY_CATEGORIES = {
     "plumbing", "electrical", "civil", "cleaning", "security", "carpentry",
     "painting", "pest_control", "hvac", "fire_safety", "landscaping", "other",
+    # R3-2, 2026-08-15. Servicing and repairs to the school's buses, vans and autos.
+    #
+    # This category is what makes Abhimanyu's decision of 2026-08-15 expressible at all:
+    # the transport head sees what a VEHICLE repair costs, and not what repairs to
+    # buildings and other school property cost. Without a category naming the difference,
+    # "vehicle repairs only" would have been a promise with nothing behind it.
+    "vehicle",
 }
+
+# The only category whose money the transport head may see. A set rather than a bare
+# comparison so that adding a second one is a visible edit somebody has to justify.
+TRANSPORT_COST_CATEGORIES = frozenset({"vehicle"})
 VALID_STATUSES = {"open", "accepted", "in_progress", "pending_parts", "pending_owner_confirmation", "done", "closed"}
 VALID_PRIORITIES = {"low", "medium", "high", "urgent"}
 # Fix 12.1: Correct SLA hours per NFR12.2, renamed constant
@@ -48,14 +59,85 @@ PHOTO_LIMIT = 5
 
 
 def _can_view_all(user: dict) -> bool:
-    """Owner and principal can see all requests; generic admins (no sub_category) can too."""
-    return user.get("role") in ("owner",) or (
-        user.get("role") == "admin" and user.get("sub_category") in ("principal", None)
-    )
+    """Owner and principal see every request. Nobody else does.
+
+    R3-2, 2026-08-15. This used to read `sub_category in ("principal", None)`, so an
+    admin carrying NO sub_category at all was treated as the principal. Nobody decided
+    that; it is a default that leaked, and it governs the maintenance calendar, the
+    contractor list, the whole issue register and the request history - which is exactly
+    where Chaman's access lands, so it had to be settled before granting him anything
+    behind it.
+
+    Dropping `None` is consistent with the rest of the platform rather than a new rule:
+    `scope_resolver` already denies by default when `sub_category` is missing, and
+    migration 016 exists precisely to backfill legacy rows so none is left in that state.
+    An admin row with no sub_category is a data fault, and the safe reading of a data
+    fault is "no", not "principal".
+    """
+    role = user.get("role")
+    return role == "owner" or (role == "admin" and user.get("sub_category") == "principal")
 
 
 def _is_maint(user: dict) -> bool:
     return user.get("role") == "admin" and user.get("sub_category") == "maintenance"
+
+
+def _is_it_tech(user: dict) -> bool:
+    return user.get("role") == "admin" and user.get("sub_category") == "it_tech"
+
+
+def _facility_self_only(user: dict) -> bool:
+    """Profiles that may see the repair requests they raised, and no others."""
+    return user.get("role") == "teacher" or (
+        user.get("role") == "admin" and user.get("sub_category") == "receptionist"
+    )
+
+
+_COST_FIELDS = ("estimated_cost", "actual_cost", "cost_awaiting_approval")
+
+
+def _strip_costs_for(user: dict, rec: dict) -> dict:
+    """Take the money off a repair request for anyone not entitled to see it.
+
+    R3-2, 2026-08-15. Abhimanyu's decision: the transport head sees what a VEHICLE repair
+    costs, because transport money is his, and does NOT see what repairs to buildings and
+    other school property cost.
+
+    Removed rather than zeroed. A repair showing 0 and a repair nobody has priced look
+    identical, and this platform has been bitten before by a partial answer that reads as
+    a complete one.
+    """
+    if not rec:
+        return rec
+    role, sub = user.get("role"), user.get("sub_category")
+    if role == "owner" or (role == "admin" and sub in ("principal", "accountant")):
+        return rec
+    if role == "admin" and sub == "transport_head":
+        if rec.get("category") in TRANSPORT_COST_CATEGORIES:
+            return rec
+    return {k: v for k, v in rec.items() if k not in _COST_FIELDS}
+
+
+def _may_read_facility_request(user: dict, rec: dict) -> bool:
+    """One statement of who may read a repair request, list or single record.
+
+    R3-2, 2026-08-15. The list route already made this decision in-line. The single-record
+    route made no decision at all. Rather than copy the list's rules into a second place -
+    which is the exact habit the R3-1 survey named, about a dozen hand-written lists of
+    desk names that never move together - both now ask this.
+
+    IT is refused outright: facility work is not theirs and the list route says so
+    explicitly. Everyone else either sees all of them or only the ones they raised.
+    """
+    if _is_it_tech(user):
+        return False
+    if _can_view_all(user) or _is_maint(user):
+        return True
+    if _facility_self_only(user):
+        return rec.get("logged_by") == user.get("id")
+    # Anybody else reaches their own requests and nothing more. A person who raised a
+    # repair may follow it up whatever their profile; that is not a permission grant.
+    return rec.get("logged_by") == user.get("id")
 
 
 def _is_it(user: dict) -> bool:
@@ -147,7 +229,13 @@ async def create_facility_request(request: Request):
     # Allow: maintenance admin, owner, teacher, or any staff raising a request
     role = user.get("role")
     sub = user.get("sub_category")
-    allowed = role in ("owner", "teacher") or (role == "admin" and sub in ("maintenance", "principal", "receptionist", "management", None))
+    # R3-2, 2026-08-15: `transport_head` added - he holds the "report a problem" screen
+    # and arranges the servicing, so he must be able to raise a request; and `None`
+    # removed, for the same reason it came out of `_can_view_all`. An admin with no job
+    # title is a data fault, not a profile, and reading it as permission is a default
+    # nobody chose.
+    allowed = role in ("owner", "teacher") or (role == "admin" and sub in (
+        "maintenance", "principal", "receptionist", "management", "transport_head"))
     if not allowed:
         raise HTTPException(403, "You are not permitted to raise facility requests")
     body = await request.json()
@@ -224,17 +312,34 @@ async def list_facility_requests(
     if user.get("role") == "admin" and user.get("sub_category") == "it_tech":
         raise HTTPException(403, "IT/Tech Admin cannot access facility requests")
     # Teachers/staff who raised requests can see their own
-    is_self_only = user.get("role") in ("teacher",) or (
-        user.get("role") == "admin" and user.get("sub_category") in ("receptionist",)
-    )
-    if not _can_view_all(user) and not is_maintenance and not is_self_only:
+    is_self_only = _facility_self_only(user)
+    # R3-2, 2026-08-15: the transport head sees VEHICLE repairs, all of them, because he
+    # arranges the servicing. Not the whole campus queue: a leaking tap in a classroom is
+    # the maintenance team's and always was.
+    is_transport_head = user.get("role") == "admin" and user.get("sub_category") == "transport_head"
+    if not _can_view_all(user) and not is_maintenance and not is_self_only and not is_transport_head:
         raise HTTPException(403, "Forbidden")
     query = {}
+    if is_transport_head:
+        # Applied to the QUERY, so the count and the rows agree and no filter he can send
+        # widens it. He may still narrow further with the `category` parameter below.
+        query["category"] = {"$in": sorted(TRANSPORT_COST_CATEGORIES)}
     if status:
         query["status"] = status
     if priority:
         query["priority"] = priority
     if category:
+        # R3-2: the transport head's restriction above is set on this same key, so a
+        # plain assignment here would let him ask for `category=plumbing` and read the
+        # whole campus queue. Anything outside his categories is refused rather than
+        # quietly returning nothing, because an empty list reads as "no repairs" and
+        # that is a different fact from "not yours".
+        if is_transport_head and category not in TRANSPORT_COST_CATEGORIES:
+            raise HTTPException(
+                403,
+                "Repairs to buildings and other school property are the maintenance "
+                "team's. You see vehicle repairs.",
+            )
         query["category"] = category
     # Self-view: teachers/receptionist see only their own requests
     if is_self_only:
@@ -253,6 +358,9 @@ async def list_facility_requests(
         items = [i for i in items if i["is_overdue"]]
     elif overdue is False:
         items = [i for i in items if not i["is_overdue"]]
+    # R3-2, 2026-08-15: the list has always printed `estimated_cost` on screen, and the
+    # transport head reaches this list now. Same rule as the single record.
+    items = [_strip_costs_for(user, i) for i in items]
     return {"success": True, "data": items, "meta": {"page": page, "limit": limit, "total": total}}
 
 
@@ -277,7 +385,18 @@ async def get_facility_cost_summary(request: Request, user: dict = Depends(requi
 
 @router.get("/facility/{request_id}")
 async def get_facility_request(request_id: str, request: Request, user: dict = Depends(get_current_user)):
-    """Single facility request by ID. Fix 12.5."""
+    """Single facility request by ID. Fix 12.5.
+
+    R3-2, 2026-08-15: this route used to be signed-in-only. Any account on the platform
+    could read any repair request by its id, INCLUDING `estimated_cost` and `actual_cost`,
+    while the list route beside it refused the same people. A single record is not less
+    sensitive than the list it came from, and a facility request is where every repair
+    amount on this platform lives.
+
+    It now answers the same question the list answers, through the same helper, so the
+    two cannot drift apart. Nothing on screen calls this route, so nobody loses a working
+    control by it being narrowed.
+    """
     db = get_db()
     bid = user.get("branch_id")
     # NEW-07/T13: this document IS the response body - exclude the internal id.
@@ -286,8 +405,83 @@ async def get_facility_request(request_id: str, request: Request, user: dict = D
     )
     if not rec:
         raise HTTPException(404, "Facility request not found")
+    if not _may_read_facility_request(user, rec):
+        raise HTTPException(403, "Forbidden")
     rec["is_overdue"] = _is_overdue(rec)
-    return {"success": True, "data": rec}
+    return {"success": True, "data": _strip_costs_for(user, rec)}
+
+
+@router.post("/facility/{request_id}/propose-cost")
+async def propose_repair_cost(request_id: str, request: Request):
+    """The transport head says what a vehicle repair will cost. Aman or Adesh agrees it.
+
+    R3-2, 2026-08-15. Abhimanyu's decision: he arranges the servicing and sees the cost,
+    and the figure is agreed BEFORE the money is committed.
+
+    So the amount does not land on the request. It sits beside it as
+    `cost_awaiting_approval` until the school's owner or the principal says yes, at which
+    point the approval service moves it onto `estimated_cost`. Writing it straight onto
+    the request and calling it "pending" would leave a figure that every screen reads as
+    the real one.
+    """
+    db = get_db()
+    user = get_user(request)
+    body = await request.json()
+    try:
+        amount = float(body.get("estimated_cost"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "estimated_cost must be a number")
+    if amount < 0:
+        raise HTTPException(400, "estimated_cost cannot be negative")
+
+    rec = await db.facility_requests.find_one(
+        scoped_query({"id": request_id}, branch_id=user.get("branch_id")), {"_id": 0}
+    )
+    if not rec:
+        raise HTTPException(404, "Facility request not found")
+
+    is_transport_head = user.get("role") == "admin" and user.get("sub_category") == "transport_head"
+    if is_transport_head:
+        if rec.get("category") not in TRANSPORT_COST_CATEGORIES:
+            raise HTTPException(
+                403,
+                "That is not a vehicle repair. Repairs to buildings and other school "
+                "property are the maintenance team's.",
+            )
+    elif not _can_view_all(user):
+        raise HTTPException(403, "Forbidden")
+
+    from services.approvals_service import create_approval_request_doc
+
+    actor_ctx = actor_ctx_from_user(user)
+    approval_id = await create_approval_request_doc(
+        db, actor_ctx,
+        title=f"Agree Rs. {amount:,.0f} for the repair: {rec.get('description', '')[:60]}",
+        description=(
+            f"The transport head has quoted Rs. {amount:,.0f} for a vehicle repair: "
+            f"{rec.get('description', '')}. Nothing is committed until this is agreed."
+        ),
+        estimated_impact=f"Rs. {amount:,.0f} of school money, paid by the accountant head.",
+        note="Proposed cost. The money is not committed yet.",
+        routing="owner_and_principal",
+        pending_action={"kind": "agree_a_repair_cost", "request_id": request_id,
+                        "estimated_cost": amount},
+    )
+    await db.facility_requests.update_one(
+        scoped_query({"id": request_id}, branch_id=user.get("branch_id")),
+        {"$set": {"cost_awaiting_approval": amount, "cost_approval_id": approval_id}},
+    )
+    await _write_audit(db, "repair_cost_proposed", "facility_requests", request_id, user,
+                       {"proposed": amount, "approval_id": approval_id})
+    return {
+        "success": True,
+        "awaiting_approval": True,
+        "data": {"approval_id": approval_id, "proposed_cost": amount},
+        "message": (
+            f"Rs. {amount:,.0f} has been sent to the school's owner and the principal to "
+            "agree. Nothing is committed until one of them says yes."
+        ),
+    }
 
 
 @router.patch("/facility/{request_id}")

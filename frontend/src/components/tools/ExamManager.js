@@ -11,6 +11,7 @@ import { API, apiFetch,
   listExams, createExam, updateExam, deleteExam, getAllClasses, getSubjects,
   getExamSheet, saveExamSchedule, bulkEnterResults,
 } from '../../lib/api';
+import SearchableSelect from '../ui/SearchableSelect';
 
 function _authHeaders() {
   const token = localStorage.getItem('token');
@@ -75,10 +76,10 @@ function FormField({ label, value, onChange, type = 'text', options, required, p
         {label}{required && <span style={{ color: '#f87171' }}> *</span>}
       </label>
       {type === 'select' ? (
-        <select value={value} onChange={e => onChange(e.target.value)} style={inputStyle}>
+        <SearchableSelect value={value} onChange={e => onChange(e.target.value)} style={inputStyle}>
           {!required && <option value="">- Select -</option>}
           {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
+        </SearchableSelect>
       ) : (
         <input
           type={type} value={value} onChange={e => onChange(e.target.value)}

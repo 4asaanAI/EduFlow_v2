@@ -201,7 +201,20 @@ function getTools(user) {
     return resolve(MANAGEMENT_HUB_IDS);
   }
   if (user.role === 'admin') {
-    if (['principal', 'accountant', 'management'].includes(user.sub_category)) {
+    // R3-2, 2026-08-15: the transport head joined this list because his release landed.
+    //
+    // He was falling through to `TOOL_SETS.admin_transport_head`, a hand-written list of
+    // five screen ids that nothing keeps in step with the permission table. The moment
+    // R3-2 granted him the servicing calendar and the contractor list, his sidebar
+    // offered eight screens and his home page showed five. Nothing was over-granted -
+    // this list is intersected with the table, so it can only ever take away - but a menu
+    // that quietly loses an entry is indistinguishable to the person looking from access
+    // being withdrawn, and "nothing is ever dropped" is a standing rule here.
+    //
+    // `hubsForUser` asks the grant table the same question the sidebar asks, so the two
+    // cannot drift again. The hand-written set stays for the four profiles that are still
+    // dormant; each one leaves it as its own release lands.
+    if (['principal', 'accountant', 'management', 'transport_head'].includes(user.sub_category)) {
       return resolve(hubsForUser(user).map(hub => hub.id));
     }
     const key = `admin_${user.sub_category || 'principal'}`;

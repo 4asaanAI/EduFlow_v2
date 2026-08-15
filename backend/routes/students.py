@@ -36,6 +36,7 @@ from services.s3_storage import (
     upload_bytes,
 )
 from services.teacher_scope_service import compute_teacher_scope
+from services.transport_scope import scope_students_to_the_bus, student_is_in_scope
 from tenant import get_school_id, scoped_filter
 from utils.class_order import ordered_class_ids
 
@@ -343,6 +344,12 @@ async def list_students(
         else:
             query["class_id"] = {"$in": teacher_class_ids}
 
+    # R3-2, 2026-08-15: the transport head sees children who are on a bus and no others.
+    # Applied to the QUERY, above the count and every branch below it, so the total and
+    # the rows agree and there is no page size or search term that widens it. See
+    # `services/transport_scope.py`; it is a no-op for every other profile.
+    query = scope_students_to_the_bus(query, user)
+
     scoped_query = _student_query(query)
     skip = (page - 1) * per_page
     total = await db.students.count_documents(scoped_query)
@@ -554,6 +561,13 @@ async def get_student(student_id: str, request: Request):
 
     student = await db.students.find_one(_student_query({"id": student_id}), {"_id": 0, "coordinates": 0})
     if not student:
+        raise HTTPException(404, "Student not found")
+
+    # R3-2, 2026-08-15: a child who is not on a bus is not the transport head's, however
+    # he arrived at the id. 404 rather than 403 on purpose: "that child exists but is not
+    # yours" still confirms the child exists, and the list he can see says 404 for the
+    # same record, so the two answers agree.
+    if not student_is_in_scope(student, user):
         raise HTTPException(404, "Student not found")
 
     # auth: composite - students may view only their own record; staff

@@ -22,7 +22,7 @@ from services.profile_change_service import (
     ProfileChangeAuthorizationError,
 )
 from services.leave_service import (
-    decide_leave,
+    decide_leave_request,
     LeaveValidationError,
     LeaveNotFoundError,
     LeaveConflictError,
@@ -809,7 +809,10 @@ async def update_leave(leave_id: str, request: Request, user: dict = Depends(req
         "rejection_reason": body.get("rejection_reason"),
     }
     try:
-        result = await decide_leave(db, actor_ctx, params)
+        # One decision path since 2026-08-15. This route used to call `decide_leave`,
+        # which recorded the decision and did NOT mark the colleague as away, so leave
+        # approved here left them reading as available on every screen that asks.
+        result = await decide_leave_request(db, actor_ctx, params)
     except LeaveValidationError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except LeaveConflictError as e:

@@ -469,7 +469,7 @@ TOOL_CREATE_STAFF = {
         "name": "required - staff full name",
         "staff_type": "required - e.g. teacher, accountant, receptionist, peon, driver",
         "role": "optional - login role: 'teacher' or 'admin' only. 'owner' is NEVER accepted here, from anyone; owner access is assigned out of band",
-        "sub_category": "optional, owner/principal-only - for role 'admin': principal, accountant, transport_head, receptionist, it_tech, maintenance, management, support_staff; for role 'teacher': class_teacher, subject_teacher, hod, coordinator, kg_incharge",
+        "sub_category": "optional, owner/principal-only - for role 'admin': principal, accountant, transport_head, receptionist, it_tech, maintenance, management, support_staff, transport_staff (drivers and conductors, who get no login); for role 'teacher': class_teacher, subject_teacher, hod, coordinator, kg_incharge",
         "username": "required for Flo - login username",
         "password": "required for Flo - initial password, 8-128 characters",
         "employee_id": "optional",
@@ -1636,12 +1636,21 @@ ROLE: Admin Office - Complete Non-Finance Access
     # These five are DORMANT: defined so they cannot drift, switched on in their own
     # release once the school's owner has answered the nine questions in
     # `staff-profiles-draft-for-aman-2026-08-10.md`. Nothing here guesses at his answers.
+    # R3-2, 2026-08-15: the transport head is LIVE and this brief was rewritten with him.
+    # It said "you have NO write tools at all", which stopped being true the moment his
+    # release landed. A brief that denies what the profile holds is the fault this whole
+    # section exists to prevent, and it is the same one that once had Flo telling the
+    # school's owner an operation was not available to it.
     ("admin", "transport_head"): """
-ROLE: Transport Head - Transport, with the school lookups transport needs
-- Transport is yours to follow: routes, buses, driver and conductor assignments and status. Use get_transport_status.
-- You may also LOOK UP what transport work needs: a child's record and class, the staff list, attendance and the day's brief. Answer those questions plainly; they are yours to see.
-- You have NO write tools at all. You cannot change a route, a vehicle or any record through chat. Until the school switches this profile on, say that plainly and point the person at the Accountant Head (Sonu Ruhal), who runs transport in the meantime.
-- Fees, payroll, salaries, expenses and the action log are not yours. For those, the person needs the Accountant Head for money and the school's owner or the Principal for everything else.
+ROLE: Transport Head (Chaman Singh) - the school's buses, and the money that goes with them
+- Transport is YOURS and you run it. Routes, stops, vehicles, drivers and conductors. You create a route, change one, register a vehicle and see the status. Use get_transport_status.
+- You move a child from one route to another YOURSELF, with nobody's approval, using update_student. That was the school's decision. It is recorded in the action log like any other change.
+- TRANSPORT MONEY IS YOURS, in full. Fares, what each family pays for the bus and whether it is cleared. Use get_transport_fee_status. This is transport money only: school fees, tuition, concessions, salaries and every other rupee in the school belong to the Accountant Head (Sonu Ruhal). If somebody asks you what a family owes in school fees, send them to him.
+- DELETING NEEDS AGREEMENT. A route, a vehicle, a driver or a conductor. You raise it and either the school's owner (Aman Litt) or the Principal (Adesh Singh) agrees before it happens. Tell the person that plainly rather than saying you cannot: you can, it just needs one of them to say yes.
+- DRIVERS AND CONDUCTORS ARE YOUR TEAM. You add them to the staff records and keep their details right, using create_staff and update_staff. They do NOT get a login to the platform. If somebody asks for one, the answer is no, and it is a decision of the school's, not a limit of yours.
+- SERVICING AND REPAIRS. You arrange them and you see what a vehicle repair costs. Sonu pays. A cost has to be agreed by Aman or Adesh before it is committed. Repairs to buildings and other school property are not yours.
+- YOU SEE THE CHILDREN WHO RIDE THE BUS, and only those. Their class, their stop, their guardian's number, so you can ring a parent when a bus is late. A child who does not ride will not come up in a search and that is correct, not a fault.
+- Fees beyond transport, payroll, salaries, expenses, academics, exams and the action log are not yours. Money goes to Sonu Ruhal; everything else goes to Aman Litt or Adesh Singh.
 """,
 
     # ---- Admin: Receptionist ----

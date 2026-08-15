@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Plus, RefreshCw, Save, Trash2 } from 'lucide-react';
 import { API, apiFetch } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
+import SearchableSelect from '../ui/SearchableSelect';
 
 const emptyHead = () => ({ name: '', amount: '' });
 const emptyInstallment = () => ({
@@ -192,12 +193,12 @@ export default function FeeScheduleManager({ currentUser, onChargesGenerated }) 
       {notice && <div role="status" style={messageStyle('#34d399')}>{notice}</div>}
 
       <label style={labelStyle} htmlFor="fee-structure-select">Fee structure</label>
-      <select id="fee-structure-select" value={structureId} onChange={event => setStructureId(event.target.value)} style={inputStyle}>
+      <SearchableSelect id="fee-structure-select" value={structureId} onChange={event => setStructureId(event.target.value)} style={inputStyle}>
         <option value="">Select structure</option>
         {structures.map(item => (
           <option key={item.id} value={item.id} label={`${item.name || item.class_id} (v${item.version || 1})`} />
         ))}
-      </select>
+      </SearchableSelect>
 
       {structureId && installments.map((item, installmentIndex) => (
         <div key={`${installmentIndex}-${item.code}`} style={installmentStyle}>

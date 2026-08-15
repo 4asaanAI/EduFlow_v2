@@ -120,6 +120,7 @@ try:
     import routes.learning as learning_routes
     import routes.admissions as admissions_routes
     import routes.student_leave as student_leave_routes
+    import routes.approvals as approvals_routes
     import routes.campus as campus_routes
     import routes.accounting as accounting_routes
     import routes.guardian as guardian_routes
@@ -629,6 +630,9 @@ class FakeDb:
         self.leave_requests = FakeCollection()
         self.staff_availability = FakeCollection()
         self.approval_requests = FakeCollection()
+        # Approvals workflow, 2026-08-15: the conversation welded to an approval.
+        self.approval_threads = FakeCollection()
+        self.approval_messages = FakeCollection()
         self.notifications = FakeCollection()
         self.audit_logs = FakeCollection()
         self.profile_notes = FakeCollection()
@@ -814,6 +818,7 @@ if APP_AVAILABLE:
     learning_routes.get_db = lambda: _fake_db
     admissions_routes.get_db = lambda: _fake_db
     student_leave_routes.get_db = lambda: _fake_db
+    approvals_routes.get_db = lambda: _fake_db
     campus_routes.get_db = lambda: _fake_db
     accounting_routes.get_db = lambda: _fake_db
     guardian_routes.get_db = lambda: _fake_db

@@ -35,6 +35,9 @@ UPDATABLE_FIELDS = {
     # people who may edit the rest of the profile.
     "address",
     "house", "photo_url", "uses_transport", "bus_route", "route_zone_id", "status",
+    # R3-2, 2026-08-15: which stop a child is picked up at. It arrived with the Vedmarg
+    # migration (036) and was readable but not editable, so nobody could correct it.
+    "transport_stop",
 }
 
 # The 71 columns carried over from the school's previous system on 2026-08-06
@@ -93,7 +96,18 @@ EXTRA_SOURCE_FIELDS = {
 }
 
 UPDATABLE_FIELDS = UPDATABLE_FIELDS | EXTRA_SOURCE_FIELDS
-TRANSPORT_HEAD_FIELDS = {"route_zone_id", "uses_transport", "bus_route"}
+# R3-2, 2026-08-15: `transport_stop` added. Which stop a child is picked up at is the
+# transport head's day-to-day work and he could not change it, which made the tool he was
+# given for moving children around only half useful.
+#
+# `transport_monthly_fare` is deliberately NOT here, and the distinction is worth stating
+# because it is fine. Abhimanyu's decision of 2026-08-15 gives him full financial
+# VISIBILITY of transport: he sees every fare and who owes what. Seeing what a family is
+# charged and deciding what a family is charged are different acts, and the second one is
+# billing, which is Sonu's. He sets the fare on a ROUTE, which is the school's price for
+# that route; he does not set it on a child. If the school wants him to, that is a
+# decision to take rather than a field to add quietly.
+TRANSPORT_HEAD_FIELDS = {"route_zone_id", "uses_transport", "bus_route", "transport_stop"}
 
 
 class StudentValidationError(Exception):

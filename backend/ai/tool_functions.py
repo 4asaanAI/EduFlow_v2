@@ -18,7 +18,7 @@ from database import get_db
 from tenant import scoped_query
 from services.actor_context import actor_ctx_from_user
 from services.leave_service import (
-    decide_leave,
+    decide_leave_request,
     LeaveValidationError,
     LeaveNotFoundError,
     LeaveConflictError,
@@ -709,6 +709,13 @@ async def tool_search_students(params: dict, user: dict, scope=None) -> dict:
             matched_ids = [c["id"] for c in matched]
             filter_q["class_id"] = matched_ids[0] if len(matched_ids) == 1 else {"$in": matched_ids}
 
+    # R3-2, 2026-08-15: the transport head searches children who are on a bus and no
+    # others, exactly as the student screen does. Applied here rather than to the result
+    # so that a name search cannot reach past it. No-op for every other profile.
+    from services.transport_scope import scope_students_to_the_bus
+
+    filter_q = scope_students_to_the_bus(filter_q, user)
+
     students = await db.students.find(_tenant_query(scope, filter_q)).to_list(20)
     result = []
     # NEW-04/T7: batched (was one class find_one per student).
@@ -761,8 +768,11 @@ async def tool_get_fee_transactions(params: dict, user: dict, scope=None) -> dic
 
 
 async def tool_approve_leave(params: dict, user: dict, scope=None) -> dict:
-    # Thin adapter over services.leave_service.decide_leave - the SAME write path
-    # as PATCH /api/staff/leaves/{id}. Story A.2: the AI decision now notifies the
+    # Thin adapter over services.leave_service.decide_leave_request - the SAME write
+    # path as PATCH /api/staff/leaves/{id} and as the shared approvals queue, since the
+    # two paths were merged on 2026-08-15. Approving leave in chat now also marks the
+    # colleague as away, which it did not before.
+    # Story A.2: the AI decision now notifies the
     # staff member, writes the audit row, enforces the pending-only guard, requires
     # a rejection reason, and stamps a UTC approved_at - identical to the panel.
     leave_id = params.get("leave_id")
@@ -779,7 +789,7 @@ async def tool_approve_leave(params: dict, user: dict, scope=None) -> dict:
         service_params["rejection_reason"] = reason
 
     try:
-        result = await decide_leave(db, actor_ctx, service_params)
+        result = await decide_leave_request(db, actor_ctx, service_params)
     except LeaveNotFoundError:
         return _env(None, success=False, message="Leave request not found", count=0)
     except (LeaveValidationError, LeaveConflictError) as e:

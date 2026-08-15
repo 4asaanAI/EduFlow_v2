@@ -21,11 +21,12 @@ both live.
 | R3-0 | Make dormant mean something, at the door | **RETIRED by Abhimanyu's decision, 2026-08-14. Will not be built.** A credential goes out only once the profile is ready, so the lock never fires. The 20 questions it raised are KEPT, named test by test, in `R3-0-retired-and-the-twenty-questions-2026-08-14.md`. Branch `r3-0-dormant-lock` (`033ef40`) stays, not deleted. |
 | R3-M | The staff room holds only profiles whose release has landed | **LIVE 2026-08-14** |
 | R3-1 | Close the gap between the matrix and the REST API | **Survey DONE 2026-08-14, read only, nothing changed. `R3-1-survey-2026-08-14.md`. The fixing half is not started and needs a decision on order first.** |
-| R3-2 | Chaman's profile built properly, no money anywhere | Not started |
-| R3-3 | The tenth profile: drivers and conductors, defined only | Not started |
-| R3-4 | Switch Chaman on and watch him sign in | Not started. **No longer blocked** - it was blocked only by R3-0 being parked, and R3-0 is retired. Waits on R3-2 now. |
+| R3-2 | Chaman's profile built properly | **BUILT and green 2026-08-15, NOT DEPLOYED.** Note the title used to read "no money anywhere" and that is now WRONG: Abhimanyu decided on 2026-08-15 that he holds transport money in full. See the log entry at the foot of this file. |
+| R3-3 | The tenth profile: drivers and conductors, defined only | **DONE 2026-08-15**, defined only, no screens and no logins. Built alongside R3-2 because the transport head could not otherwise record his own team truthfully. |
+| R3-4 | Switch Chaman on and watch him sign in | Not started. **Now waits on the APPROVALS workflow** (`planning-artifacts/approvals-one-workflow-2026-08-15.md`), by Abhimanyu's decision of 2026-08-15: his credentials are not going out for at least two days, and there is nowhere for Aman or Adesh to answer the requests he can raise. **No longer blocked by R3-0** - it was blocked only by R3-0 being parked, and R3-0 is retired. Waits on R3-2 now. |
 
-Nothing beyond R3-M is built. No live school data has been read or changed by this release.
+R3-2 and R3-3 are built and green as of 2026-08-15 and are NOT deployed. No live school
+data has been read or changed by this release.
 
 ---
 
@@ -471,3 +472,454 @@ and the two tracks use different words for one journey.
 
 **Nothing was fixed.** Four suggestions are in the artifact, smallest first; adding a "start
 an application" button to the enquiry screen is the one that turns two halves into a whole.
+
+### 2026-08-15 - R3-2 and R3-3 BUILT and green. NOT DEPLOYED
+
+**Chaman Singh's profile is built, and the tenth profile (drivers and conductors) is
+defined.** Approved by Abhimanyu on 2026-08-15; the six answers are in Part 0 of
+`R3-2-proposal-chamans-profile-2026-08-15.md` and they OVERRIDE the proposal beneath them.
+
+**The biggest thing to know, because it reverses what the plan said.** The plan and the
+first proposal both said the transport head must see **no money anywhere**. Abhimanyu
+changed that: **he holds full financial visibility of school TRANSPORT, fares and who owes
+what included, amounts and all.** The boundary is transport money, not "no money". Tuition,
+concessions, Right to Education places, salaries and every other rupee stay refused, and
+that boundary is pinned by `test_only_the_finance_profiles_reach_a_finance_tool` and by
+`test_the_transport_head_holds_exactly_one_money_tool_and_it_is_transport_only`.
+
+**Why that made the work SMALLER, not bigger.** The original proposal was going to have to
+strip the fare out of the transport screen, the Add Route form, the Flo answers and the
+server. None of that is needed.
+
+**The six decisions, and where each one lives:**
+
+| # | Decision | Where it is enforced |
+|---|---|---|
+| 1 | Transport money in full; no other money | `profile_matrix` names ONE finance tool, `get_transport_fee_status`, purpose-built so it can only return the four transport fields on a child's record |
+| 2 | Children on a bus only, not the whole roll | `services/transport_scope.py`, applied to the QUERY in the student list, the single record, the roster and Flo's search |
+| 3 | Deleting needs Aman OR Adesh, either one | `TransportApprovalRequired` plus `PENDING_ACTIONS` in `approvals_service.py` |
+| 4 | Drivers and conductors on the roll, NO logins | `staff_service.create_staff` takes a separate path that mints no login |
+| 5 | Vehicle repair costs yes, building repairs no; cost agreed before it is charged | new `vehicle` category, `_strip_costs_for`, and `POST /api/issues/facility/{id}/propose-cost` |
+| 6 | He moves a child between routes himself | `TRANSPORT_HEAD_FIELDS`, which already existed, plus `transport_stop` |
+
+**Five things a later session will trip over.**
+
+**1. There is a FOURTH shape of profile now, and it is the narrowest.** `NAMED_GRANT` in
+`ai_action_policy.py`. The other three are DOMAINS: a profile gets a whole surface and the
+matrix names exceptions. That cannot express "transport": finance is wrong for a school
+bus, and non_finance is the management head's entire surface. So `extra_tools` becomes the
+WHOLE grant and everything else is refused. It is derived from the table rather than from a
+list of profile names, so the next department head follows with no change to that file.
+
+**2. A named-grant profile inherits `shared` READS and NEVER inherits a write.** The first
+version returned `domain == SHARED` outright and the suite caught what that meant:
+`import_data_file` and `create_student` are classified shared, so the transport head could
+have rewritten fields across the whole roll from a spreadsheet and put new children on it.
+The dormant profiles were only ever safe from that because `may_write` is False for them.
+**Do not relax this.** `report_platform_problem` is named in his grant precisely because it
+is a shared WRITE and would not arrive on its own.
+
+**3. Narrowing him to children on a bus opened a hole, and the fix is deliberately tiny.**
+A child's first day on a bus means finding a child who is NOT on one. New tool
+`get_student_to_add_to_a_route`: exact admission number only, returns name, class and
+whether they already ride. No address, no guardian's number, no fee, and it refuses to
+search by name, because a name search is the narrowing undone a letter at a time.
+
+**4. An approval CARRIES OUT the action it asked for.** `PENDING_ACTIONS` in
+`approvals_service.py`. The cheap version, raise a request and leave somebody to go and
+delete it by hand, was rejected: it produces a card reading APPROVED over a route that is
+still there. The action runs BEFORE the request is marked approved, so a failure leaves it
+pending rather than showing approved over something that never happened.
+
+**5. His deletes answer 202, not 200 and not 403.** "Sent for agreement" and "deleted" are
+different facts and a screen has to be able to tell them apart. In Flo it comes back as
+`success: True, awaiting_approval: True` for the same reason: telling him "you cannot"
+would send him off to find somebody by hand when the platform has already asked the right
+two people.
+
+**Three faults fixed on the way, none caused by R3-2 and all of them in its path.** Pinned
+by `test_r3_2_second_source_of_truth_2026_08_15.py`, 17 tests, every one asserting a
+refusal. **None of the three broke a single existing test**, which is the clearest sign
+they were defaults that leaked rather than decisions anybody made.
+
+- **`_can_view_all` in `routes/issues.py` treated an admin with NO job title as the
+  principal.** It governed the maintenance calendar, the contractor list, the whole issue
+  register and the request history. The rest of the platform already denies by default when
+  `sub_category` is missing, and migration 016 exists to eliminate that state, so this
+  helper was the outlier.
+- **`GET /api/issues/facility/{id}` was signed-in-only.** Any account could read any repair
+  request by its id, `estimated_cost` and `actual_cost` included, while the list route
+  beside it refused the same people. Facility requests are where every repair amount lives.
+- **`GET /api/ops/certificates` narrowed students and nobody else**, handing every other
+  signed-in account the school's whole certificate list, transfer certificates included.
+
+**Counts that moved, all deliberate and all with a written reason beside them.**
+
+| Profile | Before | After | Why |
+|---|---|---|---|
+| owner, principal | 164/103 | 166/103 | plus 2 reads: the transport fee tool and the add-to-a-route lookup |
+| accountant | 59/30 | 60/30 | plus 1 read, the transport fee tool. Not the lookup: it is non_finance |
+| management | 104/63 | 105/63 | plus 1 read, the lookup only. **He does NOT get the transport fee tool** by decision 1: he never sees a rupee figure |
+| **transport_head** | **30/0** | **23/8** | The 8 writes are the grant. **The tool count went DOWN**, and that is a narrowing: as a dormant profile he FELL THROUGH to about thirty registry reads nobody had granted him. He is now default-deny |
+| the four dormant desks | 30/0 or 29/0 | plus 1 | the lookup, which tells them strictly less than the student lookup they already hold |
+| transport_staff | did not exist | 30/0 | what the gate WOULD say. Nobody can exercise any of it: no login, no screens |
+
+Screens: transport head 6 to 8, the servicing calendar and the contractor list. Live
+profiles 4 to 5. Total profiles 12 to 13, and dormant stays at 8 by coincidence, one out
+and one in, which is exactly why the LISTS are asserted and not just the numbers.
+
+**Gate: backend 3,848 passed / 0 failed / 14 deselected. Frontend 824 passed / 0 failed.
+Production build clean including lint.** No live school data was read or changed.
+
+**NOT DEPLOYED. Waiting on Abhimanyu.** Pushing to `main` IS a frontend deploy, so the two
+halves have to go out together.
+
+**What is left.**
+
+- **R3-4, creating his account and handing over the password.** The last step, and a
+  deliberate act rather than a code change. The Add Staff screen is owner and principal
+  only and shows the username and one-time password once.
+- **Two questions for Abhimanyu**, neither blocking, both recorded rather than guessed:
+  1. **Setting the fare on a CHILD is not his**, only on a route. Seeing what a family is
+     charged and deciding it are different acts, and the second is billing. If the school
+     wants him to set it per child, that is a decision to take rather than a field to add
+     quietly.
+  2. **The `vehicle` repair category is new and empty.** Any bus repairs logged before
+     today sit under the old categories and he will not see them until somebody re-files
+     them. Nothing is lost; his screen simply starts empty.
+- **No frontend work was done for him.** The screens he holds already exist and are
+  server-gated, so nothing shows him what he may not have. But the new controls, proposing
+  a repair cost, removing a vehicle and the "sent for agreement" state, have no buttons yet
+  and are reachable through Flo and the API only.
+
+### 2026-08-15 (later) - two screen-side faults found by CHECKING rather than assuming
+
+Both were introduced by R3-2 itself and both were found by going and looking at what the
+screens actually do, after the backend was already green. Neither would have been caught
+by any test that existed, because the fault was the absence of one.
+
+**1. His home page showed five screens while his sidebar offered eight.**
+`ToolDashboard.js` builds the landing page for the office desks from `TOOL_SETS`, a
+hand-written list of screen ids that nothing keeps in step with the permission table. His
+entry named five. R3-2 granted him the servicing calendar and the contractor list, so the
+two menus disagreed the moment the grant landed.
+
+Nothing was over-granted: that list is INTERSECTED with the table, so it can only ever
+take away. But a menu that quietly loses an entry is indistinguishable to the person
+looking from access being withdrawn, which is the standing "nothing is ever dropped" rule.
+
+He is now resolved through `hubsForUser`, the same question the sidebar asks of the same
+table, so the two cannot drift again. **The hand-written set stays for the four profiles
+that are still dormant**; each leaves it as its own release lands. Pinned by a new block in
+`OneLayoutForEveryProfile.test.js`, which also records the ONE screen deliberately in a
+sidebar and on no home page: `staff-tracker`, placed that way because the owner asked on
+2026-08-07 for a single directory rather than three.
+
+**2. Pressing Delete on a route did nothing visible, and said nothing.**
+The Delete button read `if (res.success) load()`. The new 202 answer carries
+`success: true` - because a request correctly recorded IS a success - so the list reloaded,
+the route was still sitting there, and the person was told nothing at all.
+
+That is precisely the fault the 202 was introduced to prevent, reappearing one layer up.
+The screen now says what happened, and the same notice also covers a REFUSED delete
+(children still assigned), which was equally silent before and is not new to R3-2.
+Pinned by `TransportDeleteNeedsAgreement.test.js`, which renders the real screen and reads
+the words a person would see rather than checking a variable.
+
+**Gate after both: backend 3,848 passed / 0 failed. Frontend 831 passed / 0 failed.
+Production build clean including lint.**
+
+**What is still NOT built on screen, stated plainly rather than left to be discovered.**
+Three things work through Flo and the API and have no button:
+
+- proposing what a vehicle repair will cost (`POST /api/issues/facility/{id}/propose-cost`)
+- removing a vehicle from the register (`DELETE /api/ops/transport/vehicles/{id}`)
+- the approval queue does not show that a request CARRIES an action, so Aman and Adesh see
+  "Delete the bus route Joya Town" as an ordinary request and approving it does the
+  deletion. That works, and it is honest, but the card does not say the deed will be done
+  on approval. Worth a line of text before it goes to the school.
+
+Verified by search, not assumed: no file under `frontend/src` calls either of the first two
+routes or reads `awaiting_approval` anywhere except the transport screen fixed above.
+
+### 2026-08-15 (later still) - the three things Abhimanyu asked for after the build
+
+**1. The transport head prices a vehicle repair ON THE PLATFORM, not only through Flo.**
+A "Propose a cost" control on his own screen. The figure does NOT land on the request: it
+sits beside it as `cost_awaiting_approval` and is drawn as "proposed, waiting to be
+agreed", never as the cost. Writing it straight on and calling it pending would leave a
+number every other screen reads as the real one.
+
+**Two gaps this exposed, both found by going and looking rather than reasoning about it:**
+
+- **The control was first built on the wrong screen.** It went on the facility-queue card,
+  which the transport head cannot open - he holds "Report a problem", not the queue. It
+  would have shipped unreachable. It is now a shared component, `ProposeRepairCost`, used
+  by both, because written twice the two would drift and the half he uses would be the half
+  nobody noticed was wrong.
+- **He could not log a bus repair at all.** The category list on that screen had no
+  `vehicle` option, so every repair he raised would have been filed under something the
+  platform does not treat as his, and he would then not have seen its cost. There were also
+  TWO copies of that list in one file; it is now one exported constant, so a category added
+  to one screen cannot be missing from the other.
+
+**2. Removing a vehicle through Flo, behind the same agreement gate.** New tool
+`remove_transport_vehicle`. The gate lives in `transport_service.delete_vehicle`, not in
+the tool, which is what stops chat and the screen giving different answers about whether
+Aman has to agree. Pinned by three parity tests including one that drives both doors as the
+transport head and proves both record a request and neither removes anything.
+
+**The pinned reach counts caught a real leak while this was added.** The new tool is
+classified non_finance, which is the management head's entire domain, so it reached him by
+default. Decision 2 of 2026-08-10 moved transport OFF him. It is now named in his
+`denied_tools` beside the original five. **Any future transport tool belongs there**, or
+that denial rots one tool at a time as transport grows.
+
+**3. Approvals are their own thing, separately from ordinary notifications.**
+
+One rule, `frontend/src/lib/notifKinds.js`, read by BOTH the bell dropdown and the All
+Notifications screen. They fetch separately and render separately, so classifying
+separately would let the bell's count and the screen's rows drift and tell a person two
+different things about one inbox.
+
+Three notification kinds ask for a decision, taken from the server rather than guessed:
+`approval_submitted`, `certificate_approval_requested`, `profile_change_request`. Everything
+that merely LOOKS like an approval by name is an OUTCOME - `approval_decision`,
+`certificate_approved` and the rest - and stays in ordinary notifications, because telling
+somebody their request was approved is news, not a task. An unknown kind defaults to
+ordinary, deliberately: a new type in the wrong list is cosmetic, but a receipt counted as
+"waiting on you" makes the number overstate, and a number that overstates gets ignored.
+
+**The bell opens on Approvals when there are any**, because that is the half where somebody
+is blocked, and the tabs do not appear at all when there is nothing to decide - a permanent
+"Approvals (0)" is an invitation to an empty room. The empty state was also fixed: "You're
+all caught up" over an empty approvals tab, with unread messages behind the other one, is
+simply untrue.
+
+**And the line Abhimanyu asked for.** An approval request that CARRIES an action now says
+so, in ordinary words, in its own box on the card: "Agreeing to this DELETES the bus route
+straight away", "Agreeing to this COMMITS the school to that amount". Without it the card
+reads like every other request and Aman would press Approve believing he was recording an
+opinion. A person has to be able to tell "I agree with this" from "carry this out", and the
+platform is the only thing that knows which the button is.
+
+**A finding that matters more than any of the three, and it is NOT fixed.**
+
+**There is no screen anywhere for Aman or Adesh to approve or reject anything.**
+`getApprovalRequests` and `decideApprovalRequest` exist in `lib/api.js` and NOTHING calls
+them. Verified by search, not assumed. Today the only way to decide an approval is through
+Flo or a raw API call.
+
+So the notification now reaches them clearly and leads nowhere. **Until an approvals screen
+exists, every deletion the transport head asks for and every repair cost he proposes stays
+pending unless somebody decides it in chat.** That is a decision for Abhimanyu: it is a real
+build, not a line of text, and it was outside what was asked for today.
+
+**Gate: backend 3,851 passed / 0 failed / 14 deselected. Frontend 855 passed / 0 failed
+across 72 suites. Production build clean including lint.**
+
+**One thing recorded rather than dismissed:** a single frontend test failed once during
+this session and did not reproduce across five subsequent full runs. It was not identified.
+If it reappears, it is real.
+
+### 2026-08-15 (end of session) - R3-4 now waits on the APPROVALS workflow, not on R3-2
+
+**R3-2 is built and green and is NOT going out yet, by Abhimanyu's decision of
+2026-08-15.** Chaman's credentials are not being handed over for at least two days, and
+shipping him into a platform where his requests cannot be answered would be shipping a
+button that leads nowhere.
+
+**The reason is the finding at the foot of the previous entry: there is no screen for Aman
+or Adesh to approve or reject anything.** That is now its own piece of work, planned and
+decided:
+`_bmad-output/planning-artifacts/approvals-one-workflow-2026-08-15.md`.
+
+**It is bigger than it sounds and the scope is deliberate.** Abhimanyu chose ALL SIX
+approval systems on one workflow rather than the general one first, plus a requirement that
+any approval invented later joins automatically. Eleven decisions (21 to 31) are recorded in
+Part 1 of that document and are settled.
+
+**Three of them will catch people out, so they are repeated here:**
+
+1. **Flo is NEVER in the shared approval thread.** Each participant gets Flo privately, on
+   their own screen, within their own profile, and nothing Flo says enters the transcript.
+   Aman's Flo sees far more than Chaman's, so a shared Flo would print an answer built on
+   Aman's access in front of somebody who does not hold it. The permission table would be
+   right and the platform would leak anyway.
+2. **Every kind KEEPS the approvers it has today.** Announcements stay Adesh's alone;
+   student leave keeps its teacher-then-principal shape. Cover for absence, which is what
+   Abhimanyu actually wants from flattening them, is a separate later item.
+3. **Adesh sees Aman's approval decisions**, which is NOT a reversal of the Release 4
+   decision that Adesh must not see Aman's changes in the action log. Different surface:
+   both men are approvers of the same queue. Keep the two apart.
+
+**The order is now: this work, then R3-4.**
+
+### 2026-08-15 (audit) - every decision checked against the code, and one was half-built
+
+Abhimanyu asked for it to be made certain that every decision he made was properly logged.
+Rather than assert it, every message of the session was walked and each decision grepped
+for in the files. **Two gaps, and the first was a feature, not a note.**
+
+**GAP 1, and it was real: removing a driver or conductor could not be ASKED for.**
+
+He said, on 2026-08-15, in one breath: "adding a driver, a conductor... and make the
+deletion tools have an approval process from Aman and/or Adesh". The half that CARRIES OUT
+such a removal on approval was built (`_do_remove_staff_member`). **Nothing anywhere raised
+it.** So the transport head could add a driver and could never ask for one to be removed,
+and the working half looked complete on its own.
+
+Now built end to end:
+
+- He asks through the screen or through Flo; both answer 202 / `awaiting_approval` and
+  remove nobody.
+- It is narrowed to HIS OWN transport staff. Without that, the path built so he could
+  retire a bus driver would also let him ask for a teacher's removal.
+- Aman or Adesh agreeing carries it out, **through the real removal path**
+  (`staff_service.delete_staff`), not a hand-written `is_active: False`. The first version
+  of the executor did write the flag directly; it looked equivalent and was not. The real
+  path also closes the login, revokes any refresh token so an open session cannot outlive
+  the decision, records the leaving state so it can be undone, and erases what the
+  assistant had learned about the person (R6.4, DPDP §12).
+- **`may_delete_people` stays False for him**, which is not a contradiction: he ASKS,
+  somebody else carries it out.
+
+Six tests in `test_r3_2_chamans_profile_2026_08_15.py`, including one proving he cannot ask
+about a teacher and one proving the owner still removes a colleague outright.
+
+**Reach count moved again, deliberately: transport head 24/9 to 25/10** (`delete_staff`).
+Nobody else moves; the owner, principal and management head all already held it.
+
+**GAP 2: three documents still said the transport head sees no money at all.** True when
+written, reversed on 2026-08-15, and left standing they would have sent a session to strip
+out access he was deliberately given. Corrected in place, never deleted, each with the date
+and what survives of the original:
+
+- `planning-artifacts/maps-and-ai-route-planning-2026-08-15.md` - had a whole section
+  built on the old rule, offering three ways round a conflict that no longer exists. It now
+  says which of the three he chose. Its "order of work" line was also stale.
+- `HANDOFF-2026-08-14-access-ladder.md` - corrected inline and given a superseded note.
+- `planning-artifacts/staff-profiles-draft-for-aman-2026-08-10.md` - answer 2 now carries
+  a warning box saying what was reversed and, just as importantly, **what survives**: no
+  other money, and building repairs stay hidden.
+
+Also recorded properly: Abhimanyu's reason for parking the maps work, in his own words. It
+is not simply "it costs money" but that **the cost lands in Aman's subscription**, making
+it his decision, on a tool the school may never press since its routes already work.
+
+**Gate after the audit: backend 3,857 passed / 0 failed / 14 deselected.**
+
+### 2026-08-15 (later) - the APPROVALS WORKFLOW is BUILT and green. NOT DEPLOYED
+
+**All six approval systems are on one workflow, and a seventh joins by declaring
+itself.** The gap this closes: there was no screen anywhere for Aman or Adesh to approve
+or reject anything, so every request the transport head can raise led nowhere.
+
+**The one thing to understand about the architecture, because it decides everything
+else.** This is NOT a new store that the six were migrated into. It is one shared way of
+asking six existing, working systems the same four questions: what is waiting on me,
+what have I raised, may this person decide this, and decide it. Each kind's `decide`
+calls the SAME service function its own screen calls, and its `may_decide` mirrors the
+gate its own route already carries.
+
+**So the worst a mistake in the registry can do is HIDE a row from somebody entitled to
+see it.** It can never hand somebody a decision they do not hold, because the service
+underneath refuses them regardless. That is why moving six live systems was safe to do
+in one piece rather than one at a time. Do not relax it.
+
+`backend/services/approval_registry.py` is the source of truth for the kinds.
+`approval_thread_service.py` is the conversation. `routes/approvals.py` names no kind
+anywhere, and neither does `frontend/src/components/tools/ApprovalsQueue.js`.
+
+**Two extractions were needed first, and both are behaviour-for-behaviour moves.**
+Deciding a colleague's leave and deciding a correction to somebody's staff details both
+lived in the body of a route. They are now `leave_service.decide_leave_request` and
+`profile_change_service.decide_profile_change`, called by the old route and the new
+queue alike. Nothing about who may decide moved.
+
+**Four things a later session will trip over.**
+
+**1. There are TWO decision paths on `leave_requests` and they are not the same.**
+`PATCH /api/staff/leaves/{id}` goes to `decide_leave` and writes `approved_by`. The
+workflow route goes to `decide_leave_request`, which writes `decided_by` AND marks the
+person unavailable in `staff_availability`. The approvals queue uses the second, because
+without the availability row a colleague given leave still reads as available on every
+screen that asks. **Merging the two is a decision for Abhimanyu, not a side effect of
+building a screen**, so `decide_leave` was left exactly as it was. Written up at the
+foot of `leave_service.py`.
+
+**2. The plan's table was wrong about announcements, and it matters.** It said they are
+Adesh's alone. The code has always let Aman OR Adesh decide one. Decision 22 says every
+kind keeps the approvers it has today, so **Abhimanyu confirmed on 2026-08-15 that it
+stays as the code has it.** Following the table would have taken a power off the school's
+owner as a side effect of building a screen. Pinned by name in
+`test_approvals_one_workflow_2026_08_15.py`.
+
+**3. "What you may see from before you joined" is a message NUMBER, not a timestamp.**
+The first version compared the moment a person was added against the time each message
+was written. Two of those can be identical to the microsecond, and when they tied, the
+whole history was handed to somebody who had been added without it. **A clock is not
+fine-grained enough to answer a permission question.** Every message carries its position
+in its thread instead. Found by a test, not by reading.
+
+**4. Deciding through Flo was NOT showing the confirm card decision 30 requires**, and
+the test written for it is what found that. The name has to go in
+`EXPLICIT_CONFIRMATION_TOOL_NAMES`; a literal `requires_confirmation: True` in the
+registry entry is silently overwritten by the loop at the foot of that module. Same trap
+that cost `import_data_file` its confirm card on 2026-08-08.
+
+**Attachments ARE built** (Abhimanyu, 2026-08-15), and nothing about the photo rules of
+the same day is worked around. A quote or a bill goes through the ordinary upload route,
+so it gets the same allowed types, the same size ceiling for that person, the same check
+that the contents match the extension, and the same private bucket behind a short-lived
+signed link. **There is no second way to put a file into this school's storage.** One
+narrow rule was added to who may OPEN one: a file attached to a message in a conversation
+you may read. Without it the accountant head, who is in a repair-cost conversation
+precisely because he pays it, could see that a quote existed and could not open it. A
+person added without the history cannot open an attachment from before they joined
+either, which would have been a hole if the rule had covered words and not files.
+
+**A rejected request stays readable for ever and cannot be re-opened** (Abhimanyu,
+2026-08-15). The refusal stands and the raiser puts up a new version, so a no cannot be
+quietly turned into a yes on the same record.
+
+**Counts that moved, all deliberate.** Two Flo tools were added, both classified
+`shared`: `get_my_approvals` (a read) and `decide_any_approval` (a write).
+
+| Profile | Before | After | Why |
+|---|---|---|---|
+| owner, principal | 167/104 | 169/105 | both tools |
+| accountant | 60/30 | 62/31 | both tools. **Holding the write grants him nothing**: it asks each kind's own service, which refuses him exactly as its screen does |
+| management | 105/63 | 107/64 | same |
+| transport_head | 25/10 | **26/10** | the READ only. The R3-2 rule held: a named-grant profile inherits `shared` reads and never a `shared` write |
+| the five dormant desks | 30 or 31 / 0 | plus 1 read | `may_write` is False, so the write did not arrive |
+
+**The two sub-tabs are now the same in the bell and in the notifications window**
+(Abhimanyu, 2026-08-15). They already split by the same rule and labelled it differently,
+with three tabs in one place and two in the other, so one inbox read as two different
+things depending on where a person stood. They are now **"Waiting on you"** and
+**"Already happened"**, from `KIND_TABS` in `notifKinds.js` so they cannot drift again.
+The old "Both" tab is gone and nothing is dropped with it: the two halves are exhaustive,
+so every row is still reachable under exactly one of them.
+
+**Gate: backend 3,941 passed / 0 failed / 14 deselected. Frontend 868 passed across 73
+suites. Production build clean including lint.** Baseline before this work was 3,857 and
+855 across 72. No live school data was read or changed.
+
+**NOT DEPLOYED. Waiting on Abhimanyu.** Pushing to `main` IS a frontend deploy, so this,
+R3-2 and R3-3 have to go out together.
+
+**What is left.**
+
+- **R3-4, Chaman's handover.** It was waiting on this work and is no longer blocked.
+- **Three things still open and NOT guessed at:** cover for absence when one of Aman or
+  Adesh is away (decision 22 names it as a later item); whether the "bring somebody in"
+  control should offer a list of colleagues rather than an account id, which is what it
+  takes today; and no live-system proof, because everything here is proven by tests.
+- **A fault found in passing and deliberately NOT fixed:** `_is_owner_or_principal_user`
+  in `routes/staff.py` and `_is_owner_or_principal` in `services/staff_service.py` both
+  read `(sub_category or "principal") == "principal"`, so **an admin with no job title
+  counts as the principal.** That is the same shape as the `_can_view_all` fault fixed in
+  `issues.py` during R3-2. It does NOT affect approvals, which go through
+  `middleware.auth.is_owner_or_principal` and require the sub-category exactly. Left
+  alone because changing it is a permission decision on a live platform, not a tidy-up.

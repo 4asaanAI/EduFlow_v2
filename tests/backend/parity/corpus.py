@@ -135,7 +135,17 @@ PARITY_CORPUS = {
     "create_transport_route": "query_transport_parity_test.py",
     "update_transport_route": "query_transport_parity_test.py",
     "delete_transport_route": "query_transport_parity_test.py",
+    # R3-2, 2026-08-15. Both entrypoints go through `transport_service.delete_vehicle`,
+    # which is also where the approval gate lives, so chat and the screen cannot give
+    # different answers about whether Aman has to agree.
+    "remove_transport_vehicle": "query_transport_parity_test.py",
     "add_transport_vehicle": "query_transport_parity_test.py",
     "decide_announcement": "query_transport_parity_test.py",
     "delete_announcement": "query_transport_parity_test.py",
+    # Approvals workflow, 2026-08-15. One tool decides any of the six kinds, and it
+    # grants nobody anything: both doors go through `approval_registry.decide`, which
+    # asks each kind's own service. The parity test drives BOTH and compares the stored
+    # record, and separately proves the accountant head, who holds the tool because it
+    # is classified shared, is refused exactly as the screen refuses him.
+    "decide_any_approval": "approvals_workflow_parity_test.py",
 }

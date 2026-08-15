@@ -9,6 +9,7 @@ import { ToolPage, ActionBtn, FormField } from './ToolPage';
 import { Plus, Trash2, Edit2, Save, X, Wand2 } from 'lucide-react';
 import ExportButton from '../ui/ExportButton';
 import { API, apiFetch } from '../../lib/api';
+import SearchableSelect from '../ui/SearchableSelect';
 
 function h() { return getAuthHeaders(); }
 
@@ -437,7 +438,7 @@ export default function TimetableBuilder() {
 
       {/* Class selector */}
       <div style={{ marginBottom: 20 }}>
-        <select
+        <SearchableSelect
           value={selectedClass}
           onChange={e => setSelectedClass(e.target.value)}
           style={{ background: card, border: `1px solid ${border}`, borderRadius: 9, padding: '9px 14px', color: text, fontSize: 13, outline: 'none', minWidth: 200 }}
@@ -446,7 +447,7 @@ export default function TimetableBuilder() {
           {classes.map(c => (
             <option key={c.id} value={c.id}>{c.name}-{c.section}</option>
           ))}
-        </select>
+        </SearchableSelect>
       </div>
 
       {!selectedClass ? (

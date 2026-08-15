@@ -3,6 +3,7 @@ import { useUser } from '../../contexts/UserContext';
 import { API, apiFetch } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ActionBtn, Badge, DataTable, FormField, StatCard, ToolPage } from './ToolPage';
+import SearchableSelect from '../ui/SearchableSelect';
 
 async function request(path, options = {}) {
   const response = await apiFetch(`${API}${path}`, {
@@ -93,9 +94,9 @@ export default function CommercialOperations() {
     <div style={toolbar}>
       <label style={{ minWidth: 210, flex: '1 1 240px' }}>
         <span style={labelStyle}>Operating legal entity</span>
-        <select aria-label="Operating legal entity" value={entityId} onChange={event => setEntityId(event.target.value)} style={inputStyle}>
+        <SearchableSelect aria-label="Operating legal entity" value={entityId} onChange={event => setEntityId(event.target.value)} style={inputStyle}>
           {operatingEntities.map(item => <option key={item.id} value={item.id}>{item.name}{item.is_default ? ' (default)' : ''}</option>)}
-        </select>
+        </SearchableSelect>
       </label>
       <div role="tablist" aria-label="Commercial operation sections" style={tabs}>
         {availableTabs.map(value => <button key={value} role="tab" aria-selected={tab === value}
@@ -171,9 +172,9 @@ export function AdmissionsPipelinePanel({ setError }) {
   return <>
     <label style={{ minWidth: 210, display: 'block', marginBottom: 14 }}>
       <span style={labelStyle}>Operating legal entity</span>
-      <select aria-label="Operating legal entity" value={entityId} onChange={event => setEntityId(event.target.value)} style={inputStyle}>
+      <SearchableSelect aria-label="Operating legal entity" value={entityId} onChange={event => setEntityId(event.target.value)} style={inputStyle}>
         {operatingEntities.map(item => <option key={item.id} value={item.id}>{item.name}{item.is_default ? ' (default)' : ''}</option>)}
-      </select>
+      </SearchableSelect>
     </label>
     <CrmPanel entityId={entityId} leads={leads} opportunities={opportunities}
       onChanged={loadDomain} setError={setError} />

@@ -213,6 +213,82 @@ async def test_delete_route_blocked_with_assigned_students_both_entrypoints(clie
     assert fake_db.transport_routes.docs == []
 
 
+async def test_remove_vehicle_parity_both_entrypoints(client, fake_db):
+    """R3-2, 2026-08-15. Removing a vehicle is new: before this there was no way to take
+    one off the register at all, so a bus sold or scrapped stayed on it for ever.
+
+    Both doors go through `transport_service.delete_vehicle`, which is also where the
+    approval gate lives. That is the point of the parity check here: if chat and the
+    screen ever diverged, one of them would let the transport head remove a vehicle
+    without Aman or Adesh agreeing.
+    """
+    fake_db.vehicles.docs[:] = [
+        {"_id": "veh-1", "id": "veh-1", "schoolId": SCHOOL, "vehicle_number": "UP81AB1234"},
+        {"_id": "veh-2", "id": "veh-2", "schoolId": SCHOOL, "vehicle_number": "UP81CD5678"},
+    ]
+    fake_db.transport_routes.docs[:] = []
+
+    resp = client.delete("/api/transport/vehicles/veh-1", headers=_owner_headers())
+    assert resp.status_code == 200, resp.text
+    rest_state = _transport_state(fake_db)
+
+    out = await tool_functions_v2.tool_remove_transport_vehicle({"vehicle_id": "veh-2"}, OWNER_USER, None)
+    assert out["success"] is True
+    assert fake_db.vehicles.docs == []
+    # Same shape of write from both doors: one vehicle gone, one deletion audited.
+    assert len(rest_state["vehicles"]) == 1
+
+
+async def test_remove_vehicle_is_refused_while_it_runs_a_route_both_entrypoints(client, fake_db):
+    """A record that vanishes while something still points at it leaves the thing
+    pointing at nothing, which reads as data loss. Same rule as deleting a route with
+    children still on it."""
+    fake_db.vehicles.docs[:] = [
+        {"_id": "veh-1", "id": "veh-1", "schoolId": SCHOOL, "vehicle_number": "UP81AB1234"},
+    ]
+    fake_db.transport_routes.docs[:] = [
+        {"_id": "rt-9", "id": "rt-9", "schoolId": SCHOOL, "route_name": "Joya",
+         "vehicle_no": "UP81AB1234", "is_active": True},
+    ]
+
+    resp = client.delete("/api/transport/vehicles/veh-1", headers=_owner_headers())
+    assert resp.status_code == 409
+
+    out = await tool_functions_v2.tool_remove_transport_vehicle({"vehicle_id": "veh-1"}, OWNER_USER, None)
+    assert out["success"] is False
+    assert len(fake_db.vehicles.docs) == 1
+
+
+async def test_the_transport_head_gets_the_same_agreement_gate_from_both_doors(client, fake_db):
+    """The gate lives in the service, so neither door can be the loose one."""
+    from middleware.auth import create_jwt
+
+    fake_db.vehicles.docs[:] = [
+        {"_id": "veh-1", "id": "veh-1", "schoolId": SCHOOL, "vehicle_number": "UP81AB1234"},
+        {"_id": "veh-2", "id": "veh-2", "schoolId": SCHOOL, "vehicle_number": "UP81CD5678"},
+    ]
+    fake_db.transport_routes.docs[:] = []
+    chaman = {"user_id": "chaman-1", "role": "admin", "sub_category": "transport_head", "name": "C"}
+
+    resp = client.delete(
+        "/api/transport/vehicles/veh-1",
+        headers={"Authorization": f"Bearer {create_jwt(chaman)}"},
+    )
+    assert resp.status_code == 202, resp.text
+    assert resp.json()["awaiting_approval"] is True
+
+    out = await tool_functions_v2.tool_remove_transport_vehicle(
+        {"vehicle_id": "veh-2"},
+        {"id": "chaman-1", "role": "admin", "sub_category": "transport_head", "name": "C"},
+        None,
+    )
+    assert out["awaiting_approval"] is True
+
+    # Neither door removed anything. Both recorded a request instead.
+    assert len(fake_db.vehicles.docs) == 2
+    assert len(fake_db.approval_requests.docs) == 2
+
+
 # ─── Announcement moderation ─────────────────────────────────────────────────
 
 def _seed_pending_announcement(fake_db):

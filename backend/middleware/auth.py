@@ -91,6 +91,17 @@ SUB_CATEGORIES_BY_ROLE = {
     "admin": frozenset({
         "principal", "accountant", "transport_head", "receptionist",
         "it_tech", "maintenance", "management", "support_staff",
+        # R3-3, 2026-08-15. The tenth profile: drivers and conductors.
+        #
+        # Answer 10 of 2026-08-11 took them OUT of support staff and said they get a
+        # place of their own. Until now that place did not exist, so a driver added to
+        # the roll had to be filed as something they are not, and the recorded shape of
+        # the school would have been wrong on paper even though nothing broke at runtime.
+        #
+        # DEFINED ONLY. No screens, no tools, and no logins - answer 10 again, and
+        # unchanged on 2026-08-15. Naming it here costs nothing and means the transport
+        # head can record his team truthfully today.
+        "transport_staff",
     }),
     "teacher": frozenset({
         "class_teacher", "hod", "coordinator", "subject_teacher", "kg_incharge",
@@ -256,6 +267,26 @@ def require_access(*roles: str, sub_category: str | tuple[str, ...] | None = Non
 def require_owner(request: Request):
     """Owner role only. Thin wrapper over require_access."""
     return require_access("owner")(request)
+
+
+def is_owner_or_principal(user: dict) -> bool:
+    """Plain yes/no version of `require_owner_or_principal`, for a user dict.
+
+    Approvals, 2026-08-15. The approvals workflow has to ask "may this person decide
+    this?" about a record it has already loaded, which a FastAPI dependency cannot
+    answer: a dependency takes a Request and raises. Writing the test out again inside
+    the approvals code would have made it the thirteenth hand-written list of role names
+    in this codebase, which is exactly the habit the R3-1 survey of 2026-08-14 named as
+    the underlying fault. So there is one definition and the dependency below uses it.
+
+    Semantics unchanged: the owner passes whatever their sub_category, an admin passes
+    only as the principal.
+    """
+    if not user:
+        return False
+    if user.get("role") == "owner":
+        return True
+    return user.get("role") == "admin" and user.get("sub_category") == "principal"
 
 
 def require_owner_or_principal(request: Request):

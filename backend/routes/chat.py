@@ -172,6 +172,8 @@ _TOOL_DEEP_LINKS = {
     "add_thread_entry": "incidents",
     "confirm_resolution": "incidents",
     "decide_approval_request": "approvals",
+    # Approvals workflow, 2026-08-15: one tool decides any of the six kinds.
+    "decide_any_approval": "approvals",
     "correct_fee_transaction": "fees",
     "delete_fee_transaction": "fees",
     "trigger_fee_sync": "fees",
@@ -211,6 +213,10 @@ WRITE_TOOL_REQUIRED_PARAMS = {
     "log_contact_event": ("student_id", "contact_type", "outcome", "note"),
     "apply_discount": ("student_id", "discount_type_id", "effective_from"),
     "decide_approval_request": ("request_id", "decision", "reason"),
+    # `reason` is not listed as required here because it is required only to REFUSE,
+    # and the tool itself says so. Demanding it to approve would make Flo ask a
+    # pointless question before every yes.
+    "decide_any_approval": ("kind", "request_id", "decision"),
     "confirm_resolution": ("request_id", "confirmation_note"),
     "record_fee_payment": ("student_id", "amount", "fee_head", "mode"),
     "mark_attendance": ("class_id", "attendance"),
@@ -313,6 +319,9 @@ WRITE_TOOL_REQUIRED_PARAMS = {
     "create_transport_route": ("route_name",),
     "update_transport_route": ("route_id",),
     "delete_transport_route": ("route_id",),
+    # R3-2, 2026-08-15. Without the id named here the confirm card would ask a
+    # person to agree to removing "a vehicle", which is not a thing they can check.
+    "remove_transport_vehicle": ("vehicle_id",),
     "add_transport_vehicle": ("vehicle_number",),
     "decide_announcement": ("announcement_id", "decision"),
     "delete_announcement": ("announcement_id",),

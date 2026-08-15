@@ -88,3 +88,64 @@ describe('one layout for every profile', () => {
     });
   });
 });
+
+/**
+ * R3-2, 2026-08-15 - the home page and the sidebar have to offer the same screens.
+ *
+ * The sweep above checks the SIDEBAR. The home page is built separately, in
+ * `ToolDashboard.js`, and for the four still-dormant office desks it is built from a
+ * hand-written list of screen ids that nothing keeps in step with the permission table.
+ *
+ * That list is intersected with the table, so it can only ever take away, never grant.
+ * But taking away silently is the harm: the moment R3-2 gave the transport head the
+ * servicing calendar and the contractor list, his sidebar offered eight screens and his
+ * home page showed five, and to the person looking a screen that has quietly gone is
+ * identical to access being withdrawn.
+ *
+ * He was moved onto `hubsForUser`, which asks the grant table the same question the
+ * sidebar asks. This is what stops the two drifting apart again, for him and for each of
+ * the remaining four as their own release lands.
+ */
+describe('the home page offers what the sidebar offers', () => {
+  const LIVE = Object.keys(PROFILE_MATRIX).filter(
+    (name) => PROFILE_MATRIX[name].status === 'live' && PROFILE_MATRIX[name].screens !== '__all_screens__'
+  );
+
+  test('there are live profiles to check', () => {
+    expect(LIVE).toContain('transport_head');
+  });
+
+  LIVE.forEach((name) => {
+    test(`${name} loses nothing between the two`, () => {
+      const user = userFor(name);
+      const sidebar = new Set(getSidebarTools(user).map((tool) => tool.id));
+      const granted = PROFILE_MATRIX[name].screens;
+
+      // Every screen the table grants reaches the sidebar...
+      const missingFromSidebar = granted.filter((id) => !sidebar.has(id));
+      expect(missingFromSidebar).toEqual([]);
+
+      // ...and lands inside a hub, which is what the home page paints. A screen in no
+      // hub at all would vanish from the home page while still showing in the sidebar,
+      // which is the exact drift this test exists to catch.
+      // Hub rows are [id, name, subtitle, audience] tuples, and a hub id is itself a
+      // screen a profile can be granted, so both count as a home.
+      // eslint-disable-next-line global-require
+      const { MANAGEMENT_HUBS } = require('../../lib/managementHubs');
+      const inSomeHub = new Set([
+        ...MANAGEMENT_HUBS.map((hub) => hub.id),
+        ...MANAGEMENT_HUBS.flatMap((hub) => (hub.items || []).map((row) => row[0])),
+      ]);
+      // Staff Tracker is the ONE screen deliberately in a sidebar and on no home page.
+      // The owner asked on 2026-08-07 for a single directory rather than three, so it is
+      // placed through the tab map, which decides sidebar position without painting a
+      // landing-page tile. Named here rather than allowed by a loosened rule, so the NEXT
+      // screen to go missing is still caught.
+      const DELIBERATELY_NOT_ON_A_HOME_PAGE = ['staff-tracker'];
+      const homeless = granted
+        .filter((id) => !inSomeHub.has(id))
+        .filter((id) => !DELIBERATELY_NOT_ON_A_HOME_PAGE.includes(id));
+      expect(homeless).toEqual([]);
+    });
+  });
+});

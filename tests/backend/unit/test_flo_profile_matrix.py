@@ -134,9 +134,23 @@ def test_confirmation_set_is_exactly_destructive_bulk_and_reversals():
     # the funnel could claim a child existed when none did, and a confirm card is how a
     # person tells "Flo enrolled the child" from "Flo said it did".
     brings_a_person_into_existence = {"enroll_admission_application"}
+    # Approvals workflow, 2026-08-15. A SEVENTH reason, and it is Abhimanyu's decision 30
+    # in as many words: deciding an approval through Flo always shows a confirm card
+    # first. Again a new kind rather than a new member of an old one.
+    #
+    # The reason it needs one is particular to this tool. Approving is often not just
+    # recording an opinion: a general request can CARRY the action it asks for, so
+    # agreeing to one deletes a bus route or commits the school to a repair bill, and
+    # approving a correction to somebody's details changes their record on the spot.
+    # Deciding is also the one act on this platform that is somebody ELSE's business as
+    # much as your own, because a person is blocked and waiting on the answer. So a
+    # person must be able to tell "Flo showed me the request" from "Flo answered it for
+    # me", and the confirm card is how they tell.
+    decides_something_for_somebody_else = {"decide_any_approval"}
     assert EXPLICIT_CONFIRMATION_TOOL_NAMES == (
         destructive | set(BULK_TOOL_NAMES) | reversals | security_sensitive
         | leaves_the_school | brings_a_person_into_existence
+        | decides_something_for_somebody_else
     )
     assert set(EXPLICIT_CONFIRMATION_TOOL_NAMES) <= set(WRITE_TOOL_NAMES)
     ordinary = set(WRITE_TOOL_NAMES) - set(EXPLICIT_CONFIRMATION_TOOL_NAMES)

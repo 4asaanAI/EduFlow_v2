@@ -7,6 +7,7 @@ import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, ErrorCard, useColumnSort, SortableHeaderRow } from './ToolPage';
 import { Brain, HelpCircle, Send } from 'lucide-react';
 import { API, apiFetch } from '../../lib/api';
+import SearchableSelect from '../ui/SearchableSelect';
 
 function h() { return getAuthHeaders(); }
 
@@ -401,7 +402,7 @@ Generate exactly 5 questions. Do NOT use the word "Answer" - use only "Correct:"
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
 
         {/* Subject */}
-        <select
+        <SearchableSelect
           value={selectedSubject}
           onChange={e => setSelectedSubject(e.target.value)}
           style={{
@@ -418,7 +419,7 @@ Generate exactly 5 questions. Do NOT use the word "Answer" - use only "Correct:"
           {subjects.map(s => (
             <option key={s.name} value={s.name}>{s.name}</option>
           ))}
-        </select>
+        </SearchableSelect>
 
         {/* ✅ NEW: Topic Input */}
         <input
@@ -881,10 +882,10 @@ export function FormSubmissions() {
                       <textarea value={answers[field.label] || ''} onChange={e => handleAnswerChange(field.label, e.target.value)} placeholder="Type your answer here..." style={{ width: '100%', background: 'var(--c-deep)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '8px 10px', color: 'var(--c-text)', fontSize: 12, outline: 'none', boxSizing: 'border-box', minHeight: '80px', fontFamily: 'inherit' }} required />
                     )}
                     {(field.type === 'select') && (
-                      <select value={answers[field.label] || ''} onChange={e => handleAnswerChange(field.label, e.target.value)} style={{ width: '100%', background: 'var(--c-deep)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '8px 10px', color: 'var(--c-text)', fontSize: 12, outline: 'none', boxSizing: 'border-box' }} required>
+                      <SearchableSelect value={answers[field.label] || ''} onChange={e => handleAnswerChange(field.label, e.target.value)} style={{ width: '100%', background: 'var(--c-deep)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '8px 10px', color: 'var(--c-text)', fontSize: 12, outline: 'none', boxSizing: 'border-box' }} required>
                         <option value="">Select an option</option>
                         {field.options?.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
+                      </SearchableSelect>
                     )}
                     {field.type === 'radio' && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

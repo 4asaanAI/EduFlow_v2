@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { API, apiFetch } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ActionBtn, Badge, DataTable, FormField, StatCard, ToolPage } from './ToolPage';
+import SearchableSelect from '../ui/SearchableSelect';
 
 async function request(url, options = {}) {
   const response = await apiFetch(url, {
@@ -68,7 +69,7 @@ export function GuardianPortal() {
   const attendance = dashboard?.attendance?.last_30_days || {};
   const outstanding = dashboard?.fees?.summary?.total_outstanding ?? dashboard?.fees?.summary?.outstanding ?? 0;
   return <ToolPage title="Guardian Portal" subtitle="One protected view for each linked ward" loading={loading} onRefresh={loadDashboard}
-    actions={<select aria-label="Select ward" value={studentId} onChange={event => setStudentId(event.target.value)} style={selectStyle}>{wards.map(ward => <option key={ward.id} value={ward.id} label={`${ward.name}${ward.admission_number ? ` (${ward.admission_number})` : ''}`} />)}</select>}>
+    actions={<SearchableSelect aria-label="Select ward" value={studentId} onChange={event => setStudentId(event.target.value)} style={selectStyle}>{wards.map(ward => <option key={ward.id} value={ward.id} label={`${ward.name}${ward.admission_number ? ` (${ward.admission_number})` : ''}`} />)}</SearchableSelect>}>
     {error && <div role="alert" style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 10 }}>{error}</div>}
     {notice && <div role="status" style={{ color: 'var(--tool-hex-34d399)', fontSize: 12, marginBottom: 10 }}>{notice}</div>}
     {dashboard && <>

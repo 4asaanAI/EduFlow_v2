@@ -23,6 +23,7 @@ import { API, apiFetch,
   subscribeSSE,
 } from '../../lib/api';
 import FeeScheduleManager from './FeeScheduleManager';
+import SearchableSelect from '../ui/SearchableSelect';
 
 
 async function downloadReceipt(transactionId) {
@@ -605,14 +606,14 @@ export default function FeeCollection() {
       <div className="fee-section-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: 14, marginBottom: 18 }}>
         <section style={panelStyle}>
           <h2 style={panelTitle}><Save size={16} />Record payment</h2>
-          <select value={paymentClass} onChange={e => setPaymentClass(e.target.value)} style={inputStyle}>
+          <SearchableSelect value={paymentClass} onChange={e => setPaymentClass(e.target.value)} style={inputStyle}>
             <option value="">-- Select class --</option>
             {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
-          </select>
-          <select value={payment.student_id} onChange={e => setPayment(prev => ({ ...prev, student_id: e.target.value }))} style={inputStyle} disabled={!paymentClass || paymentStudentsLoading}>
+          </SearchableSelect>
+          <SearchableSelect value={payment.student_id} onChange={e => setPayment(prev => ({ ...prev, student_id: e.target.value }))} style={inputStyle} disabled={!paymentClass || paymentStudentsLoading}>
             <option value="">{paymentStudentsLoading ? 'Loading...' : paymentClass ? 'Select student' : '-- Select class first --'}</option>
             {paymentStudents.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+          </SearchableSelect>
           <div style={twoCol}>
             <input value={payment.fee_period} onChange={e => setPayment(prev => ({ ...prev, fee_period: e.target.value }))} placeholder="2026-05" style={inputStyle} />
             <input value={payment.fee_head} onChange={e => setPayment(prev => ({ ...prev, fee_head: e.target.value }))} placeholder="tuition" style={inputStyle} />
@@ -642,18 +643,18 @@ export default function FeeCollection() {
 
         <section style={panelStyle}>
           <h2 style={panelTitle}><Edit3 size={16} />Correct record</h2>
-          <select value={correctionClass} onChange={e => { setCorrectionClass(e.target.value); setCorrectionStudent(''); setCorrection(initialCorrection); }} style={inputStyle}>
+          <SearchableSelect value={correctionClass} onChange={e => { setCorrectionClass(e.target.value); setCorrectionStudent(''); setCorrection(initialCorrection); }} style={inputStyle}>
             <option value="">-- Select class --</option>
             {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
-          </select>
-          <select value={correctionStudent} onChange={e => { setCorrectionStudent(e.target.value); setCorrection(initialCorrection); }} style={inputStyle} disabled={!correctionClass || correctionStudentsLoading}>
+          </SearchableSelect>
+          <SearchableSelect value={correctionStudent} onChange={e => { setCorrectionStudent(e.target.value); setCorrection(initialCorrection); }} style={inputStyle} disabled={!correctionClass || correctionStudentsLoading}>
             <option value="">{correctionStudentsLoading ? 'Loading...' : correctionClass ? 'Select student' : '-- Select class first --'}</option>
             {correctionStudents.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-          <select value={correction.transaction_id} onChange={e => setCorrection(prev => ({ ...prev, transaction_id: e.target.value }))} style={inputStyle} disabled={!correctionStudent}>
+          </SearchableSelect>
+          <SearchableSelect value={correction.transaction_id} onChange={e => setCorrection(prev => ({ ...prev, transaction_id: e.target.value }))} style={inputStyle} disabled={!correctionStudent}>
             <option value="">{correctionStudent ? 'Select transaction' : '-- Select student first --'}</option>
             {transactions.filter(t => t.student_id === correctionStudent).map(t => <option key={t.id} value={t.id}>{t.fee_type} - {money(t.amount)} - {t.status}</option>)}
-          </select>
+          </SearchableSelect>
           {selectedTxn && <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>Current: {selectedTxn.status} / {money(selectedTxn.amount)}</div>}
           <div style={twoCol}>
             <input value={correction.amount} onChange={e => setCorrection(prev => ({ ...prev, amount: e.target.value }))} placeholder="Corrected amount" type="number" style={inputStyle} />
@@ -670,13 +671,13 @@ export default function FeeCollection() {
 
         <section style={panelStyle}>
           <h2 style={panelTitle}><Phone size={16} />Contact log</h2>
-          <select value={contact.fee_transaction_id} onChange={e => {
+          <SearchableSelect value={contact.fee_transaction_id} onChange={e => {
             const txn = transactions.find(t => t.id === e.target.value);
             setContact(prev => ({ ...prev, fee_transaction_id: e.target.value, student_id: txn?.student_id || prev.student_id }));
           }} style={inputStyle}>
             <option value="">Select fee record</option>
             {transactions.map(t => <option key={t.id} value={t.id}>{t.student_name || t.student_id} - {t.status}</option>)}
-          </select>
+          </SearchableSelect>
           <div style={twoCol}>
             <input value={contact.date} onChange={e => setContact(prev => ({ ...prev, date: e.target.value }))} type="date" style={inputStyle} />
             <select value={contact.contact_type} onChange={e => setContact(prev => ({ ...prev, contact_type: e.target.value }))} style={inputStyle}>
@@ -726,21 +727,21 @@ export default function FeeCollection() {
 
         <section style={panelStyle}>
           <h2 style={panelTitle}>Apply discount</h2>
-          <select value={discountClass} onChange={e => { setDiscountClass(e.target.value); setDiscountApply(d => ({ ...d, student_id: '' })); }} style={inputStyle}>
+          <SearchableSelect value={discountClass} onChange={e => { setDiscountClass(e.target.value); setDiscountApply(d => ({ ...d, student_id: '' })); }} style={inputStyle}>
             <option value="">-- Select class --</option>
             {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
-          </select>
-          <select value={discountApply.student_id} onChange={e => {
+          </SearchableSelect>
+          <SearchableSelect value={discountApply.student_id} onChange={e => {
             setDiscountApply(prev => ({ ...prev, student_id: e.target.value }));
             if (e.target.value) loadDiscountBreakdown(e.target.value);
           }} style={inputStyle} disabled={!discountClass || discountStudentsLoading}>
             <option value="">{discountStudentsLoading ? 'Loading...' : discountClass ? 'Select student' : '-- Select class first --'}</option>
             {discountStudents.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-          <select value={discountApply.discount_type_id} onChange={e => setDiscountApply(prev => ({ ...prev, discount_type_id: e.target.value }))} style={inputStyle}>
+          </SearchableSelect>
+          <SearchableSelect value={discountApply.discount_type_id} onChange={e => setDiscountApply(prev => ({ ...prev, discount_type_id: e.target.value }))} style={inputStyle}>
             <option value="">Select discount type</option>
             {discountTypes.map(d => <option key={d.id} value={d.id}>{d.name} - {d.value_type === 'percentage' ? `${d.value}%` : money(d.value)}</option>)}
-          </select>
+          </SearchableSelect>
           <div style={twoCol}>
             <input value={discountApply.original_amount} onChange={e => setDiscountApply(prev => ({ ...prev, original_amount: e.target.value }))} placeholder="Original amount" type="number" style={inputStyle} />
             <input value={discountApply.effective_from} onChange={e => setDiscountApply(prev => ({ ...prev, effective_from: e.target.value }))} type="date" style={inputStyle} />

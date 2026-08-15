@@ -107,6 +107,7 @@ export const PROFILE_MATRIX = {
       "enroll_admission_application",
       "get_transport_status",
       "issue_admission_offer",
+      "remove_transport_vehicle",
       "update_transport_route"
     ],
     "extraTools": [],
@@ -305,24 +306,55 @@ export const PROFILE_MATRIX = {
   },
   "transport_head": {
     "deniedTools": [],
-    "extraTools": [],
+    "extraTools": [
+      "add_transport_vehicle",
+      "create_staff",
+      "create_transport_route",
+      "delete_staff",
+      "delete_transport_route",
+      "get_staff_list",
+      "get_student_profile",
+      "get_student_to_add_to_a_route",
+      "get_transport_fee_status",
+      "get_transport_status",
+      "query_maintenance_requests",
+      "remove_transport_vehicle",
+      "report_platform_problem",
+      "search_students",
+      "update_staff",
+      "update_student",
+      "update_transport_route"
+    ],
     "mayDeletePeople": false,
-    "mayWrite": false,
+    "mayWrite": true,
     "person": "Chaman Singh",
     "screens": [
       "asset-tracker",
       "custom-form-builder",
+      "maintenance-schedule",
       "raise-maintenance",
       "student-database",
       "transport-manager",
-      "transport-optimisation"
+      "transport-optimisation",
+      "vendor-log"
     ],
-    "status": "dormant",
+    "status": "live",
     "title": "Transport head",
+    "toolDomains": []
+  },
+  "transport_staff": {
+    "deniedTools": [],
+    "extraTools": [],
+    "mayDeletePeople": false,
+    "mayWrite": false,
+    "person": null,
+    "screens": [],
+    "status": "dormant",
+    "title": "Driver or conductor",
     "toolDomains": []
   }
 };
 
-export const LIVE_PROFILES = ["accountant", "management", "owner", "principal"];
+export const LIVE_PROFILES = ["accountant", "management", "owner", "principal", "transport_head"];
 
-export const DORMANT_PROFILES = ["it_tech", "maintenance", "parent", "receptionist", "student", "support_staff", "teacher", "transport_head"];
+export const DORMANT_PROFILES = ["it_tech", "maintenance", "parent", "receptionist", "student", "support_staff", "teacher", "transport_staff"];

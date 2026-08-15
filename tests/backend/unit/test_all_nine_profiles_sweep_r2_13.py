@@ -70,8 +70,25 @@ def test_all_nine_profiles_are_defined():
     )
 
 
-def test_four_are_live_and_eight_are_dormant():
-    """R4-6, 2026-08-12: dormant went from five to eight, and here is the reason.
+def test_five_are_live_and_eight_are_dormant():
+    """R3-2 and R3-3, 2026-08-15: live went 4 to 5, and dormant 8 to 8 by way of 7.
+
+    Two separate moves on the same day, and they happen to cancel out in the dormant
+    count, which is exactly the kind of thing this file exists to make visible rather
+    than let pass. **The transport head became LIVE** (R3-2), taking dormant from 8 to 7.
+    **A tenth profile was defined, drivers and conductors** (R3-3), taking it back to 8.
+    The set assertions below are what actually check this; the number alone would not
+    have noticed.
+
+    Chaman Singh's release is R3-2. He is granted tool by tool rather than by domain,
+    holds transport money in full and no other money at all, sees only children who are
+    on a route, and needs Aman or Adesh to agree a deletion. All of that is written down
+    and approved in
+    `implementation-artifacts/release-3-access/R3-2-proposal-chamans-profile-2026-08-15.md`.
+
+    Everything below is the previous note, kept because it explains the other number.
+
+    R4-6, 2026-08-12: dormant went from five to eight, and here is the reason.
 
     A count moving without a written reason means somebody's access changed and nobody
     decided to. This one moved on purpose: teacher, student and parent were added to the
@@ -83,9 +100,15 @@ def test_four_are_live_and_eight_are_dormant():
     **Nobody gained or lost a screen.** `test_r4_6_no_role_gained_or_lost_a_screen` is
     what actually proves that; this only records why the number moved.
     """
-    assert set(LIVE_PROFILES) == {"owner", "principal", "accountant", "management"}
+    assert set(LIVE_PROFILES) == {
+        "owner", "principal", "accountant", "management", "transport_head",
+    }
+    # R3-3 added the tenth profile on 2026-08-15, so dormant went 7 to 8.
     assert len(DORMANT_PROFILES) == 8
     assert {"teacher", "student", "parent"} <= set(DORMANT_PROFILES)
+    # The four office desks still waiting for their own release. If one of these ever
+    # goes live without a written reason beside it, somebody was switched on by accident.
+    assert {"receptionist", "it_tech", "maintenance", "support_staff"} <= set(DORMANT_PROFILES)
 
 
 def test_every_profile_states_what_it_may_do():
@@ -160,6 +183,30 @@ def test_each_profile_reaches_exactly_what_the_matrix_grants(profile_name):
                 expected = True
             if name in entry["denied_tools"]:
                 expected = False
+        elif entry["extra_tools"] and entry["may_write"]:
+            # R3-2, 2026-08-15: a profile granted TOOL BY TOOL rather than by domain.
+            # The transport head is the first, because no domain means "transport":
+            # finance is wrong for a school bus and non_finance is the management head's
+            # whole surface.
+            #
+            # `extra_tools` is the WHOLE grant here rather than a set of exceptions to a
+            # domain. Two things pass on top of it, and only two:
+            #
+            #  - `shared` READS, which is what every staff profile holds whatever their
+            #    job: the school's published rate card, how full the disk is. Refusing
+            #    those would take from a department head what his dormant colleagues
+            #    already have.
+            #  - nothing else. A WRITE is his only if his name is against it. A first
+            #    version inherited shared writes and this suite caught what that meant:
+            #    `import_data_file` and `create_student` are shared, so he could have
+            #    rewritten the roll from a spreadsheet. That is the whole reason the rule
+            #    is written this way.
+            if name in entry["denied_tools"]:
+                expected = False
+            elif name in entry["extra_tools"]:
+                expected = "admin" in roles
+            else:
+                expected = "admin" in roles and domain == SHARED and not is_action_tool(tool)
         else:
             # A dormant profile is NOT domain-widened. It reaches what the plain
             # registry gives any admin - reads only, because the Phase-1 lockdown
@@ -227,7 +274,23 @@ def test_no_profile_below_leadership_reaches_an_owner_only_tool():
 
 
 def test_only_the_finance_profiles_reach_a_finance_tool():
-    """Decision 1: the management head never sees a rupee figure."""
+    """Decision 1: the management head never sees a rupee figure.
+
+    R3-2, 2026-08-15 adds the one exception, and it is worth reading rather than
+    skimming, because "money reaches somebody without the finance domain" is exactly the
+    sentence this test exists to make impossible.
+
+    Abhimanyu's decision: the transport head holds full financial visibility of school
+    TRANSPORT, fares and who owes what included, because he is the transport head. He is
+    NOT given the finance domain, which would have handed him payroll, the ledger, the
+    fee structures and every family's whole bill. He is given ONE named tool,
+    `get_transport_fee_status`, which can only return the four transport fields the
+    school keeps on a child's record.
+
+    So the boundary is in what the tool is able to answer, not in remembering to filter
+    it, and the exception is one line long and has a name. Any SECOND finance tool
+    arriving in his grant fails this test and should: it would mean the boundary moved.
+    """
     finance_tools = [
         name for name, tool in TOOL_REGISTRY.items()
         if tool.get("access_domain") == FINANCE and "admin" in set(tool.get("roles") or ())
@@ -235,10 +298,26 @@ def test_only_the_finance_profiles_reach_a_finance_tool():
     assert finance_tools
 
     for profile_name, user in PROFILES.items():
-        may = FINANCE in PROFILE_MATRIX[profile_name]["tool_domains"]
+        entry = PROFILE_MATRIX[profile_name]
+        has_domain = FINANCE in entry["tool_domains"]
         for name in finance_tools:
+            may = has_domain or name in entry["extra_tools"]
             got = is_tool_authorized(user, TOOL_REGISTRY[name])
             assert got is may, f"{profile_name} / {name}: reached={got}, entitled={may}"
+
+
+def test_the_transport_head_holds_exactly_one_money_tool_and_it_is_transport_only():
+    """The named exception above, pinned by name so it cannot quietly become two."""
+    entry = PROFILE_MATRIX["transport_head"]
+    money = sorted(
+        name for name in entry["extra_tools"]
+        if (TOOL_REGISTRY.get(name) or {}).get("access_domain") == FINANCE
+    )
+    assert money == ["get_transport_fee_status"], (
+        "the transport head's money access changed. He was granted transport money and "
+        "no other money at all (Abhimanyu, 2026-08-15). Reaching a second finance tool "
+        "means that boundary moved, and somebody has to have decided it: " + ", ".join(money)
+    )
 
 
 def test_only_leadership_reaches_the_private_leadership_tools():
@@ -305,6 +384,40 @@ def test_only_leadership_reaches_the_private_leadership_tools():
 # the school's money or its children. The five dormant profiles gain it too, exactly as
 # they gained `export_data_file` in Release 3, and gain no access with it: it reads a
 # figure the database already keeps and touches no school record.
+# 2026-08-15 (R3-2): EVERY profile except the accountant head gained exactly ONE READ
+# tool and NO write count moved: `get_student_to_add_to_a_route`. It looks up one child
+# by their EXACT admission number and returns their name, their class and whether they
+# are already on a bus. No address, no guardian's number, no fee, and it refuses to
+# search by name.
+#
+# It exists because the transport head sees only children who are on a route, which
+# would otherwise have left him unable to put a child on one for the first time. It is
+# classified non_finance because it names no money at all, which is why the accountant
+# head is the one profile that does not move, and why the four dormant desks pick it up
+# the same way they pick up every other registry read: it tells them strictly less than
+# the student lookup they already hold.
+# 2026-08-15 (R3-2, second change): +1 tool and +1 WRITE for the owner, the principal and
+# the transport head, and NOBODY else. `remove_transport_vehicle` takes a bus, van or auto
+# off the register; before it there was no way to remove one at all, so a vehicle sold or
+# scrapped stayed on the register for ever.
+#
+# **The management head does NOT move, and that took a deliberate edit.** The tool is
+# classified non_finance, which is his entire domain, so it reached him by default and this
+# very test caught it. Decision 2 of 2026-08-10 moved transport off him, so it is now named
+# in his `denied_tools` beside the original five. Any future transport tool belongs there
+# too, or the denial rots one tool at a time as transport grows.
+# 2026-08-15 (R3-2, third change): +1 tool and +1 WRITE for the TRANSPORT HEAD ONLY.
+# `delete_staff`, so he can ask for a driver or conductor to be taken off the roll. It was
+# asked for in the same breath as adding one and was half-built: the approval could be
+# carried out and nothing could raise it, so he could not ask at all. Found by auditing
+# every decision against the code rather than against memory.
+#
+# **His `may_delete_people` is still False and that is not a contradiction.** He cannot
+# remove anybody himself. The service turns his request into an approval routed to Aman
+# and Adesh before the deny is reached, and narrows it to his own transport staff, so the
+# path built for retiring a bus driver cannot ask for a teacher's removal. Nobody else
+# moves: `delete_staff` is non_finance, and the owner, principal and management head all
+# already held it.
 EXPECTED_REACH = {
     # 165/104 until 2026-08-14. MINUS SIX tools, all six of them writes: campus retail
     # was removed on Abhimanyu's instruction, taking create_retail_product,
@@ -331,20 +444,82 @@ EXPECTED_REACH = {
     # and are named in his `denied_tools` so chat gives the same answer as the screen.
     # The six dormant desks and the accountant head do not move at all, which is the
     # proof this landed where it was aimed: admissions is not money and it is not theirs.
-    "owner":          (164, 103),
-    "principal":      (164, 103),
+    # 164/103 until 2026-08-15 (R3-2). PLUS ONE READ and no write, for the owner, the
+    # principal AND the accountant head, and nobody else: `get_transport_fee_status`,
+    # what the children on the buses pay and whether it is cleared. It is classified
+    # finance because it names what a family owes, which is why the management head does
+    # not move (decision 1: he never sees a rupee figure) and why the four dormant office
+    # desks do not either.
+    # 167/104 (owner and principal), 60/30 (accountant), 105/63 (management),
+    # 25/10 (transport head) and 30 or 31 with no writes (the dormant desks) until
+    # 2026-08-15, when the APPROVALS WORKFLOW landed. Read this block once and the ten
+    # numbers below explain themselves.
+    #
+    # TWO tools were added, both classified `shared`: `get_my_approvals`, a read, and
+    # `decide_any_approval`, a write. So:
+    #
+    #   +1 READ for EVERY profile, including the dormant ones. Asked "is anything waiting
+    #   on me", anybody may ask. The answer is built by `approval_registry`, which returns
+    #   only what that person may decide, so for a profile that decides nothing the honest
+    #   answer is an empty list rather than a refusal.
+    #
+    #   +1 WRITE for the profiles that write at all, and for nobody else. The transport
+    #   head does NOT gain it, and neither do the five dormant desks. That is the R3-2
+    #   rule holding: a named-grant profile inherits `shared` reads and never inherits a
+    #   `shared` write, and a dormant profile has `may_write` False.
+    #
+    # **The accountant head and the management head gaining the write tool grants them
+    # nothing, and that is worth understanding rather than trusting.** The tool decides
+    # nothing itself; it asks each kind's own service, which refuses them exactly as its
+    # own screen does. Pinned by name in
+    # `tests/backend/api/test_approvals_one_workflow_2026_08_15.py`, which asserts that
+    # both are refused every one of the six kinds. If either ever gains a real decision,
+    # that file goes red before this one does.
+    "owner":          (169, 105),
+    "principal":      (169, 105),
     # 56/31 until 2026-08-11. +1 tool, +1 write: update_staff, named in
     # PROFILE_MATRIX["accountant"]["extra_tools"], scoped by the SERVICE to salary
     # only (Abhimanyu, relaying Aman's and Adesh's instruction).
     # 65/36 until 2026-08-14, minus the same six campus-retail tools.
-    "accountant":     (59, 30),
+    # 59/30 until 2026-08-15, plus the same one transport-fee read as the two above.
+    "accountant":     (62, 31),
     # 101/60 until 2026-08-14. PLUS THREE, not five: see the A6 note above.
-    "management":     (104, 63),
-    "transport_head": (30, 0),
-    "receptionist":   (30, 0),
-    "it_tech":        (30, 0),
-    "maintenance":    (30, 0),
-    "support_staff":  (29, 0),
+    "management":     (107, 64),
+    # 30/0 until 2026-08-15. Now 22/8, and BOTH halves of that move are the point of R3-2.
+    #
+    # **The write count went 0 to 8, which is the grant.** Chaman Singh's release landed.
+    # He creates, changes and deletes a bus route, registers a vehicle, moves a child
+    # between routes, adds and edits a driver or conductor, and tells Layaa AI the
+    # platform is broken. Every one is named against his row in `profile_matrix.py` and
+    # approved in writing (R3-2-proposal-chamans-profile-2026-08-15.md).
+    #
+    # **The tool count went DOWN, 30 to 22, and that is a narrowing, not a loss.** As a
+    # dormant profile with no domain he FELL THROUGH to about thirty registry reads that
+    # nobody had granted him: he simply reached whatever the registry offered any admin.
+    # He is now default-deny - his named list, plus the `shared` reads every staff profile
+    # holds whatever their job. So he has more of what is his and none of what was never
+    # his, which is the whole argument for granting by name rather than by subtraction.
+    #
+    # If this pair moves again, read it as two separate questions. The write number moving
+    # means somebody's authority changed. The tool number moving on its own usually means
+    # a `shared` tool was added or reclassified.
+    "transport_head": (26, 10),
+    "receptionist":   (32, 0),
+    "it_tech":        (32, 0),
+    "maintenance":    (32, 0),
+    "support_staff":  (31, 0),
+    # R3-3, 2026-08-15: the tenth profile, drivers and conductors. Defined so the
+    # transport head can record his own team on the staff roll without filing them as
+    # something they are not.
+    #
+    # **30 and 0, the same as every other dormant profile, and the 30 deserves a word
+    # rather than being read as a grant.** It is what the gate WOULD say, not what
+    # anybody can do: like the four dormant office desks, this profile falls through to
+    # the plain registry reads and holds no write tool at all. Nobody can exercise any of
+    # it, because answer 10 of 2026-08-11 gives these colleagues NO LOGIN, which is also
+    # why they hold no screens. If the write number ever moves off 0, somebody granted a
+    # driver the ability to change the school's records.
+    "transport_staff": (31, 0),
 }
 
 

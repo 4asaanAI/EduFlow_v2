@@ -49,7 +49,17 @@ const EXPECTED_SCREEN_COUNT = {
   // receptionist swapped one entry for one and its number is unchanged, which is the
   // proof the merge hit what it aimed at: only a profile holding BOTH could move.
   management: 46,
-  transport_head: 6,
+  // 6 until 2026-08-15. +2 (R3-2): 'maintenance-schedule' and 'vendor-log'. Abhimanyu's
+  // answer 2 of 2026-08-11 - the transport head arranges the vehicle servicing and Sonu
+  // pays, so he needs to know when a service is due and who to ring. Checked before
+  // granting: NEITHER record carries a money field at all, so this is a plain grant
+  // rather than a screen that had to be cut down.
+  transport_head: 8,
+  // R3-3, 2026-08-15. The tenth profile, drivers and conductors. ZERO screens, and that
+  // is the whole point: they get NO LOGIN (answer 10 of 2026-08-11), so there is no menu
+  // for them to open. Giving them screens to make a number look tidy would state
+  // something false - that somebody is expected to open them.
+  transport_staff: 0,
   // 9 until 2026-08-11. Abhimanyu's answers 3 and 4: Student Transfer and Commercial
   // Operations both come off the front desk. See the ANSWERS section of
   // staff-profiles-draft-for-aman-2026-08-10.md.
@@ -67,12 +77,16 @@ const EXPECTED_SCREEN_COUNT = {
   parent: 1,
 };
 
-test('all twelve profiles are in the matrix, four live and eight dormant', () => {
+test('all thirteen profiles are in the matrix, five live and eight dormant', () => {
   // Nine until R4-6 (2026-08-12), when teacher, student and parent joined - the last
   // three roles that were outside the table. Nobody gained or lost a screen; see
   // EXPECTED_SCREEN_COUNT above and the backend test_menus_are_honest_r4_6.py.
-  expect(PROFILE_NAMES.length).toBe(12);
-  expect(LIVE_PROFILES.sort()).toEqual(['accountant', 'management', 'owner', 'principal']);
+  // R3-2 and R3-3, 2026-08-15: 12 became 13 profiles, and 4 live became 5.
+  // The transport head was switched on (R3-2) and a tenth office profile was defined for
+  // drivers and conductors (R3-3). Dormant therefore stays at 8 by coincidence - one out,
+  // one in - which is exactly why the lists below are asserted and not just the counts.
+  expect(PROFILE_NAMES.length).toBe(13);
+  expect(LIVE_PROFILES.sort()).toEqual(['accountant', 'management', 'owner', 'principal', 'transport_head']);
   expect(DORMANT_PROFILES.length).toBe(8);
 });
 

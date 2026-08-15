@@ -10,6 +10,7 @@ import DataTable, { cellValue } from '../ui/DataTable';
 import WholeSchoolExportButton from '../ui/WholeSchoolExportButton';
 import { ALL_ROWS, useTablePageSize } from '../../hooks/useTablePrefs';
 import { ArrowRight, RefreshCw, Search, Users } from 'lucide-react';
+import SearchableSelect from '../ui/SearchableSelect';
 
 // ─── The school's own staff vocabulary (Epic 7, owner decision 2026-07-23) ──────
 //
@@ -290,7 +291,7 @@ function StudentsTab({ user, onOpen, onOpenFullScreen }) {
             style={{ ...selectStyle, paddingLeft: 32, width: '100%' }}
           />
         </div>
-        <select
+        <SearchableSelect
           data-testid="directory-students-class"
           value={classId}
           onChange={(e) => { setClassId(e.target.value); setPage(1); }}
@@ -301,7 +302,7 @@ function StudentsTab({ user, onOpen, onOpenFullScreen }) {
           {classList.map((c) => (
             <option key={c.id} value={c.id}>{`${c.name || ''} ${c.section || ''}`.trim()}</option>
           ))}
-        </select>
+        </SearchableSelect>
         <select
           data-testid="directory-students-sort"
           value={sort}

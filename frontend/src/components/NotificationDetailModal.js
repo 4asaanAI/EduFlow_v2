@@ -199,6 +199,24 @@ function SourceCard({ source, isDark }) {
           </div>
         </div>
       </div>
+      {/* R3-2, 2026-08-15: some approval requests CARRY the action. Agreeing to one
+          deletes a bus route or commits the school to a repair bill, rather than simply
+          recording an opinion. Said in plain words and given its own box, because it is
+          the difference between "I agree" and "do it", and nothing else on the card says
+          which button this is. */}
+      {source.carries_out_the_action && source.what_approving_does && (
+        <div
+          data-testid="approval-carries-out-the-action"
+          style={{
+            marginTop: 10, marginBottom: 4, padding: '10px 12px', borderRadius: 9,
+            background: 'color-mix(in srgb, #f59e0b 8%, var(--c-bg))',
+            border: '1px solid color-mix(in srgb, #f59e0b 30%, transparent)',
+            fontSize: 12, color: 'var(--c-text)', lineHeight: 1.5,
+          }}
+        >
+          {source.what_approving_does}
+        </div>
+      )}
       {source.subtitle && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 5 }}>
           <Tag size={10} color="var(--c-faint)" />

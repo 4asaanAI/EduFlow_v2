@@ -159,7 +159,35 @@ def test_a_dormant_office_profile_still_cannot_export():
     assert may_export(receptionist, "students") is False
 
 
+# R3-3, 2026-08-15. The one profile in the table that holds NO screen, on purpose.
+#
+# Drivers and conductors get a profile of their own (Abhimanyu's answer 10 of 2026-08-11)
+# and get NO LOGIN (the same answer, unchanged on 2026-08-15). It exists so the transport
+# head can record his own team truthfully on the staff roll, and so that if the school
+# ever asks for them to sign in it is one decision rather than another round of them.
+#
+# A profile with no screens AND a login would be a broken menu, which is what the rule
+# below is really guarding. A profile with no screens and no login is a category on the
+# staff roll, and giving it screens to satisfy a test would state something false: that
+# somebody is expected to open them.
+#
+# Named here rather than allowed by a general rule, so that the NEXT empty profile is a
+# deliberate edit to this list and somebody has to write down why.
+PROFILES_WITH_NO_SCREENS_BECAUSE_THEY_HAVE_NO_LOGIN = {"transport_staff"}
+
+
 def test_every_profile_in_the_table_states_a_reason_for_itself():
     for name, entry in PROFILE_MATRIX.items():
         assert entry.get("notes"), f"{name} has no note explaining what it is"
+        if name in PROFILES_WITH_NO_SCREENS_BECAUSE_THEY_HAVE_NO_LOGIN:
+            assert not entry["screens"], (
+                f"{name} is listed as holding no screens because it holds no login, and "
+                "it now has screens. Either it was given a login, in which case take it "
+                "off that list, or somebody granted a screen nobody can open."
+            )
+            assert "NO logins" in entry["notes"] or "no login" in entry["notes"].lower(), (
+                f"{name} holds no screens, so its note has to say that it holds no login "
+                "either. Otherwise it reads as a profile somebody forgot to finish."
+            )
+            continue
         assert entry["screens"] == ALL_SCREENS or entry["screens"], f"{name} has no screens"

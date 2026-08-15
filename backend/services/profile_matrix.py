@@ -309,6 +309,15 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
             "update_transport_route",
             "delete_transport_route",
             "add_transport_vehicle",
+            # R3-2, 2026-08-15. Added the day the tool was built, because the pinned reach
+            # counts caught it reaching him: `remove_transport_vehicle` is classified
+            # non_finance, which is his whole domain, so it arrived by default.
+            #
+            # Decision 2 of 2026-08-10 moved transport OFF the management head. A new
+            # transport tool has to be refused him as deliberately as the first five were,
+            # or the denial quietly rots one tool at a time as transport grows. **Any
+            # future transport tool belongs on this list.**
+            "remove_transport_vehicle",
             # A6, 2026-08-14. The two admissions writes the REST route already refuses
             # him. `_can_enroll` in `routes/admissions.py` allows the owner and the
             # principal only, so issuing an offer and enrolling a child are not his on
@@ -338,7 +347,8 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
     "transport_head": {
         "person": "Chaman Singh",
         "title": "Transport head",
-        "status": "dormant",
+        # R3-2, 2026-08-15: LIVE. His release is this one.
+        "status": "live",
         "screens": _screens(
             "student-database",
             "transport-manager",
@@ -346,15 +356,130 @@ PROFILE_MATRIX: Dict[str, Dict[str, Any]] = {
             "asset-tracker",
             "custom-form-builder",
             "raise-maintenance",
+            # R3-2, answer 2 of 2026-08-11: he arranges the servicing and Sonu pays, so
+            # he needs to know when a service is due and who to ring. Checked before
+            # granting: a schedule entry holds a title, a date, a recurrence, a category,
+            # who it is assigned to and which contractor, and a contractor record holds a
+            # name, a phone, an address and a rating. NEITHER carries a money field at
+            # all, so this is a plain grant rather than a screen that had to be cut down.
+            "maintenance-schedule",
+            "vendor-log",
         ),
+        # R3-2: granted TOOL BY TOOL rather than by domain. See the NAMED_GRANT note in
+        # `ai_action_policy.py` for why: there is no domain that means "transport", and
+        # `non_finance` would have handed the transport head the timetable, admissions,
+        # the library and every child's record on the way to giving him a bus.
+        "tool_domains": frozenset(),
+        "may_write": True,
+        "extra_tools": frozenset({
+            # ── Transport itself. His job. ──────────────────────────────────────
+            # Abhimanyu, 2026-08-15: he holds FULL financial visibility of school
+            # transport, fares included, because he is the transport head. So unlike
+            # every other non-leadership profile, the fare is not stripped out of what
+            # he sees. The boundary is that it is TRANSPORT money and nothing else: not
+            # tuition, not salaries, not any other part of the school's finances.
+            "get_transport_status",
+            "create_transport_route",
+            "update_transport_route",
+            # Deleting a route is granted, and it does NOT go through on his say-so.
+            # Abhimanyu, 2026-08-15: a deletion needs Aman OR Adesh to agree, either one.
+            # The gate lives in the service, so chat and the screen get the same answer.
+            "delete_transport_route",
+            "add_transport_vehicle",
+            # Abhimanyu, 2026-08-15: taking a vehicle off the register, through Flo,
+            # behind the same agreement gate as deleting a route. Before this there was no
+            # way to remove a vehicle at all, so a bus sold or scrapped stayed on the
+            # register for ever while he was being given the job of keeping it right.
+            "remove_transport_vehicle",
+            # Transport fees for the children he carries, amounts included. Purpose-built
+            # for this profile rather than granting a general fee tool: the general ones
+            # answer with tuition, concessions and Right to Education places, none of
+            # which is his.
+            "get_transport_fee_status",
+            # ── The children on his buses ───────────────────────────────────────
+            # Every one of these is narrowed to children WITH a route by
+            # `transport_scope.py`. Abhimanyu, 2026-08-15: children on a bus only, never
+            # the whole roll. Roughly 1,500 of the school's children never board a bus
+            # and he has no reason to hold their home addresses.
+            "search_students",
+            "get_student_profile",
+            # The one way past that narrowing, and it is deliberately tiny. A child's
+            # first day on a bus means finding a child who is NOT on a bus, which the
+            # scoping above makes impossible. This answers "is there a child with this
+            # exact admission number, and what is their name and class" and nothing more:
+            # no address, no guardian's number, no fee. See the tool's own note.
+            "get_student_to_add_to_a_route",
+            # The tool that moves a child between routes, which answer 1 of 2026-08-11
+            # gives him outright with no approval step. It is narrow whichever way it is
+            # reached: `student_service` accepts only the transport fields from this
+            # profile and drops the rest, exactly as `update_staff` is narrowed to the
+            # salary field for the accountant head.
+            "update_student",
+            # ── His own team ────────────────────────────────────────────────────
+            # Abhimanyu, 2026-08-15: drivers and conductors go onto the staff roll, with
+            # NO logins. `create_staff` is narrowed for this profile to the transport
+            # staff type and refuses to mint a login, which is checked in the service.
+            "get_staff_list",
+            "create_staff",
+            "update_staff",
+            # Abhimanyu, 2026-08-15, in the same breath as "add a driver, a conductor":
+            # removing one, behind the SAME agreement gate as deleting a bus route. He
+            # asks, and Aman or Adesh carries it out by agreeing.
+            #
+            # `may_delete_people` stays False for him and that is not a contradiction: he
+            # cannot take anybody off the roll himself. The service turns his request into
+            # an approval before the deny is reached, and it is narrowed to his own
+            # transport staff, so the path built for retiring a bus driver cannot be used
+            # to ask for a teacher's removal.
+            "delete_staff",
+            # ── Servicing and repairs ───────────────────────────────────────────
+            "query_maintenance_requests",
+            # Telling Layaa AI the platform itself is broken. Every live profile holds
+            # this. It is classified `shared`, but it is a WRITE, and a named-grant
+            # profile inherits no writes at all - so it has to be named here rather than
+            # arriving by itself. That is deliberate: the same inheritance would have
+            # handed him `import_data_file` and `create_student`, which are also shared.
+            "report_platform_problem",
+        }),
+        "denied_tools": frozenset(),
+        # He may add a driver and he may not take a child or a colleague off the roll.
+        "may_delete_people": False,
+        "notes": (
+            "Chaman Singh, the school's transport head. LIVE as of R3-2, 2026-08-15. "
+            "Granted tool by tool rather than by domain, because no domain means "
+            "'transport'. He holds transport money in full and no other money at all; "
+            "he sees only children who are on a route; he moves a child between routes "
+            "himself with no approval step; and a DELETION - a route, a vehicle, a "
+            "driver or a conductor - needs Aman or Adesh to agree, either one."
+        ),
+    },
+    # R3-3, 2026-08-15. The tenth profile, DEFINED ONLY.
+    #
+    # Answer 10 of 2026-08-11 took drivers and conductors out of support staff and said
+    # they get a profile of their own. It did not exist, so until today a driver put on
+    # the roll had to be filed as something they are not.
+    #
+    # Nothing here is switched on and nothing should be. They hold no screen and no tool,
+    # and answer 10, unchanged on 2026-08-15, says they get NO LOGIN. This entry exists so
+    # the transport head can record his team truthfully, and so that if the school ever
+    # asks for them to sign in, it is one decision rather than another round of them.
+    "transport_staff": {
+        "person": None,
+        "title": "Driver or conductor",
+        "status": "dormant",
+        "screens": _screens(),
         "tool_domains": frozenset(),
         "may_write": False,
         "extra_tools": frozenset(),
         "denied_tools": frozenset(),
         "may_delete_people": False,
         "notes": (
-            "Built now, switched on in Release 3 (decision 3). He exists in the staff "
-            "records already and has no login."
+            "Drivers and conductors. Defined by R3-3 on 2026-08-15 so the transport head "
+            "can record his own team on the staff roll. NO screens, NO tools and NO "
+            "logins, by Abhimanyu's answer 10 of 2026-08-11. What matters for these "
+            "colleagues is that their record, their attendance and their salary are "
+            "right, not that they sign in. The transport head creates them through "
+            "`staff_service`, which refuses to mint a login for this profile."
         ),
     },
     "receptionist": {

@@ -11,7 +11,10 @@ import pytest
 
 from services.actor_context import actor_ctx_from_user
 from services.leave_service import (
-    decide_leave,
+    # Merged on 2026-08-15: `decide_leave` and `decide_leave_request` were two decision
+    # paths on the same collection, and only this one also records the colleague as
+    # away. Every assertion in this file still holds; only the name moved.
+    decide_leave_request as decide_leave,
     LeaveValidationError,
     LeaveNotFoundError,
     LeaveConflictError,
@@ -86,7 +89,14 @@ async def test_approve_notifies_and_audits(fake_db):
     notif = next(n for n in fake_db.notifications.docs if n.get("user_id") == "u1")
     assert "approved" in notif["message"].lower()
     audit = next(a for a in fake_db.audit_logs.docs if a.get("action") == "leave_approved")
-    assert audit["changes"] == {"status": "approved", "approved_by": "prin-1"}
+    # The merge of 2026-08-15 records MORE than the deleted path did: the decision now
+    # also stamps `decided_by`, `decided_at` and the reason, so the action log can say
+    # who decided and why without opening the leave request. The two fields this test
+    # was written to guard are still asserted, individually rather than as a whole-dict
+    # match, so a field being dropped still fails here.
+    assert audit["changes"]["status"] == "approved"
+    assert audit["changes"]["approved_by"] == "prin-1"
+    assert audit["changes"]["decided_by"] == "prin-1"
 
 
 # ─── AI-path closed-gap regression guards (defects this story fixes) ──────────

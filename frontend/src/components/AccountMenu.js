@@ -19,7 +19,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown, LogOut, Moon, Settings, Sun, User, LifeBuoy, Gauge, Flag } from 'lucide-react';
+import { Bell, CheckSquare, ChevronDown, LogOut, Moon, Settings, Sun, User, LifeBuoy, Gauge, Flag } from 'lucide-react';
 import { useUser } from '../contexts/UserContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getMyTokenUsage } from '../lib/api';
@@ -160,6 +160,32 @@ export default function AccountMenu({ onOpenProfile, onOpenSettings, onSelectToo
             onMouseEnter={e => e.currentTarget.style.background = hover}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
             <User size={14} /><span>Profile</span>
+          </button>
+
+          {/* Approvals and Notifications, 2026-08-15 (Abhimanyu).
+              Both of these screens existed and could only be reached from inside the
+              bell panel: the notifications window through its footer, and the approvals
+              screen only when the bell happened to be showing its approvals half, which
+              it only does when something is sitting there unread. So once a person had
+              read their notifications there was NO WAY BACK to either screen. A screen
+              you can only reach while it has something on it is indistinguishable from
+              a screen that does not exist.
+
+              They are here rather than in the sidebar because they belong to the person
+              rather than to their job: every profile has the same two, and what is on
+              them is decided by the server. */}
+          <button role="menuitem" style={rowStyle} data-testid="account-approvals"
+            onClick={() => openTool('approvals')}
+            onMouseEnter={e => e.currentTarget.style.background = hover}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+            <CheckSquare size={14} /><span>Approvals</span>
+          </button>
+
+          <button role="menuitem" style={rowStyle} data-testid="account-notifications"
+            onClick={() => openTool('all-notifications')}
+            onMouseEnter={e => e.currentTarget.style.background = hover}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+            <Bell size={14} /><span>Notifications</span>
           </button>
 
           {/* Usage - owner request 5. Expands in place rather than navigating, so the

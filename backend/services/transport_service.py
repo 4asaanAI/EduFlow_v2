@@ -34,6 +34,59 @@ class TransportConflictError(Exception):
     """Active students still assigned to the zone → HTTP 409."""
 
 
+class TransportApprovalRequired(Exception):
+    """The transport head asked to delete something. Aman or Adesh has to agree → 202.
+
+    NOT an error, and it must never be presented as one. The request has been recorded
+    and is waiting for a decision; the caller is told what happens next and who it went
+    to. Carries the approval id so the screen and Flo can both point at it.
+    """
+
+    def __init__(self, approval_id: str, message: str):
+        super().__init__(message)
+        self.approval_id = approval_id
+        self.message = message
+
+
+def _needs_approval_to_delete(actor_ctx: ActorContext) -> bool:
+    """R3-2, 2026-08-15. Abhimanyu: the transport head deletes with Aman OR Adesh's
+    agreement, either one of them.
+
+    He is the only profile in this position, and deliberately so. Everyone else who can
+    reach these functions - the owner, the principal, the accountant head - either grants
+    the approval or has held the ability outright since before this release, so putting
+    them behind a gate would be taking something away that nobody asked to take.
+    """
+    return actor_ctx.role == "admin" and actor_ctx.sub_category == "transport_head"
+
+
+async def _ask_for_agreement(db, actor_ctx: ActorContext, *, title: str, description: str,
+                             impact: str, pending_action: dict) -> "TransportApprovalRequired":
+    """Record the request and hand back the exception the caller raises.
+
+    Routed `owner_and_principal` so EITHER Aman or Adesh can decide it. Both are
+    notified. This is the same queue and the same screen the school already uses, not a
+    second approval system, which is what answer 9 of 2026-08-11 asked for about repairs
+    and applies just as well here.
+    """
+    from services.approvals_service import create_approval_request_doc
+
+    approval_id = await create_approval_request_doc(
+        db, actor_ctx,
+        title=title,
+        description=description,
+        estimated_impact=impact,
+        note="Requested by the transport head. Nothing has been deleted yet.",
+        routing="owner_and_principal",
+        pending_action=pending_action,
+    )
+    return TransportApprovalRequired(
+        approval_id,
+        f"{title}. This needs the school's owner or the principal to agree, so it has "
+        f"been sent to both of them and nothing has been deleted yet.",
+    )
+
+
 _ROUTE_MUTABLE = {"route_name", "start_point", "end_point", "stops", "driver_name",
                   "driver_phone", "vehicle_no", "capacity", "fare", "is_active",
                   "description", "centroid"}
@@ -114,8 +167,14 @@ async def update_route(db, actor_ctx: ActorContext, params: dict) -> dict:
     return {"route": updated}
 
 
-async def delete_route(db, actor_ctx: ActorContext, params: dict) -> dict:
-    """Delete a transport route. Blocked while active students are assigned. params: {route_id}"""
+async def delete_route(db, actor_ctx: ActorContext, params: dict, *, session=None,
+                       _approved: bool = False) -> dict:
+    """Delete a transport route. Blocked while active students are assigned. params: {route_id}
+
+    R3-2, 2026-08-15: for the transport head this RECORDS A REQUEST instead of deleting,
+    and Aman or Adesh carries it out by approving. `_approved` is set only by the approval
+    service when one of them has said yes; nothing outside this file passes it.
+    """
     route_id = params.get("route_id")
     if not route_id:
         raise TransportValidationError("route_id is required")
@@ -132,11 +191,76 @@ async def delete_route(db, actor_ctx: ActorContext, params: dict) -> dict:
         raise TransportConflictError(
             f"{assigned} active student(s) are assigned to this route - reassign them first"
         )
+    # Checked AFTER the "children are still on it" rule on purpose. Sending Aman a
+    # request that would have been refused anyway wastes his time and teaches the
+    # transport head nothing about why it cannot happen.
+    if _needs_approval_to_delete(actor_ctx) and not _approved:
+        raise await _ask_for_agreement(
+            db, actor_ctx,
+            title=f"Delete the bus route '{existing.get('route_name', route_id)}'",
+            description=(
+                f"The transport head has asked to delete the route "
+                f"'{existing.get('route_name', route_id)}'. No child is assigned to it."
+            ),
+            impact="The route disappears from the transport screens. No child is affected.",
+            pending_action={"kind": "delete_transport_route", "route_id": route_id},
+        )
     await db.transport_routes.delete_one(scoped_query({"id": route_id}, branch_id=bid))
     # F.10: actor-tagged deletion audit - who deleted what, when.
     await _audit(db, actor_ctx, action="delete", entity_type="transport_route",
                  entity_id=route_id, changes={"deleted": existing})
     return {"deleted": True, "route": existing}
+
+
+async def delete_vehicle(db, actor_ctx: ActorContext, params: dict, *, session=None,
+                         _approved: bool = False) -> dict:
+    """Take a vehicle off the register. params: {vehicle_id}
+
+    R3-2, 2026-08-15. There was no way to remove a vehicle at all before this: a bus sold
+    or scrapped stayed on the register for ever, and the transport head was being given
+    the job of keeping that register right.
+
+    Refused while the vehicle is still on a route, the same rule that protects a route
+    with children on it, and for the same reason: a record that vanishes while something
+    still points at it leaves the thing pointing at nothing, which reads as data loss.
+
+    For the transport head this records a request rather than deleting. `_approved` is set
+    only by the approval service once Aman or Adesh has agreed.
+    """
+    vehicle_id = params.get("vehicle_id")
+    if not vehicle_id:
+        raise TransportValidationError("vehicle_id is required")
+    bid = actor_ctx.branch_id
+    existing = await db.vehicles.find_one(
+        scoped_query({"id": vehicle_id}, branch_id=bid), {"_id": 0}
+    )
+    if not existing:
+        raise TransportNotFoundError(vehicle_id)
+    number = existing.get("vehicle_number", "")
+    if number:
+        in_use = await db.transport_routes.count_documents(
+            scoped_query({"vehicle_no": number, "is_active": {"$ne": False}}, branch_id=bid)
+        )
+        if in_use:
+            raise TransportConflictError(
+                f"Vehicle {number} is still running on {in_use} route(s) - take it off "
+                "those routes first"
+            )
+    if _needs_approval_to_delete(actor_ctx) and not _approved:
+        raise await _ask_for_agreement(
+            db, actor_ctx,
+            title=f"Take vehicle {number or vehicle_id} off the register",
+            description=(
+                f"The transport head has asked to remove vehicle {number or vehicle_id}. "
+                "It is not running on any route."
+            ),
+            impact="The vehicle disappears from the transport screens. No route is affected.",
+            pending_action={"kind": "delete_transport_vehicle", "vehicle_id": vehicle_id},
+        )
+    await db.vehicles.delete_one(scoped_query({"id": vehicle_id}, branch_id=bid))
+    await _audit(db, actor_ctx, action="delete", entity_type="vehicle",
+                 entity_id=vehicle_id, changes={"deleted": existing})
+    return {"deleted": True, "vehicle": existing}
 
 
 async def create_vehicle(db, actor_ctx: ActorContext, params: dict) -> dict:

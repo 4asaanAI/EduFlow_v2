@@ -4,6 +4,72 @@
 **Last updated:** 2026-08-05
 **Working agent:** any capable coding model (Anthropic Sonnet/Opus or other providers) - execution protocols are written model-agnostically
 
+> ## Approvals: one workflow for every approval - BUILT and green 2026-08-15, NOT DEPLOYED
+>
+> **Record of what was done: `_bmad-output/implementation-artifacts/release-3-access/PROGRESS.md`,
+> the entry dated 2026-08-15 (later). Read it before touching any of this.**
+>
+> All six approval systems are on one workflow and a seventh joins by adding one entry to
+> `backend/services/approval_registry.py`. **It is NOT a new store the six were migrated
+> into**: each kind is decided by the SAME service its own screen calls, and its
+> `may_decide` mirrors the gate its own route already carries, so the registry can only
+> ever hide a row from somebody entitled to it and can never hand anybody a decision they
+> do not hold. Do not relax that.
+>
+> **Three corrections this work produced.** The plan said announcements are Adesh's alone;
+> the code has always allowed Aman OR Adesh and it stays that way (Abhimanyu, 2026-08-15).
+> The history a late joiner may read is a message NUMBER, not a timestamp, because two
+> timestamps can tie and when they did the whole history leaked. And deciding through Flo
+> was not showing the confirm card decision 30 requires; the name has to be in
+> `EXPLICIT_CONFIRMATION_TOOL_NAMES`, never a literal in the registry entry.
+>
+> **The bell and the notifications window now carry the SAME two sub-tabs**, "Waiting on
+> you" and "Already happened", from `KIND_TABS` in `notifKinds.js`.
+>
+> Gate: backend 3,941 passed / 0 failed / 14 deselected; frontend 868 across 73 suites;
+> production build clean including lint.
+>
+> ## The plan behind it (decisions 21 to 31, all settled)
+>
+> **Read `_bmad-output/planning-artifacts/approvals-one-workflow-2026-08-15.md` first.**
+> Eleven decisions (21 to 31) from Abhimanyu, all settled, all dated 2026-08-15.
+>
+> **Why it exists.** R3-2 gave the transport head things he must ask permission for, and
+> then a check found **there is no screen anywhere for Aman or Adesh to approve or reject
+> anything.** The frontend has the code to do it and nothing calls it. The platform can ask
+> for permission and cannot receive it.
+>
+> **Scope, and it is deliberate.** ALL SIX approval systems onto one workflow - general
+> requests, certificates, staff leave, announcements, staff profile changes and student
+> leave - plus any approval invented later joining automatically. Not the general one first.
+>
+> **Three things that will catch you out:**
+>
+> 1. **Flo is NEVER in the shared approval thread.** Each person gets Flo privately, on
+>    their own screen, in their own profile, and nothing Flo says enters the transcript.
+>    Aman's Flo sees far more than Chaman's, so a shared Flo would print an answer built on
+>    Aman's access in front of somebody who does not hold it.
+> 2. **Every kind keeps the approvers it has today.** Announcements are Adesh's alone;
+>    student leave is teacher-then-principal. A screen must never widen access.
+> 3. **Adesh sees Aman's approval decisions.** That does NOT reverse the Release 4 rule that
+>    Adesh cannot see Aman's changes in the ACTION LOG. Different surface. Keep them apart.
+>
+> ## R3-2 and R3-3 are BUILT and GREEN and deliberately NOT DEPLOYED (2026-08-15)
+>
+> Chaman Singh's profile, and the tenth profile for drivers and conductors. **Held on
+> purpose**: his credentials are not going out for at least two days, and shipping him
+> before the approvals workflow would give him buttons whose requests nobody can answer.
+> Full record: `implementation-artifacts/release-3-access/PROGRESS.md`.
+>
+> **The reversal you need to know:** the plan said the transport head sees **no money at
+> all**. Abhimanyu changed that on 2026-08-15. **He holds full financial visibility of
+> school TRANSPORT**, fares and who owes what included. Everything else - tuition,
+> concessions, salaries - stays refused, enforced by giving him ONE purpose-built money
+> tool rather than the finance domain.
+>
+> Gate at the time of writing: backend 3,851 passed / 0 failed; frontend 855 passed across
+> 72 suites; production build clean including lint.
+
 > ## SHIPPED: Enterprise Commercial Operations (2026-08-05)
 >
 > Commit `3d989e1` is merged to `origin/main`. EduFlow now has lightweight legal-entity

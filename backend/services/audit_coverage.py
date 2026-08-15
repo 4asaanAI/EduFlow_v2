@@ -41,7 +41,14 @@ from typing import Dict
 #: Modules whose changes reach the audit trail.
 RECORDS = {
     # Route files
-    "routes/academics.py", "routes/activities.py", "routes/attendance.py",
+    "routes/academics.py", "routes/activities.py",
+    # Approvals workflow, 2026-08-15. Its only direct write is a raiser editing a
+    # request that is still pending, and that is recorded twice on purpose: once in the
+    # action log for whoever asks months later, and once in the conversation so nobody
+    # can quietly alter a request after somebody has read it. Deciding is recorded by
+    # each kind's own service, which is where the decision is actually made.
+    "routes/approvals.py",
+    "routes/attendance.py",
     "routes/auth.py", "routes/chat.py", "routes/chat_upload.py", "routes/fees.py",
     "routes/image_gen.py", "routes/import_data.py", "routes/issues.py",
     "routes/notifications.py", "routes/operations.py", "routes/payroll.py",
@@ -69,7 +76,12 @@ RECORDS = {
     "services/fee_sync_service.py", "services/fees_service.py",
     "services/house_points_service.py", "services/incident_service.py",
     "services/leave_service.py", "services/messaging_service.py",
-    "services/org_config_service.py", "services/profile_notes_service.py",
+    "services/org_config_service.py",
+    # Approvals workflow, 2026-08-15. Lifted out of the body of
+    # PATCH /api/staff/change-requests/{id}, which already recorded, so the audit row
+    # moved with it rather than being lost in the move.
+    "services/profile_change_service.py",
+    "services/profile_notes_service.py",
     "services/query_ticket_service.py", "services/staff_attendance_service.py",
     "services/staff_service.py", "services/student_concession_service.py",
     "services/student_leave_service.py", "services/student_service.py",
@@ -110,6 +122,14 @@ EXCUSED: Dict[str, str] = {
         "Runs an AI plan inside a transaction. Every write it performs is audited by "
         "the service that performs it, and those audit rows are enlisted in the same "
         "transaction, so a rolled-back plan leaves no orphan audit row.",
+
+    "services/approval_thread_service.py":
+        "The conversation attached to an approval. The transcript IS the record: every "
+        "reply carries its author and its time, nothing in it can be edited or deleted, "
+        "and the platform's own acts (an edit, a decision, somebody being brought in) "
+        "are written into it as lines anybody in the conversation can read. An audit "
+        "row would be a second, thinner copy of a record that is already permanent. "
+        "The DECISION it ends in is audited by the service that makes it.",
 
     # ---- Flo's own memory. Not the school's records. ----
     "services/memory/store.py":

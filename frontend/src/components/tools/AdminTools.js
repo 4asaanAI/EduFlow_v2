@@ -12,6 +12,7 @@ import { Search, Plus, CheckCircle, XCircle, Save, RefreshCw, X, FileDown, Messa
 import SearchablePicker from '../ui/SearchablePicker';
 import FullStudentDatabase from './StudentDatabase';
 import AdmissionsWorkflow from './AdmissionsWorkflow';
+import SearchableSelect from '../ui/SearchableSelect';
 
 function h() { return getAuthHeaders(); }
 const tint = (color, amount) => `color-mix(in srgb, ${color} ${amount}%, transparent)`;
@@ -291,10 +292,10 @@ export function FeeTracker() {
               </button>
             ))}
             <div style={{ width: 1, height: 20, background: 'var(--c-border)', margin: '0 4px' }} />
-            <select value={classFilter} onChange={e => setClassFilter(e.target.value)} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '5px 10px', color: 'var(--c-text)', fontSize: 11, outline: 'none' }}>
+            <SearchableSelect value={classFilter} onChange={e => setClassFilter(e.target.value)} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '5px 10px', color: 'var(--c-text)', fontSize: 11, outline: 'none' }}>
               <option value="">All classes</option>
               {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
-            </select>
+            </SearchableSelect>
           </>
         )}
       </div>
@@ -505,9 +506,9 @@ export function AttendanceRecorder() {
       {saveError && <ErrorCard message={saveError} />}
       {loadError && <ErrorCard message="Unable to load this attendance register. Please try again." onRetry={loadStudents} />}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} data-testid="class-select" style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
+        <SearchableSelect value={selectedClass} onChange={e => setSelectedClass(e.target.value)} data-testid="class-select" style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
-        </select>
+        </SearchableSelect>
         <input type="date" value={date} onChange={e => setDate(e.target.value)} data-testid="date-picker" style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }} />
         <ActionBtn label="All Present" variant="success" onClick={() => markAll('present')} data-testid="mark-all-present" />
         <ActionBtn label="All Absent" variant="danger" onClick={() => markAll('absent')} data-testid="mark-all-absent" />
@@ -1559,21 +1560,21 @@ export function DocumentScanner() {
           {/* Class dropdown */}
           <div style={{ marginBottom: 12 }}>
             {lbl('Class / Section')}
-            <select value={selectedClass} onChange={e => handleClassChange(e.target.value)} style={selStyle}>
+            <SearchableSelect value={selectedClass} onChange={e => handleClassChange(e.target.value)} style={selStyle}>
               <option value="">All Classes</option>
               {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
-            </select>
+            </SearchableSelect>
           </div>
 
           {/* Student dropdown - filtered by class */}
           <div style={{ marginBottom: 12 }}>
             {lbl('Student *')}
-            <select value={studentId} onChange={e => setStudentId(e.target.value)} style={selStyle} disabled={loading}>
+            <SearchableSelect value={studentId} onChange={e => setStudentId(e.target.value)} style={selStyle} disabled={loading}>
               <option value="">
                 {loading ? 'Loading students...' : studentsInClass.length === 0 ? (selectedClass ? 'No students in this class' : 'No students found') : 'Select student...'}
               </option>
               {studentsInClass.map(s => <option key={s.id} value={s.id}>{s.name} {s.admission_number ? `(${s.admission_number})` : ''}</option>)}
-            </select>
+            </SearchableSelect>
           </div>
 
           {/* Document type */}
@@ -1989,10 +1990,10 @@ export function ParentMessage() {
         <div>
           <div style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 10, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>1. Select Class</label>
-            <select value={selectedClass} onChange={e => { setSelectedClass(e.target.value); setSelectedStudents(new Set()); }} style={inp}>
+            <SearchableSelect value={selectedClass} onChange={e => { setSelectedClass(e.target.value); setSelectedStudents(new Set()); }} style={inp}>
               <option value="">- All Classes -</option>
               {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
-            </select>
+            </SearchableSelect>
           </div>
 
           <div>
@@ -2196,10 +2197,10 @@ export function StudentTransfer() {
         <div>
           <h3 style={{ fontFamily: 'Inter, sans-serif', fontSize: 13, fontWeight: 600, color: 'var(--c-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>1. Find Student</h3>
           <div style={{ marginBottom: 10 }}>
-            <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} style={{ ...inpStyle, width: '100%', marginBottom: 8 }}>
+            <SearchableSelect value={selectedClass} onChange={e => setSelectedClass(e.target.value)} style={{ ...inpStyle, width: '100%', marginBottom: 8 }}>
               <option value="">-- Select a class --</option>
               {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
-            </select>
+            </SearchableSelect>
             {selectedClass && <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or admission no..." style={{ ...inpStyle, width: '100%' }} />}
           </div>
           <div style={{ maxHeight: 340, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -2251,11 +2252,11 @@ export function StudentTransfer() {
               {transferType === 'class_change' && (
                 <div style={{ marginBottom: 12 }}>
                   <label style={{ display: 'block', fontSize: 11, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Destination Class *</label>
-                  <select value={destinationClass} onChange={e => setDestinationClass(e.target.value)}
+                  <SearchableSelect value={destinationClass} onChange={e => setDestinationClass(e.target.value)}
                     style={{ width: '100%', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
                     <option value="">Select new class...</option>
                     {classes.filter(c => c.id !== selectedStudent.class_id).map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
-                  </select>
+                  </SearchableSelect>
                 </div>
               )}
 
@@ -2418,10 +2419,10 @@ export function IdCardGenerator() {
           placeholder="Search by name, admission or roll no."
           style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none', minWidth: 240, flex: '1 1 240px', maxWidth: 320 }}
         />
-        <select value={filterClass} onChange={e => setFilterClass(e.target.value)} aria-label="Filter by class" style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
+        <SearchableSelect value={filterClass} onChange={e => setFilterClass(e.target.value)} aria-label="Filter by class" style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
           <option value="">All Classes</option>
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
-        </select>
+        </SearchableSelect>
         <ActionBtn label={filtered.length > 0 && filtered.every(s => selectedIds.includes(s.id)) ? 'Deselect all shown' : 'Select all shown'} variant="secondary" onClick={toggleAll} />
         {/* R2-9: one button or the other, never both. The owner and the principal print;
             everybody else asks, and prints once the answer comes back. */}
@@ -2593,10 +2594,10 @@ export function TimetableBuilder() {
 
       <div style={{ marginBottom: 16 }}>
         <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Select Class</label>
-        <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none', width: '100%', maxWidth: 300 }}>
+        <SearchableSelect value={selectedClass} onChange={e => setSelectedClass(e.target.value)} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none', width: '100%', maxWidth: 300 }}>
           <option value="">-- Select --</option>
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
-        </select>
+        </SearchableSelect>
       </div>
 
       {showForm && (
@@ -2762,6 +2763,9 @@ export function TransportManager() {
   const [assignForm, setAssignForm] = useState({ student_id: '', bus_route: '' });
   const [showAssign, setShowAssign] = useState(false);
   const [assignError, setAssignError] = useState('');
+  // R3-2, 2026-08-15: what to say after a delete that was sent for agreement rather than
+  // carried out, or that was refused. Previously neither outcome said anything.
+  const [deleteNotice, setDeleteNotice] = useState('');
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
   const fa = k => v => setAssignForm(p => ({ ...p, [k]: v }));
 
@@ -2806,10 +2810,28 @@ export function TransportManager() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this route?')) return;
+    setDeleteNotice('');
     try {
-      const res = await apiFetch(`${API}/ops/transport/${id}`, { method: 'DELETE', headers: h() }).then(r => r.json());
+      const raw = await apiFetch(`${API}/ops/transport/${id}`, { method: 'DELETE', headers: h() });
+      const res = await raw.json();
+      // R3-2, 2026-08-15. The transport head may ask to delete a route, and the school's
+      // owner or the principal has to agree before it happens, so the server answers 202
+      // with `awaiting_approval` instead of deleting.
+      //
+      // That answer also carries `success: true`, because a request correctly recorded IS
+      // a success. Without the branch below, the old code reloaded the list, the route was
+      // still sitting there, and the person was told nothing at all - a button that looks
+      // like it did nothing. Saying what happened is the whole point of the 202.
+      if (res.awaiting_approval) {
+        setDeleteNotice(res.message || 'Sent to the school’s owner and the principal to agree. Nothing has been deleted yet.');
+        load();
+        return;
+      }
       if (res.success) load();
-    } catch {}
+      else setDeleteNotice(res.detail || 'The route could not be deleted.');
+    } catch {
+      setDeleteNotice('The route could not be deleted.');
+    }
   };
 
   const handleAssign = async (e) => {
@@ -2845,6 +2867,17 @@ export function TransportManager() {
       actions={viewMode === 'routes' && <ActionBtn label="Add Route" onClick={() => { setShowForm(true); setEditingId(null); setForm({ route_name: '', start_point: '', end_point: '', driver_name: '', driver_phone: '', vehicle_no: '', capacity: '', fare: '' }); }} icon={<Plus size={11} />} />}>
 
       <PeopleLoadNotice error={studentsError} />
+      {/* R3-2, 2026-08-15: a delete that was sent for agreement rather than carried out
+          has to say so. Without this the list reloads with the route still on it and the
+          person is told nothing, which reads as a button that does not work. */}
+      {deleteNotice && (
+        <div
+          data-testid="transport-delete-notice"
+          style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid var(--tool-hex-fbbf24)', borderRadius: 8, padding: '10px 14px', marginBottom: 12, color: 'var(--c-text)', fontSize: 12.5 }}
+        >
+          {deleteNotice}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, borderBottom: '1px solid var(--c-border)', paddingBottom: 12 }}>
         <button onClick={() => { setViewMode('routes'); setSelectedRoute(null); }} style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === 'routes' ? '1px solid var(--tool-hex-4f8ff7)' : '1px solid var(--c-border)', background: viewMode === 'routes' ? 'rgba(59,130,246,0.1)' : 'var(--c-bg)', color: viewMode === 'routes' ? 'var(--tool-hex-4f8ff7)' : 'var(--c-muted)', fontSize: 12, cursor: 'pointer' }}>Routes</button>
         <button onClick={() => { setViewMode('assignments'); setSelectedRoute(null); }} style={{ padding: '6px 12px', borderRadius: 6, border: viewMode === 'assignments' ? '1px solid var(--tool-hex-34d399)' : '1px solid var(--c-border)', background: viewMode === 'assignments' ? 'rgba(16,185,129,0.1)' : 'var(--c-bg)', color: viewMode === 'assignments' ? 'var(--tool-hex-34d399)' : 'var(--c-muted)', fontSize: 12, cursor: 'pointer' }}>Student Assignments</button>
@@ -3266,10 +3299,10 @@ export function ReportCardBuilder() {
   return (
     <ToolPage title="Report Card Builder" subtitle="Enter marks & generate report cards" loading={loading}>
       <div style={{ marginBottom: 14 }}>
-        <select value={selectedExam} onChange={e => setSelectedExam(e.target.value)} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
+        <SearchableSelect value={selectedExam} onChange={e => setSelectedExam(e.target.value)} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
           <option value="">Select exam...</option>
           {exams.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-        </select>
+        </SearchableSelect>
       </div>
       <DataTable headers={['Student', 'Subject', 'Marks', 'Max', 'Grade']}
         rows={results.map(r => [r.student_name, r.subject_name, r.marks_obtained, r.max_marks, <Badge text={r.grade || 'N/A'} color={r.grade?.startsWith('A') ? 'green' : r.grade?.startsWith('B') ? 'blue' : 'yellow'} />])}

@@ -1,6 +1,7 @@
 """Routes: certificates, expenses, visitors, assets, transport, announcements, incidents"""
 from __future__ import annotations
 from fastapi import APIRouter, Depends, Request, HTTPException
+from fastapi.responses import JSONResponse
 from pagination import MAX_PAGE_SIZE, clamp_page, clamp_page_size
 from database import get_db
 from middleware.auth import (
@@ -44,6 +45,11 @@ from services.approvals_service import (
     ApprovalNotFoundError,
     ApprovalAuthorizationError,
 )
+from services.leave_service import (
+    decide_leave_request as svc_decide_leave_request,
+    LeaveValidationError,
+    LeaveNotFoundError,
+)
 from services.announcement_service import (
     decide_announcement_status,
     decide_announcement as svc_decide_announcement,
@@ -83,9 +89,11 @@ from services.transport_service import (
     update_route as svc_update_transport_route,
     delete_route as svc_delete_transport_route,
     create_vehicle as svc_create_vehicle,
+    delete_vehicle as svc_delete_vehicle,
     TransportValidationError,
     TransportNotFoundError,
     TransportConflictError,
+    TransportApprovalRequired,
 )
 from datetime import datetime, date as _date, timedelta
 from tenant import get_school_id, scoped_filter, scoped_query, add_school_id
@@ -93,6 +101,7 @@ import uuid
 import os
 import re
 from services.maps_service import geocode as _geocode_address, haversine_km as _haversine_km
+from services.transport_scope import scope_students_to_the_bus
 
 router = APIRouter(prefix="/api/ops", tags=["operations"])
 workflow_router = APIRouter(prefix="/api/operations", tags=["operations-workflow"])
@@ -281,45 +290,33 @@ async def list_leave_requests(request: Request, status: str = None, page: int = 
 
 @workflow_router.patch("/leave-requests/{leave_id}/decide")
 async def decide_leave_request(leave_id: str, request: Request, user: dict = Depends(require_owner_or_principal)):
+    """Approve or reject a colleague's leave.
+
+    Approvals workflow, 2026-08-15: the body of this route moved into
+    `leave_service.decide_leave_request` so the shared approvals queue decides a leave
+    through exactly this code and not a second copy of it. The gate above is unchanged.
+    """
     db = get_db()
     body = await request.json()
-    if body.get("status") not in ("approved", "rejected") or not body.get("reason"):
+    # This screen has always insisted on a reason either way, and it keeps that rule.
+    #
+    # The service asks only for a reason to REFUSE, because the two paths merged on
+    # 2026-08-15 and the staff screen and Flo never demanded one to approve. Rather than
+    # pick a winner and quietly loosen this screen or tighten the other two, the stricter
+    # rule stays where it already applied, as this screen's own rule.
+    if not (body.get("reason") or "").strip():
         raise HTTPException(400, "status approved/rejected and reason are required")
-    leave = await db.leave_requests.find_one(scoped_filter({"id": leave_id}, get_school_id()), {"_id": 0})  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
-    if not leave:
-        raise HTTPException(404, "Leave request not found")
-    update = {
-        "status": body["status"],
-        "decision_reason": body["reason"],
-        "decided_by": user["id"],
-        "decided_at": datetime.now().isoformat(),
-    }
-    await db.leave_requests.update_one(scoped_filter({"id": leave_id}, get_school_id()), {"$set": update})  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
-    if body["status"] == "approved":
-        await db.staff_availability.update_one(
-            scoped_filter({"staff_id": leave["staff_id"], "leave_request_id": leave_id}, get_school_id()),  # branch-scope: intentional - scoped to one named person's own record, not to a branch
-            {"$set": {
-                "staff_id": leave["staff_id"],
-                "leave_request_id": leave_id,
-                "status": "on_leave",
-                "date_range": leave.get("date_range"),
-                "schoolId": get_school_id(),
-                "updated_at": datetime.now().isoformat(),
-            }},
-            upsert=True,
+    actor_ctx = actor_ctx_from_user(user, school_id=get_school_id())
+    try:
+        result = await svc_decide_leave_request(
+            db, actor_ctx,
+            {"leave_id": leave_id, "status": body.get("status"), "reason": body.get("reason")},
         )
-    await _write_audit(db, "leave_decide", "leave_request", leave_id, user, update, body["reason"])
-    await create_notification(
-        db,
-        user_id=leave["user_id"],
-        notification_type="leave_decision",
-        title="Leave request updated",
-        message=f"Leave request {body['status']}",
-        source_id=leave_id,
-        source_type="leave_request",
-    )
-    updated = await db.leave_requests.find_one(scoped_filter({"id": leave_id}, get_school_id()), {"_id": 0})  # branch-scope: intentional - pinned by a unique id, so a branch filter could only turn a real row into a false 404
-    return {"success": True, "data": updated}
+    except LeaveValidationError as e:
+        raise HTTPException(400, str(e))
+    except LeaveNotFoundError as e:
+        raise HTTPException(404, str(e))
+    return {"success": True, "data": result["leave"]}
 
 
 @workflow_router.post("/approval-requests")
@@ -414,6 +411,13 @@ async def list_certs(request: Request, student_id: str = None, user: dict = Depe
     db = get_db()
     bid = user.get("branch_id")
     query = {}
+    # R3-2, 2026-08-15. Found while sweeping for the fault fixed in `issues.py`: this
+    # route carefully narrows a STUDENT to their own certificates and then hands every
+    # other signed-in account the whole school's list, transfer certificates included.
+    # A teacher has no certificate screen and a guardian reaches their ward through
+    # `/api/guardian`, so neither loses a working control here.
+    if user.get("role") not in ("owner", "admin", "student"):
+        raise HTTPException(403, "Forbidden")
     if student_id:
         if user["role"] == "student":
             own = await db.students.find_one(scoped_query({"user_id": user["id"]}, branch_id=bid))
@@ -884,6 +888,10 @@ async def get_transport_roster(request: Request, zone_id: str = None, user: dict
     query = {"is_active": {"$ne": False}}
     if zone_id:
         query["route_zone_id"] = zone_id
+    # R3-2, 2026-08-15: the roster's own docstring says the transport head gets a
+    # zone-specific list, but without a zone_id it returned the whole school, "Not
+    # Assigned" children included. That is the same widening the student screen had.
+    query = scope_students_to_the_bus(query, user)
     students = await db.students.find(scoped_query(query, branch_id=bid), {"_id": 0, "name": 1, "class_name": 1, "guardian_phone": 1, "route_zone_id": 1}).to_list(500)
     zones = await db.transport_routes.find(scoped_query({}, branch_id=bid), {"_id": 0, "id": 1, "route_name": 1}).to_list(50)
     zone_map = {z["id"]: z["route_name"] for z in zones}
@@ -956,8 +964,40 @@ async def delete_route(route_id: str, request: Request, user: dict = Depends(req
     actor_ctx = actor_ctx_from_user(user)
     try:
         await svc_delete_transport_route(db, actor_ctx, {"route_id": route_id})
+    except TransportApprovalRequired as e:
+        # R3-2, 2026-08-15: NOT an error, and it must not be shown as one. The request
+        # has been recorded and is with Aman and Adesh. 202 rather than 200 so the screen
+        # can tell "sent for agreement" apart from "deleted", which are different facts.
+        return JSONResponse(
+            status_code=202,
+            content={"success": True, "awaiting_approval": True,
+                     "data": {"approval_id": e.approval_id}, "message": e.message},
+        )
     except TransportNotFoundError:
         raise HTTPException(404, "Route not found")
+    except TransportConflictError as e:
+        raise HTTPException(409, str(e))
+    except TransportValidationError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True}
+
+
+@router.delete("/transport/vehicles/{vehicle_id}")
+@transport_router.delete("/vehicles/{vehicle_id}")
+async def delete_vehicle(vehicle_id: str, request: Request, user: dict = Depends(require_transport_access)):
+    """R3-2, 2026-08-15: there was no way to remove a vehicle at all before this."""
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user)
+    try:
+        await svc_delete_vehicle(db, actor_ctx, {"vehicle_id": vehicle_id})
+    except TransportApprovalRequired as e:
+        return JSONResponse(
+            status_code=202,
+            content={"success": True, "awaiting_approval": True,
+                     "data": {"approval_id": e.approval_id}, "message": e.message},
+        )
+    except TransportNotFoundError:
+        raise HTTPException(404, "Vehicle not found")
     except TransportConflictError as e:
         raise HTTPException(409, str(e))
     except TransportValidationError as e:

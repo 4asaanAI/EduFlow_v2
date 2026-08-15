@@ -326,7 +326,17 @@ def _source_summary(rec: dict, source_type: str) -> dict:
     if source_type == "substitution":
         return {**base, "title": f"Period {rec.get('period_number', '-')} substitution", "subtitle": f"Substitute: {rec.get('substitute_teacher_name', '-')}", "detail": f"Class: {rec.get('class_name', '-')}"}
     if source_type in ("tech_request", "approval_request"):
-        return {**base, "title": rec.get("title") or rec.get("description", source_type.replace("_", " ").title()), "subtitle": rec.get("category") or rec.get("type", ""), "detail": rec.get("description", "")}
+        summary = {**base, "title": rec.get("title") or rec.get("description", source_type.replace("_", " ").title()), "subtitle": rec.get("category") or rec.get("type", ""), "detail": rec.get("description", "")}
+        # R3-2, 2026-08-15 (Abhimanyu). Some approval requests CARRY the action: agreeing
+        # to one deletes a bus route, or commits the school to a repair bill. Without
+        # saying so, the card reads like every other request - a description and two
+        # buttons - and a person would press Approve believing they were recording an
+        # opinion. A person has to be able to tell "I agree with this" from "carry this
+        # out", and the platform is the only thing that knows which the button is.
+        if rec.get("approval_carries_out_the_action"):
+            summary["carries_out_the_action"] = True
+            summary["what_approving_does"] = rec.get("what_approving_does", "")
+        return summary
     if source_type == "fee_transaction":
         return {**base, "title": f"Fee - ₹{rec.get('amount', 0):,}", "subtitle": f"Student: {rec.get('student_name', '-')}", "detail": rec.get("fee_type", "")}
     if source_type == "visitor":

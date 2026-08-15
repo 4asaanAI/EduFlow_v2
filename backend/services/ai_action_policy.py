@@ -40,6 +40,47 @@ def is_owner_or_principal(user: Dict[str, Any]) -> bool:
     return False
 
 
+# R3-2, 2026-08-15. The fourth shape of profile, and the narrowest one.
+#
+# The three above are DOMAINS: a profile is handed a whole surface of the platform and
+# the matrix then names exceptions in either direction. That works for the four people
+# whose job is a whole area of the school.
+#
+# It does not work for a department head. Chaman Singh runs transport. There is no
+# domain that means "transport": a school bus route is not money, so `finance` is wrong,
+# and `non_finance` is the management head's entire surface, which would hand the
+# transport head the timetable, admissions, the library and every child's record on the
+# way to giving him a bus.
+#
+# So a profile may instead be granted TOOL BY TOOL. `extra_tools` becomes the complete
+# list rather than a set of exceptions to a domain, and everything not named is refused.
+# That is the same default-deny rule `profile_matrix` already states; this is simply the
+# form of it with no domain underneath.
+#
+# It is derived from the table rather than listing profile names here, so the next
+# department head (drivers and conductors, R3-3) follows with no change to this file.
+NAMED_GRANT = "named_grant"
+
+# The domain every staff profile holds whatever their job. Spelled as a constant here
+# rather than as a bare string so the exception below cannot drift from the table.
+SHARED = "shared"
+
+
+def _named_grant_profile(role: str, sub_category: str) -> bool:
+    """Is this a profile the matrix grants tool by tool rather than by domain?"""
+    if role != "admin" or not sub_category:
+        return False
+    from services.profile_matrix import PROFILE_MATRIX
+
+    row = PROFILE_MATRIX.get(sub_category)
+    if not row:
+        return False
+    # No domain, but named tools and permission to write. A profile with neither is
+    # dormant and must stay outside this, which is what keeps the five dormant desks
+    # unchanged by R3-2.
+    return not row["tool_domains"] and bool(row["extra_tools"]) and bool(row["may_write"])
+
+
 def privileged_profile(user: Dict[str, Any]) -> str:
     role = (user or {}).get("role")
     sub_category = (user or {}).get("sub_category")
@@ -51,6 +92,8 @@ def privileged_profile(user: Dict[str, Any]) -> str:
         return "finance"
     if role == "admin" and sub_category == "management":
         return "non_finance"
+    if _named_grant_profile(role, sub_category):
+        return NAMED_GRANT
     return ""
 
 
@@ -107,6 +150,28 @@ def profile_authorization_decision(
             return False
         if tool_name in (matrix_row.get("extra_tools") or ()):
             return True
+    if profile == NAMED_GRANT:
+        # R3-2: no domain of their own, so the named list above IS the grant, and
+        # anything reaching this line was not on it.
+        #
+        # `shared` READS are the one exception, and it is not a loophole. `shared` is the
+        # platform's existing word for what every staff profile holds whatever their job:
+        # the school's published fee rate card, how full the disk is, exporting a data set
+        # they can already see. The five dormant profiles reach those today, so giving a
+        # department head a profile must not cost him what his colleagues have.
+        #
+        # **WRITES ARE NEVER INHERITED, shared or not, and this is the important half.**
+        # A first version of this returned `domain == SHARED` outright, and the suite
+        # caught what that meant: `import_data_file` and `create_student` are classified
+        # shared, so the transport head could have rewritten fields across the whole roll
+        # from a spreadsheet and put new children on it. The dormant profiles were never
+        # exposed to that only because `may_write` is False for them, which is a
+        # protection this profile deliberately gives up.
+        #
+        # So a write is his only if somebody wrote his name against it. That is the whole
+        # promise of a named grant, and inheriting writes from a domain would have quietly
+        # broken it on the first profile to use it.
+        return domain == SHARED and not is_action_tool(tool_def)
     if profile == "finance":
         return domain in {"finance", "shared"}
     return domain in {"non_finance", "shared"}

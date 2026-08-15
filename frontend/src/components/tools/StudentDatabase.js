@@ -39,6 +39,7 @@ import { fetchAllRows } from '../../lib/fetchAllRows';
 import { collectAllRows } from '../../lib/exportTable';
 // The staff finder from the retired School Directory screen (D-44 cluster D).
 import { StaffTab } from './SchoolDirectory';
+import SearchableSelect from '../ui/SearchableSelect';
 
 /**
  * The most rows `GET /api/students` will return in one request (`per_page` is
@@ -355,10 +356,10 @@ function StudentProfileModal({ classes, initialStudent, onClose, onSaved }) {
                 </Field>
               </div>
               <Field label="Class *">
-                <select value={personal.class_id} onChange={setP('class_id')} style={inputStyle}>
+                <SearchableSelect value={personal.class_id} onChange={setP('class_id')} style={inputStyle}>
                   <option value="">Select class</option>
                   {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
-                </select>
+                </SearchableSelect>
               </Field>
               <Field label="Gender">
                 <select value={personal.gender} onChange={setP('gender')} style={inputStyle}>
@@ -1447,11 +1448,11 @@ export default function StudentDatabase() {
                 data-testid="student-search" placeholder="Name or admission no."
                 style={{ ...inputStyle, paddingLeft: 32 }} />
             </div>
-            <select value={filterClass} onChange={e => { setFilterClass(e.target.value); setPage(1); }}
+            <SearchableSelect value={filterClass} onChange={e => { setFilterClass(e.target.value); setPage(1); }}
               data-testid="class-filter" style={{ ...inputStyle, width: 160 }}>
               <option value="">All classes</option>
               {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
-            </select>
+            </SearchableSelect>
             {/* Kept alongside the sortable column headings, and bound to the
                 same `sort` state so the two can never disagree. Every value a
                 heading can set has an option here, or the select would render

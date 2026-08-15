@@ -16,7 +16,12 @@ from ai import tool_functions
 
 pytestmark = pytest.mark.asyncio
 
-_VOLATILE = {"id", "_id", "created_at", "updated_at", "timestamp", "approved_at"}
+# `decided_at` joined this list when the two leave decision paths were merged on
+# 2026-08-15. It is a wall-clock stamp of the same class as `approved_at` beside it:
+# the chat call and the screen call happen microseconds apart, so comparing it
+# proves nothing about parity and fails at random.
+_VOLATILE = {"id", "_id", "created_at", "updated_at", "timestamp", "approved_at",
+             "decided_at"}
 
 # Same actor on both sides (principal). The REST JWT and the AI user dict resolve
 # to the same actor_ctx: id=prin-1, role=admin, sub_category=principal, branch_id=None.
@@ -28,8 +33,23 @@ def _principal_headers():
     return {"Authorization": f"Bearer {t}"}
 
 
+def _strip(value):
+    """Drop volatile keys wherever they sit, not only at the top of the document.
+
+    Since the two leave decision paths merged on 2026-08-15, the audit row carries the
+    whole set of changed fields inside `changes`, and two of those are wall-clock
+    stamps. Masking only the outer level left them being compared, so this test failed
+    on a microsecond and said nothing about parity.
+    """
+    if isinstance(value, dict):
+        return {k: _strip(v) for k, v in value.items() if k not in _VOLATILE}
+    if isinstance(value, list):
+        return [_strip(v) for v in value]
+    return value
+
+
 def _mask(docs):
-    out = [{k: v for k, v in d.items() if k not in _VOLATILE} for d in docs]
+    out = [_strip(d) for d in docs]
     out.sort(key=lambda d: (d.get("entity_id", ""), d.get("user_id", ""), d.get("action", ""), d.get("status", "")))
     return out
 

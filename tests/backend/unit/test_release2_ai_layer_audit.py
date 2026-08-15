@@ -111,6 +111,14 @@ def test_the_confirm_set_did_not_grow_to_accommodate_them():
         # nothing takes it back. The other four admissions tools added in the same run
         # are ordinary single-record writes and are deliberately NOT here.
         "enroll_admission_application",
+        # Approvals workflow, 2026-08-15. Grew by one again, and the Release 2 concern is
+        # again unharmed. This test exists to stop the confirm set being widened to make
+        # ORDINARY SCHOOL WRITES feel safer, which is a design change dressed as a
+        # tidy-up. `decide_any_approval` is not an ordinary write: approving can carry
+        # out the thing it agreed to, deleting a bus route or committing the school to a
+        # repair bill, and it settles a matter somebody else is blocked on. The reasoning
+        # in full is in test_flo_profile_matrix.py.
+        "decide_any_approval",
     }
 
 

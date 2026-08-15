@@ -18,6 +18,7 @@ const APPLICATION_EXPORT_COLUMNS = [
 ];
 import { API, apiFetch } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
+import SearchableSelect from '../ui/SearchableSelect';
 
 const blank = { enquiry_id: '', applicant_name: '', guardian_name: '', guardian_phone: '', class_id: '' };
 const nextStage = { draft: 'submitted', submitted: 'under_review', offered: 'accepted' };
@@ -156,7 +157,7 @@ export default function AdmissionsWorkflow({ compact = false, reloadKey = 0 }) {
       {notice && <div role="status" style={message('#34d399')}><CheckCircle size={13} />{notice}</div>}
       {showForm && (
         <form onSubmit={create} className="admissions-form responsive-form-grid">
-          <select
+          <SearchableSelect
             value={form.enquiry_id}
             onChange={e => pickEnquiry(e.target.value)}
             style={input}
@@ -169,14 +170,14 @@ export default function AdmissionsWorkflow({ compact = false, reloadKey = 0 }) {
                 {item.student_name}{item.parent_name ? ` - ${item.parent_name}` : ''}
               </option>
             ))}
-          </select>
+          </SearchableSelect>
           <input required value={form.applicant_name} onChange={e => setForm(v => ({ ...v, applicant_name: e.target.value }))} placeholder="Applicant name" style={input} />
           <input required value={form.guardian_name} onChange={e => setForm(v => ({ ...v, guardian_name: e.target.value }))} placeholder="Guardian name" style={input} />
           <input required value={form.guardian_phone} onChange={e => setForm(v => ({ ...v, guardian_phone: e.target.value }))} placeholder="Guardian phone" style={input} />
-          <select required value={form.class_id} onChange={e => setForm(v => ({ ...v, class_id: e.target.value }))} style={input}>
+          <SearchableSelect required value={form.class_id} onChange={e => setForm(v => ({ ...v, class_id: e.target.value }))} style={input}>
             <option value="">Class applying</option>
             {classes.map(item => <option key={item.id} value={item.id} label={`${item.name || ''}${item.section ? ` - ${item.section}` : ''}`} />)}
-          </select>
+          </SearchableSelect>
           <button type="submit" disabled={busy === 'new'} style={primary}>Save draft</button>
         </form>
       )}

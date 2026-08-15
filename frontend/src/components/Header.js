@@ -6,6 +6,7 @@ import { getAuthHeaders } from '../lib/authSession';
 import AccountMenu from './AccountMenu';
 import NotificationDetailModal from './NotificationDetailModal';
 import { getToolForNotification } from '../lib/notifRouting';
+import { KIND_TABS, splitByKind } from '../lib/notifKinds';
 import { useMessaging } from '../contexts/MessagingContext';
 import { API, apiFetch,
   getAcademicYear,
@@ -159,6 +160,12 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
   // That is correct - mark-all-read deliberately spares anything that arrived
   // mid-request - but a bare non-zero number reads as "the button failed".
   const [arrivedDuringMarkAll, setArrivedDuringMarkAll] = useState(0);
+  // R3-2, 2026-08-15 (Abhimanyu): approvals reach Aman and Adesh as their own thing.
+  // "Somebody is waiting on your decision" is a different kind of message from "here is
+  // something that happened", and mixed together a request to decide is exactly as easy
+  // to scroll past as a receipt. Starts on Approvals when there are any, because that is
+  // the half where somebody is blocked.
+  const [kind, setKind] = useState('approvals');
 
   const load = () => {
     setLoading(true);
@@ -237,6 +244,13 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
   };
 
   const unreadCount = unreadTotal;
+  // R3-2: one rule, shared with the All Notifications screen, so the bell and the screen
+  // can never tell a person two different things about the same inbox.
+  const { approvals, ordinary } = splitByKind(notifications);
+  // Fall back to the ordinary half when there is nothing to decide, so the panel never
+  // opens on an empty tab while messages sit unread behind the other one.
+  const activeKind = approvals.length === 0 ? 'ordinary' : kind;
+  const shown = activeKind === 'approvals' ? approvals : ordinary;
 
   return (
     <div className="fade-in-scale" style={{
@@ -300,6 +314,39 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
         </div>
       </div>
 
+      {/* R3-2: the two halves. Rendered as real buttons with a count each, so a person
+          can see there is something waiting without opening it. The Approvals tab is
+          offered ONLY when there is something in it - an always-present tab reading
+          "Approvals 0" is a permanent invitation to a room with nothing in it, and for
+          most profiles there will never be anything. */}
+      {!loading && !fetchError && approvals.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, padding: '10px 18px 0', borderBottom: `1px solid ${border}` }}>
+          {/* The same two names as the notifications window, from the same place, so
+              one inbox does not read as two different things depending on where a
+              person is standing (Abhimanyu, 2026-08-15). */}
+          {KIND_TABS.map(({ id, label }) => {
+            const count = id === 'approvals' ? approvals.length : ordinary.length;
+            return (
+            <button
+              key={id}
+              type="button"
+              data-testid={`notif-kind-${id}`}
+              onClick={() => setKind(id)}
+              style={{
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                padding: '6px 10px 8px', fontSize: 12,
+                fontWeight: activeKind === id ? 700 : 500,
+                color: activeKind === id ? 'var(--color-accent-blue)' : muted,
+                borderBottom: activeKind === id ? '2px solid var(--color-accent-blue)' : '2px solid transparent',
+              }}
+            >
+              {label} ({count})
+            </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Body */}
       <div style={{ maxHeight: 420, overflowY: 'auto' }}>
         {loading ? (
@@ -313,15 +360,24 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
             <div style={{ color: '#ef4444', fontSize: 13, fontWeight: 500 }}>Could not load notifications</div>
             <div style={{ color: subtext, fontSize: 12, marginTop: 4 }}>Check your connection and try again</div>
           </div>
-        ) : notifications.length === 0 ? (
+        ) : shown.length === 0 ? (
           <div style={{ padding: '48px 20px', textAlign: 'center' }}>
             <Bell size={28} color={subtext} style={{ display: 'block', margin: '0 auto 12px' }} />
-            <div style={{ color: text, fontSize: 13, fontWeight: 600, marginBottom: 4 }}>You're all caught up!</div>
-            <div style={{ color: subtext, fontSize: 12 }}>No new notifications right now</div>
+            {/* R3-2: the empty state has to describe the half being looked at. "You're all
+                caught up" over an empty Approvals tab, with unread messages sitting in the
+                other one, is a statement that is simply not true. */}
+            <div style={{ color: text, fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+              {activeKind === 'approvals' ? 'Nothing waiting on you' : "You're all caught up!"}
+            </div>
+            <div style={{ color: subtext, fontSize: 12 }}>
+              {activeKind === 'approvals'
+                ? 'No decisions are waiting for you right now'
+                : 'No new notifications right now'}
+            </div>
           </div>
         ) : (
           <div style={{ padding: '8px 0' }}>
-            {notifications.map((n, i) => {
+            {shown.map((n, i) => {
               const cfg = TYPE_CONFIG[n.type] || TYPE_CONFIG.info;
               const isRead = n.is_digest || readIds.has(n.id);
               return (
@@ -332,7 +388,7 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
                     display: 'flex', gap: 12, alignItems: 'flex-start',
                     cursor: 'pointer',
                     background: isRead ? 'transparent' : 'var(--color-unread-tint)',
-                    borderBottom: i < notifications.length - 1 ? `1px solid ${border}` : 'none',
+                    borderBottom: i < shown.length - 1 ? `1px solid ${border}` : 'none',
                     transition: 'background 0.15s ease',
                   }}
                   onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
@@ -379,7 +435,12 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
           <button
             type="button"
             data-testid="notif-view-all"
-            onClick={() => { onClose(); onViewAll(); }}
+            /* Approvals workflow, 2026-08-15. The Approvals tab used to lead to the
+               notifications list, which is the record of what happened rather than the
+               place to act, so a person who came to decide something arrived somewhere
+               they could not. It now leads to the approvals screen when they are
+               standing on the approvals half, and nowhere else changed. */
+            onClick={() => { onClose(); onViewAll(activeKind === 'approvals' ? 'approvals' : 'all-notifications'); }}
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               width: '100%', background: 'transparent', border: 'none',
@@ -391,7 +452,7 @@ function NotificationsPanel({ user, onClose, isDark, onOpenDetail, onNavigateToT
             onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
           >
-            View all notifications
+            {activeKind === 'approvals' ? 'Open the approvals screen' : 'View all notifications'}
             {total > 0 && (
               <span style={{ color: subtext, fontWeight: 500 }}>({total.toLocaleString('en-IN')})</span>
             )}
@@ -692,7 +753,7 @@ export default function Header({ activeTool, onBack, canGoBack, onOpenProfile, o
                 isDark={isDark}
                 onOpenDetail={n => { setShowNotif(false); setDetailNotif(n); }}
                 onCountChanged={refreshUnread}
-                onViewAll={() => window.dispatchEvent(new CustomEvent('open-tool', { detail: 'all-notifications' }))}
+                onViewAll={(toolId) => window.dispatchEvent(new CustomEvent('open-tool', { detail: toolId || 'all-notifications' }))}
                 onNavigateToTool={toolId => {
                   setShowNotif(false);
                   window.dispatchEvent(new CustomEvent('eduflow-navigate', { detail: { toolId } }));

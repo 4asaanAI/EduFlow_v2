@@ -99,6 +99,7 @@ from services.staff_service import (
     create_staff as svc_create_staff,
     update_staff as svc_update_staff,
     delete_staff as svc_delete_staff,
+    StaffApprovalRequired,
     StaffValidationError,
     StaffNotFoundError,
     StaffAuthorizationError,
@@ -226,9 +227,11 @@ from services.transport_service import (
     update_route as svc_update_transport_route,
     delete_route as svc_delete_transport_route,
     create_vehicle as svc_create_vehicle,
+    delete_vehicle as svc_delete_vehicle,
     TransportValidationError,
     TransportNotFoundError,
     TransportConflictError,
+    TransportApprovalRequired,
 )
 from services.substitution_service import initiate_substitution
 from services.attendance_correction_service import (
@@ -903,6 +906,16 @@ async def tool_get_student_profile(params: dict, user: dict, scope: dict = None)
         }, branch_id=bid))
 
     if not student:
+        elapsed = (time.time() - t0) * 1000
+        return _empty_result("Student not found. Please check the name or ID and try again.", elapsed)
+
+    # R3-2, 2026-08-15: a child who is not on a bus is not the transport head's, whether
+    # he reached them by id or by typing a name. Deliberately the SAME answer as a child
+    # who does not exist, matching the screen: naming the child while refusing them still
+    # tells him the child is there.
+    from services.transport_scope import student_is_in_scope
+
+    if not student_is_in_scope(student, user):
         elapsed = (time.time() - t0) * 1000
         return _empty_result("Student not found. Please check the name or ID and try again.", elapsed)
 
@@ -1797,6 +1810,100 @@ async def tool_decide_approval_request(params: dict, user: dict, scope: dict = N
 
     update = {k: v for k, v in (result["approval"] or {}).items() if k in ("status", "decision_reason", "decided_by", "decided_at", "unread_for")}
     return {"success": True, "data": {"request_id": params["request_id"], **update}, "message": f"Approval request {status}."}
+
+
+# -- Approvals: one workflow, one question, 2026-08-15 ------------------------
+#
+# Decision 30. Asked "are there any approvals pending for me?", Flo answers across EVERY
+# kind and in BOTH directions: things waiting on this person to decide, and things they
+# raised that are waiting on somebody else. Both come from `approval_registry`, so a
+# seventh kind of approval is included the day it is added and nothing here changes.
+#
+# **Flo is never inside the shared conversation** (decision 29). These tools read and
+# decide; neither writes a reply into a thread, and none ever should. Aman's Flo sees far
+# more than Chaman's, so an answer printed into a shared transcript would be built on one
+# person's access and read by somebody who does not hold it.
+
+
+async def tool_get_my_approvals(params: dict, user: dict, scope: dict = None) -> dict:
+    from services import approval_registry as _registry
+
+    db = get_db()
+    waiting = await _registry.waiting_on(db, user)
+    mine = await _registry.raised_by(db, user)
+    still_mine = [card for card in mine if card.get("is_pending")]
+    overdue = sum(1 for card in waiting if card.get("overdue"))
+    # Every read tool answers in the same envelope, so `data` is a flat LIST of cards
+    # with a `direction` on each rather than two named buckets. A tool that answers in
+    # its own shape is how a reader downstream starts guessing.
+    rows = (
+        [{**card, "direction": "waiting_on_you"} for card in waiting]
+        + [{**card, "direction": "you_are_waiting_for"} for card in still_mine]
+    )
+    if not rows:
+        return _empty_result(
+            "Nothing is waiting on you, and nothing you asked for is still waiting on "
+            "anybody else."
+        )
+    return {
+        "success": True,
+        "denied": False,
+        "data": rows,
+        "meta": {
+            "count": len(rows),
+            "waiting_on_you": len(waiting),
+            "you_are_waiting_for": len(still_mine),
+            "overdue": overdue,
+        },
+        "message": (
+            f"{len(waiting)} waiting on you to decide"
+            + (f", {overdue} of them overdue" if overdue else "")
+            + f"; {len(still_mine)} you asked for and are still waiting on."
+        ),
+    }
+
+
+async def tool_decide_any_approval(params: dict, user: dict, scope: dict = None) -> dict:
+    """Approve or reject anything, of any kind, through that kind's own service.
+
+    This grants nobody anything. Who may decide a particular record is decided by the
+    same code that decides it for that kind's own screen, so a person who cannot approve
+    a certificate on the Certificates screen cannot approve one by asking Flo either.
+    """
+    from services import approval_registry as _registry
+    from services import approval_thread_service as _threads
+
+    kind = params.get("kind")
+    record_id = params.get("request_id")
+    decision = str(params.get("decision") or "").lower()
+    reason = params.get("reason")
+    if not kind or not record_id:
+        return {"success": False, "message": "kind and request_id are required."}
+    decision = {"approved": "approve", "rejected": "reject"}.get(decision, decision)
+    if decision not in ("approve", "reject"):
+        return {"success": False, "message": "decision must be approve or reject."}
+    if decision == "reject" and not reason:
+        return {"success": False,
+                "message": "Say why it was refused, so the person knows what to fix."}
+
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        doc = await _registry.load(db, kind, record_id, actor_ctx.school_id)
+        result = await _registry.decide(
+            db, actor_ctx, user, kind, record_id, decision, reason or "")
+        await _threads.close_thread(
+            db, actor_ctx, kind, record_id, doc, decision, reason or "")
+    except _registry.ApprovalKindUnknown as e:
+        return _empty_result(str(e))
+    except _registry.ApprovalNotVisible as e:
+        return _denied(str(e))
+    except Exception as e:  # a domain refusal from one of the six services
+        return {"success": False, "message": str(e)}
+    word = "approved" if decision == "approve" else "refused"
+    return {"success": True, "data": {"kind": kind, "request_id": record_id,
+                                      "decision": decision, "result": result},
+            "message": f"That request was {word}."}
 
 
 async def tool_confirm_resolution(params: dict, user: dict, scope: dict = None) -> dict:
@@ -4203,6 +4310,13 @@ async def tool_delete_transport_route(params: dict, user: dict, scope: dict = No
     actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
     try:
         result = await svc_delete_transport_route(db, actor_ctx, params)
+    except TransportApprovalRequired as e:
+        # R3-2, 2026-08-15: the request is recorded and waiting, which is a SUCCESS with
+        # a next step, not a refusal. Saying "you cannot" here would send the transport
+        # head off to find somebody to do it by hand, when the platform has already asked
+        # the right two people for him.
+        return {"success": True, "awaiting_approval": True,
+                "data": {"approval_id": e.approval_id}, "message": e.message}
     except TransportNotFoundError:
         return {"success": False, "message": "Route not found"}
     except TransportConflictError as e:
@@ -4224,6 +4338,199 @@ async def tool_add_transport_vehicle(params: dict, user: dict, scope: dict = Non
         return {"success": False, "message": str(e)}
     v = result["vehicle"]
     return {"success": True, "data": v, "message": f"Vehicle {v['vehicle_number']} registered."}
+
+
+async def tool_remove_transport_vehicle(params: dict, user: dict, scope: dict = None) -> dict:
+    """Take a bus, van or auto off the school's vehicle register.
+
+    R3-2, 2026-08-15 (Abhimanyu). There was no way to remove a vehicle at all before this,
+    so a bus sold or scrapped stayed on the register for ever while the transport head was
+    being given the job of keeping that register right.
+
+    Behind the SAME approval gate as deleting a route: for the transport head this records
+    a request and Aman or Adesh carries it out by agreeing. The gate lives in the service,
+    not here, which is what stops chat and the screen giving different answers.
+    """
+    if not params.get("vehicle_id"):
+        return {"success": False,
+                "message": "vehicle_id is required (use get_transport_status to find it)"}
+    db = get_db()
+    actor_ctx = actor_ctx_from_user(user, branch_id=_branch_id(user, scope))
+    try:
+        result = await svc_delete_vehicle(db, actor_ctx, params)
+    except TransportApprovalRequired as e:
+        # Recorded and waiting IS a success with a next step. Answering "you cannot" here
+        # would send the transport head off to find somebody by hand when the platform has
+        # already asked the right two people for him.
+        return {"success": True, "awaiting_approval": True,
+                "data": {"approval_id": e.approval_id}, "message": e.message}
+    except TransportNotFoundError:
+        return {"success": False, "message": "Vehicle not found"}
+    except TransportConflictError as e:
+        return {"success": False, "message": str(e)}
+    except TransportValidationError as e:
+        return {"success": False, "message": str(e)}
+    v = result["vehicle"]
+    return {"success": True, "data": result,
+            "message": f"Vehicle {v.get('vehicle_number', '')} removed from the register."}
+
+
+async def tool_get_student_to_add_to_a_route(params: dict, user: dict, scope: dict = None) -> dict:
+    """Find a child who is NOT yet on a bus, by admission number, to put them on one.
+
+    R3-2, 2026-08-15. This exists because of a hole the narrowing opened, and it is worth
+    reading rather than skipping.
+
+    Abhimanyu's decision is that the transport head sees children who are on a route and
+    no others, which is right: roughly 1,500 of the school's children never board a bus
+    and he has no reason to hold their home addresses. But a child's FIRST day on a bus
+    means finding a child who is not yet on one, so the narrowing as written would have
+    left him unable to do the job it was drawn around.
+
+    The answer is not to widen the search. It is to answer a different, much smaller
+    question: "is there a child with this admission number, and what is their name and
+    class". No address. No guardian's phone. No fee, no attendance, nothing else. Enough
+    to be sure he is putting the right child on the bus, and nothing he could use to
+    browse the roll.
+
+    It takes an EXACT admission number on purpose. A name search would let him walk the
+    school a letter at a time, which is the narrowing undone in slow motion.
+    """
+    t0 = time.time()
+    admission = (params.get("admission_number") or "").strip()
+    if not admission:
+        return {
+            "success": False, "denied": False, "data": None, "meta": {"count": 0},
+            "message": (
+                "An exact admission number is needed. This looks up one child to put "
+                "them on a route; it does not search the school."
+            ),
+        }
+    db = get_db()
+    bid = _branch_id(user, scope)
+    student = await db.students.find_one(
+        scoped_query({"admission_number": admission, "is_active": {"$ne": False}}, branch_id=bid),
+        {"_id": 0, "id": 1, "name": 1, "admission_number": 1, "class_name": 1,
+         "route_zone_id": 1, "uses_transport": 1},
+    )
+    elapsed = (time.time() - t0) * 1000
+    if not student:
+        return {
+            "success": False, "denied": False, "data": None, "meta": {"count": 0},
+            "message": f"No child on the roll has admission number {admission}.",
+        }
+    from services.transport_scope import student_is_in_scope
+
+    already = student_is_in_scope(student, {"role": "admin", "sub_category": "transport_head"})
+    return {
+        "success": True,
+        "denied": False,
+        "message": (
+            f"{student.get('name', '')} is already on a route."
+            if already else
+            f"{student.get('name', '')} is not on a route yet."
+        ),
+        "data": {
+            "student_id": student.get("id"),
+            "name": student.get("name", ""),
+            "admission_number": student.get("admission_number", ""),
+            "class": student.get("class_name", ""),
+            "already_on_a_route": already,
+        },
+        "meta": {"count": 1, "query_time_ms": round(elapsed, 2)},
+    }
+
+
+async def tool_get_transport_fee_status(params: dict, user: dict, scope: dict = None) -> dict:
+    """What the children on a route pay for the bus, and whether it is cleared.
+
+    R3-2, 2026-08-15. Abhimanyu's decision: the transport head holds full financial
+    visibility of school TRANSPORT, including which families owe what.
+
+    This tool exists rather than granting him one of the general fee tools, and the
+    difference matters. `explain_student_fee` and `query_fee_status` answer with the
+    class band, every concession, Right to Education places, siblings and the whole
+    payment history. None of that is transport and none of it is his. This reads the
+    four transport fields the school keeps on a child's record and nothing else, so the
+    boundary is in what the tool CAN return rather than in remembering to filter it.
+    """
+    t0 = time.time()
+    db = get_db()
+    bid = _branch_id(user, scope)
+    from services.transport_scope import scope_students_to_the_bus
+
+    query: dict = {"is_active": {"$ne": False}}
+    if params.get("route_id"):
+        query["route_zone_id"] = params["route_id"]
+    # Every caller of this tool is limited to children on a bus, the school's owner
+    # included. A child who does not ride has no transport fee, so a row for them would
+    # be noise rather than an answer.
+    query = scope_students_to_the_bus(query, {"role": "admin", "sub_category": "transport_head"})
+
+    students = await db.students.find(
+        scoped_query(query, branch_id=bid),
+        {"_id": 0, "id": 1, "name": 1, "admission_number": 1, "class_name": 1,
+         "route_zone_id": 1, "transport_monthly_fare": 1, "transport_stop": 1,
+         "transport_fee_paid": 1},
+    ).to_list(2000)
+
+    routes = await db.transport_routes.find(
+        scoped_query({}, branch_id=bid), {"_id": 0, "id": 1, "route_name": 1}
+    ).to_list(100)
+    route_names = {r.get("id"): r.get("route_name", "") for r in routes}
+
+    riders = []
+    monthly_total = 0.0
+    unknown_fare = 0
+    for s in students:
+        fare = s.get("transport_monthly_fare")
+        try:
+            fare_value = float(fare) if fare not in (None, "") else None
+        except (TypeError, ValueError):
+            fare_value = None
+        if fare_value is None:
+            # Said out loud rather than counted as zero. A child whose fare nobody has
+            # set and a child who pays nothing are opposite facts, and totalling them
+            # together is how a monthly figure quietly comes out short.
+            unknown_fare += 1
+        else:
+            monthly_total += fare_value
+        riders.append({
+            "student_id": s.get("id"),
+            "name": s.get("name", ""),
+            "admission_number": s.get("admission_number", ""),
+            "class": s.get("class_name", ""),
+            "route": route_names.get(s.get("route_zone_id"), "Not assigned"),
+            "stop": s.get("transport_stop", ""),
+            "monthly_fare": fare_value,
+            "fare_is_set": fare_value is not None,
+            "transport_fee_cleared": bool(s.get("transport_fee_paid")),
+        })
+    riders.sort(key=lambda r: (r["route"], r["name"]))
+
+    elapsed = (time.time() - t0) * 1000
+    return {
+        "success": True,
+        "denied": False,
+        "message": (
+            f"{len(riders)} children ride the bus. "
+            f"{unknown_fare} of them have no fare set."
+            if riders else "No children are assigned to a route."
+        ),
+        "data": {
+            "riders": riders[:200],
+            "riders_on_the_bus": len(riders),
+            "monthly_transport_billing": round(monthly_total, 2),
+            "children_with_no_fare_set": unknown_fare,
+            "note": (
+                "Transport only. Tuition, concessions and Right to Education places are "
+                "not part of this answer. Transport is billed for eleven months: June is "
+                "not charged."
+            ),
+        },
+        "meta": {"count": len(riders), "shown": len(riders[:200]),
+                 "query_time_ms": round(elapsed, 2)},
+    }
 
 
 async def tool_decide_announcement(params: dict, user: dict, scope: dict = None) -> dict:
@@ -5073,6 +5380,12 @@ async def tool_delete_staff(params: dict, user: dict, scope: dict = None) -> dic
     actor_ctx = actor_ctx_from_user(user, school_id=get_school_id(), branch_id=_branch_id(user, scope))
     try:
         result = await svc_delete_staff(db, actor_ctx, params)
+    except StaffApprovalRequired as e:
+        # Recorded and waiting IS a success with a next step. Saying "that account cannot
+        # be deactivated" here would send the transport head off to find somebody by hand
+        # when the platform has already asked the right two people for him.
+        return {"success": True, "awaiting_approval": True,
+                "data": {"approval_id": e.approval_id}, "message": e.message}
     except StaffNotFoundError:
         return _empty_result("Staff member not found.")
     except StaffAuthorizationError:
@@ -6051,6 +6364,38 @@ TOOL_REGISTRY = {
             "request_id": {"type": "string", "description": "Approval request ID"},
             "decision": {"type": "string", "description": "approve or reject"},
             "reason": {"type": "string", "description": "Mandatory decision reason"},
+        },
+    },
+    "get_my_approvals": {
+        "fn": tool_get_my_approvals,
+        "roles": ["owner", "admin", "teacher"],
+        "description": (
+            "Everything waiting on this person to approve or reject, of EVERY kind - "
+            "general requests, certificates, staff leave, announcements, corrections to "
+            "staff details and student leave - AND everything they asked for that is "
+            "still waiting on somebody else. Use this whenever somebody asks whether "
+            "anything needs their decision, or what happened to something they asked for."
+        ),
+        "dispatch_type": "read",
+        "params_schema": {},
+    },
+    "decide_any_approval": {
+        "fn": tool_decide_any_approval,
+        "roles": ["owner", "admin", "teacher"],
+        "description": (
+            "Approve or reject one request of any kind. Give the kind, the request id, "
+            "approve or reject, and a reason (a reason is required to refuse). This "
+            "grants nobody anything: each kind is decided by the same rules as its own "
+            "screen, so a person who cannot approve something there cannot approve it here."
+        ),
+        "dispatch_type": "write",
+        "params_schema": {
+            "kind": {"type": "string", "description": (
+                "general, certificate, staff_leave, announcement, "
+                "staff_profile_change or student_leave")},
+            "request_id": {"type": "string", "description": "The id of the request"},
+            "decision": {"type": "string", "description": "approve or reject"},
+            "reason": {"type": "string", "description": "Why. Required to refuse."},
         },
     },
     "confirm_resolution": {
@@ -7277,6 +7622,61 @@ TOOL_REGISTRY = {
             "route_id": {"type": "string", "description": "Route ID to delete (required)"},
         },
     },
+    "get_student_to_add_to_a_route": {
+        "fn": tool_get_student_to_add_to_a_route,
+        "roles": ["owner", "admin"],
+        "dispatch_type": "read",
+        "description": (
+            "Look up ONE child by their exact admission number in order to put them on a "
+            "bus route. Returns their name and class and whether they are already on a "
+            "route, and nothing else - no address, no guardian's number, no fees. Use "
+            "this when somebody wants a child added to transport and that child is not "
+            "on a route yet, so does not appear in the transport lists."
+        ),
+        "params_schema": {
+            "admission_number": {"type": "string", "description": "The child's exact admission number (required). This is not a search."},
+        },
+    },
+    "get_transport_fee_status": {
+        "fn": tool_get_transport_fee_status,
+        "roles": ["owner", "admin"],
+        # No literal `access_domain` here on purpose. It is assigned below from
+        # FINANCE_TOOL_NAMES, and a literal would be silently overwritten by that loop
+        # while still reading as authoritative - the exact trap the two import tools hit
+        # on 2026-08-08.
+        #
+        # Finance, because it names a rupee figure a family owes. That refuses the
+        # management head by decision 1 of 2026-08-10, and admits the leadership and the
+        # accountant head. The transport head reaches it by NAME, out of his grant list,
+        # which is the only way a profile with no domain gets a money tool at all.
+        "dispatch_type": "read",
+        "description": (
+            "What the children on the school buses pay for transport and whether it is "
+            "cleared. Transport only: no tuition, no concessions, no Right to Education "
+            "places. Returns each rider's route, stop, monthly fare and whether their "
+            "transport fee is settled, plus the month's total. Says how many children "
+            "have no fare set rather than counting them as paying nothing."
+        ),
+        "params_schema": {
+            "route_id": {"type": "string", "description": "Optional route ID to limit the answer to one route"},
+        },
+    },
+    "remove_transport_vehicle": {
+        "fn": tool_remove_transport_vehicle,
+        "roles": ["owner", "admin"],
+        "dispatch_type": "write",
+        "requires_confirmation": True,
+        "destructive": True,
+        "description": (
+            "Take a bus, van or auto off the school's vehicle register. Refused while the "
+            "vehicle is still running on a route. For the transport head this records a "
+            "request instead: the school's owner or the principal has to agree, and "
+            "agreeing carries out the removal."
+        ),
+        "params_schema": {
+            "vehicle_id": {"type": "string", "description": "Vehicle ID to remove (required - use get_transport_status)"},
+        },
+    },
     "add_transport_vehicle": {
         "fn": tool_add_transport_vehicle,
         "roles": ["owner", "admin"],
@@ -7447,6 +7847,10 @@ FINANCE_TOOL_NAMES = frozenset({
     "change_accounting_period_status",
     "get_financial_report", "get_fee_transactions",
     # NOT "get_fee_structures" - see SHARED_LOOKUP_TOOL_NAMES. The rate card is public.
+    # R3-2, 2026-08-15. Transport fees for the children on the buses, amounts included.
+    # Finance because it names what a family owes, which is what decision 1 is about.
+    # The transport head reaches it by name out of his grant list, not by domain.
+    "get_transport_fee_status",
     "get_fee_defaulters", "query_fee_status", "get_expenses", "create_expense",
     "update_expense", "delete_expense", "apply_discount", "record_fee_payment",
     "create_fee_structure", "update_fee_structure", "delete_fee_structure",
@@ -7484,6 +7888,14 @@ SHARED_LOOKUP_TOOL_NAMES = frozenset({
     # Same reasoning: how full the disk is is a fact about the platform, not about the
     # school's money or its children, so no domain owns it and everyone may ask.
     "get_storage_room",
+    # Approvals workflow, 2026-08-15. An approval belongs to no domain: a bus repair, a
+    # certificate and a child's leave are all approvals and only one of them is money.
+    # Shared is also the SAFE classification, and that is the argument rather than
+    # tidiness: both tools ask `approval_registry`, which answers per RECORD using each
+    # kind's own rules, so neither can show or decide anything the person could not show
+    # or decide on that kind's own screen. Classifying either as finance or non-finance
+    # would take approvals away from somebody the school expects to hold them.
+    "get_my_approvals", "decide_any_approval",
     "draft_document", "search_students", "get_student_database",
     "get_student_profile", "query_student_record", "get_staff_list",
     "get_class_list",
@@ -7585,6 +7997,8 @@ NON_FINANCE_TOOL_NAMES = frozenset({
     "delete_class", "delete_custom_form", "delete_enquiry", "delete_house",
     "delete_incident", "delete_message_template", "delete_query_ticket",
     "delete_staff", "delete_student", "delete_transport_route", "delete_visitor",
+    # R3-2, 2026-08-15. Non-finance: a vehicle register carries no money.
+    "remove_transport_vehicle",
     "draft_parent_message", "get_admissions_pipeline", "get_announcements",
     "get_attendance_overview", "get_branch_comparison", "get_class_wise_attendance",
     "get_custom_forms", "get_daily_brief", "get_enquiries", "get_enrolment_summary",
@@ -7594,6 +8008,8 @@ NON_FINANCE_TOOL_NAMES = frozenset({
     "get_my_attendance", "get_my_class_students", "get_my_fees", "get_my_results",
     "get_my_school_hub", "get_school_pulse", "get_smart_alerts", "get_staff_status",
     "get_student_council", "get_timetable", "get_today_class_attendance",
+    # R3-2, 2026-08-15. Non-finance: it returns a name and a class, no money at all.
+    "get_student_to_add_to_a_route",
     "get_transport_status", "get_upcoming_events", "get_whatsapp_template_status",
     "initiate_substitution", "log_contact_event", "log_visitor",
     "manage_student_guardians", "mark_attendance", "mark_staff_attendance",
@@ -7628,6 +8044,13 @@ EXPLICIT_CONFIRMATION_TOOL_NAMES = frozenset({
 }) | BULK_TOOL_NAMES | frozenset({
     # "post_pos_return" stood at the head of this list until 2026-08-14 and went with
     # campus retail.
+    # Approvals workflow, 2026-08-15. Decision 30: deciding through Flo ALWAYS shows a
+    # confirm card first. Named here rather than written as a literal in the registry
+    # entry, because the loop at the bottom of this module assigns the flag for every
+    # write tool from this set and would have silently overwritten a literal with False
+    # while it still read as authoritative. That is how `import_data_file` lost the
+    # confirm card its own description promised.
+    "decide_any_approval",
     "correct_fee_transaction", "correct_salary_disbursement",
     "change_accounting_period_status",
     # R4-5. Not destructive and not bulk, so it does not qualify under the rule above,

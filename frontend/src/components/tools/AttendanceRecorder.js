@@ -18,6 +18,7 @@ import { API, apiFetch,
 } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 import { useColumnSort, SortableHeaderRow } from './ToolPage';
+import SearchableSelect from '../ui/SearchableSelect';
 
 
 const STATUS_OPTIONS = [
@@ -240,10 +241,10 @@ export default function AttendanceRecorder() {
       {notice && <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, padding: 12, border: '1px solid rgba(52,211,153,.35)', borderRadius: 8, color: 'var(--tool-hex-34d399)', background: 'rgba(52,211,153,.08)', fontSize: 13 }}><CheckCircle size={16} />{notice}</div>}
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} data-testid="class-select"
+        <SearchableSelect value={selectedClass} onChange={e => setSelectedClass(e.target.value)} data-testid="class-select"
           style={{ minHeight: 44, background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '9px 14px', color: 'var(--c-text)', fontSize: 13, outline: 'none' }}>
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
-        </select>
+        </SearchableSelect>
         <input type="date" value={date} onChange={e => setDate(e.target.value)} data-testid="date-picker"
           style={{ minHeight: 44, background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '9px 14px', color: 'var(--c-text)', fontSize: 13, outline: 'none' }}
         />
@@ -338,10 +339,10 @@ export default function AttendanceRecorder() {
         <section style={panelStyle}>
           <h2 style={panelTitle}>Manual fallback</h2>
           <div style={{ display: 'grid', gap: 8 }}>
-            <select value={manual.student_id} onChange={e => setManual(prev => ({ ...prev, student_id: e.target.value }))} style={inputStyle}>
+            <SearchableSelect value={manual.student_id} onChange={e => setManual(prev => ({ ...prev, student_id: e.target.value }))} style={inputStyle}>
               <option value="">Select student</option>
               {records.map(row => <option key={row.student_id} value={row.student_id}>{row.name}</option>)}
-            </select>
+            </SearchableSelect>
             <select value={manual.status} onChange={e => setManual(prev => ({ ...prev, status: e.target.value }))} style={inputStyle}>
               {STATUS_OPTIONS.slice(0, 3).map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
             </select>

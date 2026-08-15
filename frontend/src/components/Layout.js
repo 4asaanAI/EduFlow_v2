@@ -41,6 +41,11 @@ const loadTool = async (rawToolId) => {
   // shell, so the pages are reachable from every screen (FR81) without editing
   // eight navigation configs.
   if (toolId === 'all-notifications') return (await import('./tools/AllNotifications')).default;
+  // Approvals workflow, 2026-08-15. Reached from the bell's Approvals tab and from
+  // the notifications screen, exactly like all-notifications above, rather than from a
+  // per-profile nav list: every profile has the same approvals screen (decision 25) and
+  // what differs is what is on it, which the server decides.
+  if (toolId === 'approvals') return (await import('./tools/ApprovalsQueue')).default;
   if (toolId === 'all-chats') return (await import('./tools/AllChats')).default;
   if (toolId === 'platform-messaging') return (await import('./MessagingScreen')).default;
 

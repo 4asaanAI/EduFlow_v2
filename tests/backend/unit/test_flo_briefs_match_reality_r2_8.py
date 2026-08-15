@@ -50,7 +50,15 @@ USERS = {
     "support_staff": {"role": "admin", "sub_category": "support_staff", "id": "u"},
 }
 
-DORMANT = ("transport_head", "receptionist", "it_tech", "maintenance", "support_staff")
+# R3-2, 2026-08-15: the transport head came OFF this list because his release landed and
+# he now has eight write tools. His brief was rewritten with him, in the same commit: it
+# used to say "you have NO write tools at all", and leaving that in place would have had
+# Flo refusing work he can do - which is the first of the two faults named at the top of
+# this file, and the reason it exists.
+#
+# What replaces the check for him is `test_the_live_transport_head_brief_is_true` below,
+# which asks the harder question: does the brief say what he can actually do?
+DORMANT = ("receptionist", "it_tech", "maintenance", "support_staff")
 
 
 def _brief(profile: str) -> str:
@@ -169,3 +177,52 @@ def test_a_brief_never_offers_a_screen_the_profile_cannot_open(profile):
     for screen_id in ("audit-log", "school-settings"):
         assert screen_id not in screens
         assert f"use {screen_id}" not in brief
+
+
+# ─── R3-2, 2026-08-15: the transport head is live, so his brief has to be true ──
+
+def test_the_live_transport_head_brief_is_true():
+    """He came off the DORMANT list, so the "claims no write" check no longer applies.
+
+    Something stricter replaces it. The old check was cheap because the answer was always
+    "nothing". For a live profile the question is the one that actually bites: does the
+    brief describe what the person can do, in both directions?
+
+    Every tool named below is one he genuinely holds, checked against the registry rather
+    than against the prose, so this fails if a tool is ever taken off him and the brief is
+    left promising it.
+    """
+    brief = _brief("transport_head")
+    tools = _tools("transport_head")
+
+    # It must no longer deny what he has. This is the exact sentence that was there.
+    assert "NO write tools" not in brief, (
+        "the transport head's brief still says he cannot change anything. He has eight "
+        "write tools since R3-2, and Flo would refuse work he is allowed to do."
+    )
+
+    # Every tool the brief points him at is one he really holds.
+    for tool_name in ("get_transport_status", "get_transport_fee_status",
+                      "update_student", "create_staff", "update_staff"):
+        assert tool_name in tools, f"his brief names {tool_name} and he cannot reach it"
+        assert tool_name in brief, f"he holds {tool_name} and his brief never mentions it"
+
+    # And it must still draw the two lines the school drew. Both are in ordinary words
+    # rather than tool names, because this is what Flo says out loud to a person.
+    assert "transport money only" in brief.lower(), (
+        "the brief must say his money access stops at transport, or Flo will field "
+        "school-fee questions he cannot answer"
+    )
+    assert "Sonu Ruhal" in brief, "a refusal has to send the person somewhere"
+    assert "Aman Litt" in brief and "Adesh Singh" in brief, (
+        "deleting needs one of them to agree, and the brief has to name who"
+    )
+
+
+def test_the_transport_head_brief_does_not_promise_a_login_for_a_driver():
+    """Drivers and conductors go on the staff roll with NO logins (Abhimanyu,
+    2026-08-15). A brief that let Flo offer one would produce a promise the platform
+    refuses, which is a dead button spoken aloud."""
+    brief = _brief("transport_head")
+    assert "do NOT get a login" in brief
+    assert "create_student_login" not in _tools("transport_head")

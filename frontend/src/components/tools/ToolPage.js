@@ -5,6 +5,7 @@ import React from 'react';
 import { RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import ExportButton from '../ui/ExportButton';
+import SearchableSelect from '../ui/SearchableSelect';
 
 export function ToolPage({ title, subtitle, actions, children, onRefresh, loading }) {
   const { isDark } = useTheme();
@@ -485,13 +486,18 @@ export function DataTable({ title, headers, rows, emptyMsg = 'No data found', ac
               background: bg, color: hc, outline: 'none',
             }}
           />
+          {/* Type-to-search, 2026-08-15. These filters are built from whatever is in the
+              column, so on a school of this size one of them can hold hundreds of
+              entries. `SearchableSelect` leaves a short filter exactly as it was and
+              adds the search box only where the list has grown past being scrollable. */}
           {columnFilters.map((f) => (
-            <select
+            <SearchableSelect
               key={f.index}
               value={picked[f.index] || ''}
               onChange={(e) => setPicked((p) => ({ ...p, [f.index]: e.target.value }))}
               data-testid={`${tableId}-filter-${f.index}`}
               aria-label={`Filter by ${f.label}`}
+              searchPlaceholder={`Type to find a ${f.label.toLowerCase()}`}
               style={{
                 fontSize: 16, padding: '8px 10px', minHeight: 40, borderRadius: 8,
                 border: `1px solid ${border}`, background: bg, color: hc, outline: 'none',
@@ -499,7 +505,7 @@ export function DataTable({ title, headers, rows, emptyMsg = 'No data found', ac
             >
               <option value="">All {f.label.toLowerCase()}</option>
               {f.values.map((v) => <option key={v} value={v}>{v}</option>)}
-            </select>
+            </SearchableSelect>
           ))}
           {/* THE COUNT IS ALWAYS VISIBLE. This whole release is about a query that
               quietly returns less than it should, and a filter is the one control
@@ -654,10 +660,14 @@ export function FormField({ label, type = 'text', value, onChange, placeholder, 
     <div style={{ marginBottom: 14 }}>
       <label htmlFor={fieldId} style={{ display: 'block', fontSize: 12, color: muted, marginBottom: 6, fontWeight: 600 }}>{label}{required && ' *'}</label>
       {type === 'select' ? (
-        <select id={fieldId} aria-label={label} value={value} onChange={e => onChange(e.target.value)} style={{ ...style, cursor: 'pointer' }}>
+        // Type-to-search, 2026-08-15. This one field is used across roughly 25 tool
+        // forms, and what fills it varies from four fixed words to every child in the
+        // school. The control decides from the length of the list rather than the
+        // author having to, so a short one is untouched.
+        <SearchableSelect id={fieldId} aria-label={label} value={value} onChange={e => onChange(e.target.value)} style={{ ...style, cursor: 'pointer' }}>
           <option value="">Select...</option>
           {(options || []).map(o => <option key={o.value || o} value={o.value || o}>{o.label || o}</option>)}
-        </select>
+        </SearchableSelect>
       ) : type === 'textarea' ? (
         <textarea id={fieldId} aria-label={label} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={3} style={{ ...style, resize: 'vertical' }} />
       ) : (

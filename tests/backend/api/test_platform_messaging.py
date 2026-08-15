@@ -271,11 +271,18 @@ def test_the_colleague_list_holds_only_profiles_whose_release_has_landed(client,
     response = client.get("/api/messaging/contacts", headers=_headers("owner-1", role="owner", sub_category="owner"))
 
     found = {item["id"] for item in response.json()["data"]}
-    assert found == {"owner-1", "principal-1", "accountant-1", "management-1"}, (
-        "the staff room should hold exactly the four live profiles, and held: "
+    # R3-2, 2026-08-15: FIVE, not four. The transport head's release landed, so he is in
+    # the staff room. Nothing in `messaging.py` changed to put him there - his row in the
+    # permission table was marked live and the list followed, which is the behaviour
+    # `test_switching_a_profile_on_puts_them_in_the_staff_room_with_no_code_change` was
+    # written to predict. This assertion moving is that prediction coming true.
+    assert found == {"owner-1", "principal-1", "accountant-1", "management-1", "transport-9"}, (
+        "the staff room should hold exactly the live profiles, and held: "
         + ", ".join(sorted(found))
     )
     assert "student-9" not in found, "a student appeared in the staff messaging list"
+    assert "reception-9" not in found, "the front desk is still dormant and appeared"
+    assert "support-9" not in found, "a helper is still dormant and appeared"
 
 
 def test_a_dormant_profile_cannot_be_messaged_directly_either(client, messaging_db):
@@ -284,14 +291,17 @@ def test_a_dormant_profile_cannot_be_messaged_directly_either(client, messaging_
     Without this, a stale screen or a typed id would still start a conversation with a
     colleague whose release has not landed.
     """
+    # R3-2, 2026-08-15: the example moved from the transport head to maintenance, because
+    # the transport head is live now. The rule under test is unchanged and so is its
+    # coverage; only the profile standing in for "not yet switched on" moved.
     messaging_db.auth_users.docs.append(
-        make_auth_user(id="transport-9", name="Transport Head",
-                       sub_category="transport_head", username="transport9")
+        make_auth_user(id="maint-9", name="Maintenance",
+                       sub_category="maintenance", username="maint9")
     )
 
     response = client.post(
         "/api/messaging/threads/direct",
-        json={"user_id": "transport-9"},
+        json={"user_id": "maint-9"},
         headers=_headers("owner-1", role="owner", sub_category="owner"),
     )
 
@@ -303,26 +313,30 @@ def test_switching_a_profile_on_puts_them_in_the_staff_room_with_no_code_change(
 ):
     """The whole point of reading the permission table instead of a list of names.
 
-    Release 3 switches the transport head on by marking his row live. This proves the
-    staff room follows on the same day, with nobody editing messaging.py.
+    This was written on 2026-08-14 against the transport head, predicting that Release 3
+    would switch him on. **It happened on 2026-08-15 (R3-2) and the prediction held**: his
+    row was marked live, he appeared in the staff room, and `messaging.py` was not opened.
+
+    The example has moved to maintenance, the next profile still waiting, so the test goes
+    on proving the mechanism rather than becoming a record of something already done.
     """
     from services import profile_matrix
 
-    entry = dict(profile_matrix.PROFILE_MATRIX["transport_head"])
+    entry = dict(profile_matrix.PROFILE_MATRIX["maintenance"])
     entry["status"] = "live"
     patched = dict(profile_matrix.PROFILE_MATRIX)
-    patched["transport_head"] = entry
+    patched["maintenance"] = entry
     monkeypatch.setattr(profile_matrix, "PROFILE_MATRIX", patched)
     monkeypatch.setattr("routes.messaging.PROFILE_MATRIX", patched)
 
     messaging_db.auth_users.docs.append(
-        make_auth_user(id="transport-9", name="Transport Head",
-                       sub_category="transport_head", username="transport9")
+        make_auth_user(id="maint-9", name="Maintenance",
+                       sub_category="maintenance", username="maint9")
     )
 
     response = client.get("/api/messaging/contacts", headers=_headers("owner-1", role="owner", sub_category="owner"))
 
-    assert "transport-9" in {item["id"] for item in response.json()["data"]}
+    assert "maint-9" in {item["id"] for item in response.json()["data"]}
 
 
 def test_an_inactive_colleague_does_not_appear(client, messaging_db):

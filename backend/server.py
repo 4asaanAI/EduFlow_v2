@@ -59,6 +59,7 @@ from routes.federation import router as federation_router
 from routes.learning import router as learning_router
 from routes.admissions import router as admissions_router
 from routes.student_leave import router as student_leave_router
+from routes.approvals import router as approvals_router
 from routes.campus import router as campus_router
 from routes.accounting import router as accounting_router
 from routes.guardian import router as guardian_router
@@ -273,6 +274,8 @@ app.include_router(commercial_router)
 app.include_router(messaging_router)
 app.include_router(parent_messaging_router)
 app.include_router(data_import_router)
+# Approvals workflow, 2026-08-15: one screen for every kind of approval.
+app.include_router(approvals_router)
 
 
 def _storage_check_every(interval_seconds: int) -> int:

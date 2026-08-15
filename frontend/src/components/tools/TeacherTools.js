@@ -9,6 +9,7 @@ import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, StatCard, DataTable, Badge, ComingSoon, FormField, ActionBtn, ErrorCard } from './ToolPage';
 import { Plus, CheckCircle, Save, Bold, Underline, List } from 'lucide-react';
 import DOMPurify from 'dompurify';
+import SearchableSelect from '../ui/SearchableSelect';
 export { FormSubmissions } from './StudentTools';
 
 function h() { return getAuthHeaders(); }
@@ -126,9 +127,9 @@ export function ClassAttendanceMarker() {
         </div>
       )}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
+        <SearchableSelect value={selectedClass} onChange={e => setSelectedClass(e.target.value)} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
-        </select>
+        </SearchableSelect>
         <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }} />
         <ActionBtn label="All Present" variant="success" onClick={() => markAll('present')} />
         <ActionBtn label="All Absent" variant="danger" onClick={() => markAll('absent')} />
@@ -911,11 +912,11 @@ export function ClassPerformanceAnalytics() {
   return (
     <ToolPage title="Student Performance" subtitle="View performance by class" loading={loading}>
       <div style={{ marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <select value={selectedClass} onChange={e => handleClassChange(e.target.value)}
+        <SearchableSelect value={selectedClass} onChange={e => handleClassChange(e.target.value)}
           style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none', minWidth: 160 }}>
           <option value="">Select Class & Section</option>
           {classes.map(c => <option key={c.id} value={c.id}>{c.name} - {c.section}</option>)}
-        </select>
+        </SearchableSelect>
         {selectedCls && <span style={{ fontSize: 12, color: 'var(--c-faint)' }}>{students.length} students enrolled</span>}
       </div>
       {!selectedClass ? (

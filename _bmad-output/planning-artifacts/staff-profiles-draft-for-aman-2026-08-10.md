@@ -230,6 +230,20 @@ not be what gives a dormant profile anything. Each is recorded here for its own 
    not a quote, not a bill, not a total. That is the narrowest form of the screen and it
    has to be built that way rather than granted whole.
 
+   > ⚠️ **PARTLY REVERSED by Abhimanyu on 2026-08-15. Read this before acting on the
+   > paragraph above.** He holds **full financial visibility of school TRANSPORT**: fares,
+   > what each family pays for the bus, who owes what, and what a VEHICLE repair costs.
+   > His reason: he is the transport head and that much authority is his to hold.
+   >
+   > What SURVIVES from the line above: he sees no other money at all (no tuition, no
+   > concessions, no salaries), and **repairs to buildings and other school property stay
+   > hidden from him**. A repair cost must also be agreed by Aman or Adesh before the
+   > money is committed.
+   >
+   > Built and pinned in R3-2. See
+   > `implementation-artifacts/release-3-access/R3-2-proposal-chamans-profile-2026-08-15.md`,
+   > Part 0.
+
 ## 2. Front desk
 
 3. **Student Transfer is removed.** Agreed: issuing a Transfer Certificate is not a

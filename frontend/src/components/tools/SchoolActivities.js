@@ -3,6 +3,7 @@ import { useUser } from '../../contexts/UserContext';
 import { Award, Plus, Shield, Star, Trash2, Trophy, Users, X } from 'lucide-react';
 import { getAuthHeaders } from '../../lib/authSession';
 import { API, apiFetch } from '../../lib/api';
+import SearchableSelect from '../ui/SearchableSelect';
 
 // Normalize FastAPI error shapes into a plain string.
 // FastAPI 422 returns {"detail": [{msg, loc, type}]} - not a string.
@@ -355,14 +356,14 @@ function PositionsTab({ canManage }) {
                 />
               </label>
               <label style={{ display: 'block', fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>Position
-                <select
+                <SearchableSelect
                   value={form.position}
                   onChange={e => setForm(f => ({ ...f, position: e.target.value }))}
                   style={{ ...inp, marginTop: 5 }}
                 >
                   <option value="">Select position</option>
                   {ALL_POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
+                </SearchableSelect>
               </label>
               <label style={{ display: 'block', fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>House
                 <select
@@ -517,14 +518,14 @@ function TeamsTab({ canManage }) {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700, display: 'block' }}>Sport
-                <select
+                <SearchableSelect
                   value={form.sport}
                   onChange={e => setForm(f => ({ ...f, sport: e.target.value }))}
                   style={{ ...inp, marginTop: 5 }}
                 >
                   <option value="">Select sport</option>
                   {ALL_SPORTS.map(s => <option key={s} value={s}>{SPORT_EMOJI[s]} {s}</option>)}
-                </select>
+                </SearchableSelect>
               </label>
               <label style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700, display: 'block' }}>Team Name
                 <input

@@ -31,6 +31,12 @@ READ_ONLY_ALLOWLIST = frozenset({
     # `platform_ticket_service.raise_ticket`, which is classified as a write, requires
     # confirmation when Flo calls it, and audits. This tool only answers the question.
     "get_storage_room",
+    # Approvals workflow, 2026-08-15. `get_my_approvals` answers "is anything waiting
+    # on me" across all six kinds and in both directions. It writes nothing whatsoever:
+    # it reads each kind's own collection and filters the rows by what that person may
+    # decide. The tool that DECIDES is `decide_any_approval`, which is a separate tool,
+    # is flagged as a write, and shows a confirm card.
+    "get_my_approvals",
     # UI Sweep Epic 10. A considered classification, not a convenience.
     # `draft_document` DOES create an S3 object, a `file_uploads` row and an audit
     # row - but it changes NO school record: no student, fee, staff member or
@@ -121,6 +127,10 @@ READ_ONLY_ALLOWLIST = frozenset({
     "get_student_profile",
     "get_timetable",
     "get_today_class_attendance",
+    # R3-2, 2026-08-15. Both read and change nothing, which is why they belong here
+    # rather than being flagged as writes.
+    "get_student_to_add_to_a_route",
+    "get_transport_fee_status",
     "get_transport_status",
     "get_upcoming_events",
     "query_attendance_status",

@@ -7,8 +7,9 @@ import { useUser } from '../../contexts/UserContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getAuthHeaders } from '../../lib/authSession';
 import { ToolPage, Badge, ActionBtn, FormField, DataTable } from './ToolPage';
-import { Plus, RefreshCw, MessageSquare, CheckCircle, Calendar, Users, Wrench, AlertTriangle, ClipboardList, Camera, X as XIcon, Clock, User, History } from 'lucide-react';
+import { Plus, RefreshCw, MessageSquare, CheckCircle, Calendar, Users, Wrench, AlertTriangle, ClipboardList, Camera, X as XIcon, Clock, User, History, IndianRupee } from 'lucide-react';
 import { API, apiFetch } from '../../lib/api';
+import SearchableSelect from '../ui/SearchableSelect';
 
 function h() { return getAuthHeaders(); }
 
@@ -209,6 +210,112 @@ const STATUS_COLORS = {
   closed: 'var(--tool-hex-34d399)',
 };
 
+/**
+ * R3-2, 2026-08-15 - the transport head puts a figure on a vehicle repair.
+ *
+ * Abhimanyu, 2026-08-15: he arranges the servicing and sees what it costs, and the
+ * school's owner or the principal agrees the figure BEFORE the money is committed. He
+ * asked for it on the platform rather than only through Flo, because a screen is where he
+ * does the rest of the job.
+ *
+ * Its own component because TWO screens need it: the facility queue card, and the "report
+ * a problem" screen, which is the one he actually holds. Written twice, the two would
+ * drift, and the half he uses would be the half nobody noticed was wrong.
+ */
+export function ProposeRepairCost({ item, isDark, onDone }) {
+  const [showCost, setShowCost] = useState(false);
+  const [costValue, setCostValue] = useState('');
+  const [notice, setNotice] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const border = isDark ? 'var(--tool-hex-2e2e2e)' : 'var(--tool-hex-e5e5e5)';
+  const text = isDark ? 'var(--tool-hex-f5f5f5)' : 'var(--tool-hex-171717)';
+  const muted = isDark ? 'var(--tool-hex-888)' : 'var(--tool-hex-737373)';
+
+  const send = async () => {
+    setError('');
+    setNotice('');
+    const amount = Number(costValue);
+    if (!costValue.trim() || Number.isNaN(amount) || amount < 0) {
+      setError('Enter the amount in rupees.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const raw = await apiFetch(`${API}/issues/facility/${item.id}/propose-cost`, {
+        method: 'POST', headers: h(), body: JSON.stringify({ estimated_cost: amount }),
+      });
+      const res = await raw.json();
+      if (res.awaiting_approval) {
+        setNotice(res.message || 'Sent to the school’s owner and the principal to agree. Nothing is committed yet.');
+        setShowCost(false);
+        setCostValue('');
+        if (onDone) onDone();
+      } else {
+        setError(res.detail || 'The cost could not be sent for agreement.');
+      }
+    } catch {
+      setError('The cost could not be sent for agreement.');
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      {notice && (
+        <div
+          data-testid="repair-cost-notice"
+          style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid var(--tool-hex-fbbf24)', borderRadius: 8, padding: '8px 12px', marginBottom: 8, fontSize: 12, color: text }}
+        >
+          {notice}
+        </div>
+      )}
+      {!showCost ? (
+        <ActionBtn
+          label={item.cost_awaiting_approval ? 'Change the proposed cost' : 'Propose a cost'}
+          icon={<IndianRupee size={11} />}
+          onClick={() => { setShowCost(true); setError(''); }}
+          variant="secondary"
+        />
+      ) : (
+        <div>
+          <div style={{ fontSize: 11, color: muted, marginBottom: 6 }}>
+            What will this repair cost? The school’s owner or the principal agrees the
+            figure before any money is committed.
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              type="number"
+              min="0"
+              value={costValue}
+              onChange={e => setCostValue(e.target.value)}
+              placeholder="Amount in rupees"
+              aria-label="Proposed repair cost in rupees"
+              style={{ background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 7, padding: '6px 10px', color: text, fontSize: 12, width: 180 }}
+            />
+            <ActionBtn label={saving ? 'Sending…' : 'Send for agreement'} onClick={send} disabled={saving} />
+            <ActionBtn label="Cancel" variant="secondary" onClick={() => { setShowCost(false); setError(''); }} />
+          </div>
+          {error && (
+            <div role="alert" style={{ fontSize: 11, color: 'var(--tool-hex-f87171)', marginTop: 6 }}>{error}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// R3-2, 2026-08-15. ONE list, because there were two copies of it in this file and a
+// category added to one screen would simply not exist on the other.
+//
+// 'vehicle' is new and the rest of the transport head's repair work does not exist
+// without it: it is the category that separates a bus from a building, which is what lets
+// him see what a bus repair costs while repairs to school property stay the maintenance
+// team's. Keep it in step with FACILITY_CATEGORIES in `backend/routes/issues.py`, which
+// is what the server accepts.
+export const FACILITY_CATEGORIES = ['vehicle', 'plumbing', 'electrical', 'civil', 'cleaning', 'security', 'carpentry', 'painting', 'pest_control', 'hvac', 'fire_safety', 'landscaping', 'other'];
+
 function StatusBadge({ status }) {
   return (
     <Badge
@@ -232,6 +339,10 @@ function RequestCard({ item, onUpdate, onConfirm, onViewHistory, role, subCatego
   const isOwner = role === 'owner';
   const isMaint = subCategory === 'maintenance';
   const isIT = subCategory === 'it_tech';
+  // R3-2: he prices VEHICLE repairs and no others. The server refuses anything else, so
+  // this only decides whether the control is worth offering; it is not the gate.
+  const isTransportHead = subCategory === 'transport_head';
+  const canProposeCost = isTransportHead && item.category === 'vehicle';
   const type = item.issue_type || item.type;
   const statusOptions = isMaint
     ? ['open', 'accepted', 'in_progress', 'pending_parts', 'pending_owner_confirmation', 'done']
@@ -270,7 +381,14 @@ function RequestCard({ item, onUpdate, onConfirm, onViewHistory, role, subCatego
         Logged by {item.logged_by_name || 'Unknown'} · {item.created_at?.slice(0, 10)}
         {item.sla_due_at ? ` · SLA ${item.sla_due_at.slice(0, 10)}` : ''}
         {item.estimated_cost ? ` · Est. Rs. ${item.estimated_cost}` : ''}
+        {/* R3-2: a figure that has been proposed but NOT yet agreed is shown as waiting,
+            never as the cost. Painting it like an agreed amount is how a number nobody
+            approved ends up being treated as the real one. */}
+        {item.cost_awaiting_approval
+          ? ` · Rs. ${item.cost_awaiting_approval} proposed, waiting to be agreed`
+          : ''}
       </div>
+
 
       {item.notes?.length > 0 && (
         <div style={{ marginBottom: 10 }}>
@@ -283,19 +401,23 @@ function RequestCard({ item, onUpdate, onConfirm, onViewHistory, role, subCatego
         </div>
       )}
 
+      {canProposeCost && item.status !== 'closed' && (
+        <ProposeRepairCost item={item} isDark={isDark} onDone={() => onUpdate && onUpdate(item.id, {}, type)} />
+      )}
+
       {item.status !== 'closed' && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {!showNote ? (
             <ActionBtn label="Add Note / Update" icon={<MessageSquare size={11} />} onClick={() => setShowNote(true)} variant="secondary" />
           ) : (
             <div style={{ width: '100%' }}>
-              <select
+              <SearchableSelect
                 value={newStatus}
                 onChange={e => setNewStatus(e.target.value)}
                 style={{ background: isDark ? 'var(--tool-hex-252525)' : 'var(--tool-hex-f5f5f5)', border: `1px solid ${border}`, borderRadius: 7, padding: '6px 10px', color: text, fontSize: 12, marginBottom: 8, width: '100%' }}
               >
                 {statusOptions.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
-              </select>
+              </SearchableSelect>
               <textarea
                 value={note}
                 onChange={e => setNote(e.target.value)}
@@ -354,7 +476,7 @@ function IssuePanel({ type, title }) {
   const [historyItem, setHistoryItem] = useState(null);
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
 
-  const facilityCategories = ['plumbing', 'electrical', 'civil', 'cleaning', 'security', 'carpentry', 'painting', 'pest_control', 'hvac', 'fire_safety', 'landscaping', 'other'];
+  const facilityCategories = FACILITY_CATEGORIES;
   const techCategories = ['hardware', 'software', 'network', 'printer', 'projector', 'other'];
   const priorities = ['low', 'medium', 'high', 'urgent'];
 
@@ -827,7 +949,15 @@ export function RaiseMaintenanceRequest() {
   const [myRequests, setMyRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ request_type: 'facility', description: '', location: '', category: 'other', priority: 'medium' });
+  // R3-2: the transport head's requests are vehicle repairs. Defaulting him to 'other'
+  // would file every bus repair under a category the platform does not treat as his, and
+  // he would then not see its cost or be able to price it.
+  const isTransportHead = currentUser?.sub_category === 'transport_head';
+  const [form, setForm] = useState({
+    request_type: 'facility', description: '', location: '',
+    category: isTransportHead ? 'vehicle' : 'other',
+    priority: 'medium',
+  });
   const [formPhotos, setFormPhotos] = useState([]);
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -838,7 +968,7 @@ export function RaiseMaintenanceRequest() {
     return next;
   });
 
-  const facilityCategories = ['plumbing', 'electrical', 'civil', 'cleaning', 'security', 'carpentry', 'painting', 'pest_control', 'hvac', 'fire_safety', 'landscaping', 'other'];
+  const facilityCategories = FACILITY_CATEGORIES;
   const techCategories = ['hardware', 'software', 'network', 'printer', 'projector', 'other'];
   const priorities = ['low', 'medium', 'high', 'urgent'];
 
@@ -970,7 +1100,19 @@ export function RaiseMaintenanceRequest() {
                       <StatusBadge status={item.status} />
                     </div>
                   </div>
-                  <div style={{ fontSize: 11, color: muted }}>{item.category} · {item.location || 'No location'} · Submitted {item.created_at?.slice(0, 10)}</div>
+                  <div style={{ fontSize: 11, color: muted }}>
+                    {item.category} · {item.location || 'No location'} · Submitted {item.created_at?.slice(0, 10)}
+                    {item.estimated_cost ? ` · Agreed Rs. ${item.estimated_cost}` : ''}
+                    {/* R3-2: a figure PROPOSED but not yet agreed is drawn as waiting and
+                        never as the cost. Painting it like an agreed amount is how a
+                        number nobody approved ends up treated as the school's real bill. */}
+                    {item.cost_awaiting_approval
+                      ? ` · Rs. ${item.cost_awaiting_approval} proposed, waiting to be agreed`
+                      : ''}
+                  </div>
+                  {isTransportHead && item.issue_type === 'facility' && item.category === 'vehicle' && (
+                    <ProposeRepairCost item={item} isDark={isDark} onDone={load} />
+                  )}
                 </div>
               ))}
             </>

@@ -23,6 +23,7 @@ import { CheckCheck, ExternalLink, Inbox } from 'lucide-react';
 import { useUser } from '../../contexts/UserContext';
 import { getNotifications, markAllNotificationsRead, markNotificationRead, NOTIFICATIONS_PAGE_MAX } from '../../lib/api';
 import { getToolForNotification, TOOL_LABELS } from '../../lib/notifRouting';
+import { KIND_TABS, splitByKind } from '../../lib/notifKinds';
 import NotificationDetailModal from '../NotificationDetailModal';
 import DataTable from '../ui/DataTable';
 import { Button, EmptyState, Pill } from '../ui/primitives';
@@ -44,6 +45,14 @@ function formatWhen(iso) {
 export default function AllNotifications() {
   const { currentUser } = useUser();
   const [rows, setRows] = useState([]);
+  // R3-2, 2026-08-15 (Abhimanyu): the same split as the bell, from the same rule in
+  // `notifKinds.js`, so the two surfaces cannot tell a person different things. 'all'
+  // stays the default here because this screen is the record of everything, unlike the
+  // bell which is a place to act.
+  // Opens on whichever half has something in it: a person blocked on a decision is the
+  // reason this screen is worth opening, and landing on an empty tab with the rows
+  // behind the other one is the same fault the bell's empty state had.
+  const [kind, setKind] = useState('approvals');
   const [total, setTotal] = useState(0);
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -242,6 +251,17 @@ export default function AllNotifications() {
     </button>
   );
 
+  // R3-2: the split, from the one shared rule. The counts on the two tabs are of the rows
+  // ACTUALLY LOADED, which is what a person can see; the page total above is separate and
+  // stays the honest school-wide figure. Two numbers meaning two different things, each
+  // labelled, rather than one number quietly meaning whichever is convenient.
+  const { approvals, ordinary } = splitByKind(rows);
+  // Falls back to the other half when this one is empty, exactly as the bell does. A
+  // screen that opens on "Waiting on you (0)" with every row sitting behind the second
+  // tab is the same fault as telling somebody they are all caught up over an empty tab.
+  const activeKind = approvals.length === 0 ? 'ordinary' : kind;
+  const shownRows = activeKind === 'approvals' ? approvals : ordinary;
+
   return (
     <div
       data-testid="all-notifications-tool"
@@ -298,6 +318,20 @@ export default function AllNotifications() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         {filterTab('All', !unreadOnly, () => changeFilter(false), 'notif-filter-all')}
         {filterTab('Unread', unreadOnly, () => changeFilter(true), 'notif-filter-unread')}
+        <span style={{ width: 1, height: 22, background: 'var(--color-border)', margin: '0 4px' }} />
+        {/* Abhimanyu, 2026-08-15: exactly TWO sub-tabs, here and in the bell, with the
+            same names in both. There used to be three here and two there, labelled
+            differently, so one inbox read as two different things depending on where a
+            person stood. The names come from `notifKinds.js` so they cannot drift again.
+
+            The old "Both" tab is gone and NOTHING is dropped with it: the two halves are
+            exhaustive, so every row is still reachable, under exactly one of them. */}
+        {KIND_TABS.map(({ id, label }) => filterTab(
+          `${label} (${id === 'approvals' ? approvals.length : ordinary.length})`,
+          activeKind === id,
+          () => setKind(id),
+          `notif-kind-${id}`,
+        ))}
         <Button
           size="sm"
           variant="ghost"
@@ -319,7 +353,7 @@ export default function AllNotifications() {
           message={error}
           action={<Button variant="secondary" onClick={load}>Try again</Button>}
         />
-      ) : rows.length === 0 ? (
+      ) : shownRows.length === 0 ? (
         // Three empty states, three different meanings (UX-DR6). "Nothing is
         // unread" is not "nothing ever arrived", and neither is "this failed".
         unreadOnly ? (
@@ -345,7 +379,7 @@ export default function AllNotifications() {
           tableId="notifications"
           caption="Your saved notifications, newest first"
           columns={columns}
-          rows={rows}
+          rows={shownRows}
           rowKey={(n) => n.id}
           onRowClick={openNotification}
           sort="created_at"
