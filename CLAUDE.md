@@ -4,7 +4,12 @@
 **Last updated:** 2026-08-05
 **Working agent:** any capable coding model (Anthropic Sonnet/Opus or other providers) - execution protocols are written model-agnostically
 
-> ## 🔧 BUILT, GREEN, NOT YET DEPLOYED - class targeting on announcements (2026-08-15)
+> ## ✅ SHIPPED - class targeting on announcements (deployed 2026-08-15)
+>
+> **LIVE.** Backend `eduflow-classnotice-20260815-96499c9`, frontend Amplify job 169,
+> commit `96499c9`. **Rollback target: `eduflow-approvals-20260815-69a2705`.** Bundle
+> diffed before upload: 247 entries to 249, the two added being this release's new backend
+> files, nothing removed. Environment Ready and Green on the new label.
 >
 > **"By Class" saved the chosen classes and nothing ever read them back.** Delivery was by
 > role alone, so a notice meant for one class went to **every student in the school** while

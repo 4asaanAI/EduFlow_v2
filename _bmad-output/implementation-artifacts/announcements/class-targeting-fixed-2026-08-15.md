@@ -1,5 +1,14 @@
 # A notice sent to one class now reaches one class (2026-08-15)
 
+> **LIVE, both halves together.** Backend `eduflow-classnotice-20260815-96499c9`, frontend
+> Amplify job 169, commit `96499c9`. **Rollback target:
+> `eduflow-approvals-20260815-69a2705`.** Bundle diffed before upload: 247 entries to 249,
+> the two added being `announcement_audience.py` and migration 050, nothing removed.
+> Environment Ready and Green on the new label; `/api/health/ready` answers 200 with db,
+> ai, s3 and sms all ok. The three touched routes answer 401 while a made-up path under the
+> same prefix answers 404 from the same server, which proves the code is live and still
+> guarded. **Nothing here was proven by signing in as a real profile.**
+
 **Abhimanyu, 2026-08-15:** fix the class targeting fault properly, with a permanent fix
 covering everyone who can use the feature from their own profile.
 
