@@ -1153,7 +1153,7 @@ export function AnnouncementBroadcaster() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ title: '', content: '', audience_type: 'all', audience_roles: [], audience_classes: [] });
+  const [form, setForm] = useState({ title: '', content: '', audience_type: 'all', audience_roles: [], audience_classes: [], audience_class_ids: [] });
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
 
   const ROLES = ['teacher', 'parent', 'student', 'admin'];
@@ -1177,12 +1177,15 @@ export function AnnouncementBroadcaster() {
     audience_roles: p.audience_roles.includes(role) ? p.audience_roles.filter(r => r !== role) : [...p.audience_roles, role],
   }));
 
-  const toggleClass = (cls) => setForm(p => ({
+  // The label is what the sender reads; the id is what decides who receives it. They are
+  // ticked and cleared together so the two can never drift apart.
+  const toggleClass = (cls, clsId) => setForm(p => ({
     ...p,
     audience_classes: p.audience_classes.includes(cls) ? p.audience_classes.filter(c => c !== cls) : [...p.audience_classes, cls],
+    audience_class_ids: p.audience_class_ids.includes(clsId) ? p.audience_class_ids.filter(c => c !== clsId) : [...p.audience_class_ids, clsId],
   }));
 
-  const resetForm = () => { setForm({ title: '', content: '', audience_type: 'all', audience_roles: [], audience_classes: [] }); setShowForm(false); };
+  const resetForm = () => { setForm({ title: '', content: '', audience_type: 'all', audience_roles: [], audience_classes: [], audience_class_ids: [] }); setShowForm(false); };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1201,6 +1204,10 @@ export function AnnouncementBroadcaster() {
         audience_roles: targetRoles,
         target_roles: targetRoles,
         audience_classes: form.audience_type === 'class' ? form.audience_classes : [],
+        // Send WHICH classes, not what they are called. This screen wrote "10th A" and
+        // the Circular sender wrote "10th-A" for the same class, so anything matching on
+        // the printed label had to pick a winner and mis-target the other one.
+        audience_class_ids: form.audience_type === 'class' ? form.audience_class_ids : [],
         is_draft: false,
       };
       const res = await apiFetch(`${API}/ops/announcements`, { method: 'POST', headers: { ...h(), 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -1255,7 +1262,7 @@ export function AnnouncementBroadcaster() {
                     const key = cls.name + (cls.section ? ' ' + cls.section : '');
                     return (
                       <label key={cls.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: form.audience_classes.includes(key) ? 'color-mix(in srgb, var(--tool-hex-4f8ff7) 15%, transparent)' : 'var(--tool-hex-252525)', border: `1px solid ${form.audience_classes.includes(key) ? 'var(--tool-hex-4f8ff7)' : 'var(--tool-hex-333)'}`, borderRadius: 8, cursor: 'pointer', fontSize: 12, color: form.audience_classes.includes(key) ? 'var(--tool-hex-4f8ff7)' : 'var(--tool-hex-a0a0a0)' }}>
-                        <input type="checkbox" checked={form.audience_classes.includes(key)} onChange={() => toggleClass(key)} style={{ accentColor: 'var(--tool-hex-4f8ff7)' }} />
+                        <input type="checkbox" checked={form.audience_classes.includes(key)} onChange={() => toggleClass(key, cls.id)} style={{ accentColor: 'var(--tool-hex-4f8ff7)' }} />
                         {key}
                       </label>
                     );

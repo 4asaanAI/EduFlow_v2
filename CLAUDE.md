@@ -4,6 +4,38 @@
 **Last updated:** 2026-08-05
 **Working agent:** any capable coding model (Anthropic Sonnet/Opus or other providers) - execution protocols are written model-agnostically
 
+> ## 🔧 BUILT, GREEN, NOT YET DEPLOYED - class targeting on announcements (2026-08-15)
+>
+> **"By Class" saved the chosen classes and nothing ever read them back.** Delivery was by
+> role alone, so a notice meant for one class went to **every student in the school** while
+> the sender was told it worked. Fixed at every surface through one rule,
+> `backend/services/announcement_audience.py`. **Targeting is by class ID, never by a
+> printed label**: the two screens wrote `10th A` and `10th-A` for the same class, so any
+> label comparison has to pick a winner and mis-targets the other.
+>
+> **Three more faults found in the same place.** The parent portal filtered on `audience`
+> and `class_id`, two fields an announcement has never carried, so it matched everything
+> and showed parents staff notices, other classes' notices and **unapproved drafts**. It
+> also pinned a branch announcements do not have. And search asked only "is it a draft".
+>
+> **"Everyone" now includes the owner** (Abhimanyu, 2026-08-15): a school-wide announcement
+> never reached Aman, because the owner was in no audience list at all. The guard stopping a
+> principal singling the owner out is untouched and still 422s.
+>
+> **The stand-in DB was lying about arrays.** `$in` against a list field did not match the
+> way Mongo does. Same class of fault as the 2026-08-12 `insert_one` one. Fixed in
+> `conftest.py`.
+>
+> Gate: backend 4,016 / 0 failed; frontend 884 across 74; build clean including lint. The
+> fix was switched off and three tests failed, so the tests prove the fix rather than
+> passing either way. Record:
+> `implementation-artifacts/announcements/class-targeting-fixed-2026-08-15.md`.
+>
+> ⛔ **Two announcement questions are PARKED with Abhimanyu pending a discussion with Aman
+> and Adesh. Do not decide them in code:** whether circulars should reach parents and
+> students at all given the messaging system already exists, and whether
+> `announcement-broadcaster` and `circular-sender` become one screen. They remain two.
+>
 > ## ✅ SHIPPED - Approvals, the transport head, and searchable lists (deployed 2026-08-15)
 >
 > **LIVE.** Backend `eduflow-approvals-20260815-69a2705`, frontend Amplify job 166, commit

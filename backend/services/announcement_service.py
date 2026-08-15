@@ -50,7 +50,16 @@ def decide_announcement_status(
     """
     role = actor_ctx.role
     if role == "admin" and actor_ctx.sub_category == "principal":
-        audience_set = set(raw_audience_roles if raw_audience_roles is not None else (target_roles or []))
+        if raw_audience_roles is not None:
+            audience_set = set(raw_audience_roles)
+        elif audience_type == "all":
+            # "Everyone" includes the owner from 2026-08-15 onward. This guard exists to
+            # stop a principal SINGLING OUT the owner, and a school-wide notice is not
+            # that. Judging the derived list here would refuse every "Everyone" notice a
+            # principal sends, which is the opposite of what the guard is for.
+            audience_set = {"all"}
+        else:
+            audience_set = set(target_roles or [])
         if not audience_set.issubset(PRINCIPAL_ALLOWED_AUDIENCES):
             raise AnnouncementValidationError("Principal cannot target owner role")
         return "active"

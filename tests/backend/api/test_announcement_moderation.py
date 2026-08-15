@@ -104,7 +104,10 @@ async def test_all_audience_requires_approval_and_expands_roles(client, fake_db)
     )
     data = resp.json()["data"]
     assert data["status"] == "pending_approval"
-    assert set(data["target_roles"]) == {"teacher", "student", "admin", "parent"}
+    # "owner" joined this list on 2026-08-15 (Abhimanyu): an announcement sent to the
+    # whole school never reached Aman, because the owner was in no audience list at all.
+    # Adesh was reached only because the principal happens to hold the `admin` role.
+    assert set(data["target_roles"]) == {"owner", "teacher", "student", "admin", "parent"}
 
 
 async def test_class_audience_requires_approval_and_targets_students(client, fake_db):

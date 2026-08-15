@@ -5,6 +5,7 @@ from pagination import clamp_page, clamp_page_size
 from database import get_db
 from middleware.auth import get_current_user, require_role
 from services.notification_service import create_notification as create_persistent_notification
+from services import announcement_audience
 from tenant import get_school_id, scoped_filter
 from datetime import datetime, date
 
@@ -93,7 +94,16 @@ async def get_notifications(
     if page == 1 and synthetic_allowed:
         role = user["role"]
         today = date.today().strftime("%Y-%m-%d")
-        ann_query = scoped_filter({"is_draft": {"$ne": True}}, get_school_id())  # branch-scope: intentional - announcements are published to the whole school
+        # A "By Class" announcement reaches the chosen classes only. Without this clause
+        # a notice for one class was announced to every student in the school.
+        my_classes = await announcement_audience.reader_class_ids(db, user)
+        ann_query = scoped_filter(
+            {
+                "is_draft": {"$ne": True},
+                **announcement_audience.class_visibility_clause(my_classes),
+            },
+            get_school_id(),
+        )  # branch-scope: intentional - announcements are published to the whole school
         recent_ann = await db.announcements.find(ann_query, {"_id": 0, "title": 1, "created_at": 1, "audience_roles": 1}).sort("created_at", -1).to_list(5)
 
         if role in ["owner", "admin"]:

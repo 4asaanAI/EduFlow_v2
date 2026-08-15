@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from database import get_db
 from middleware.auth import require_role
 from ai.fee_metrics import fee_totals_from_txns
-from services import photo_url_service
-from tenant import scoped_query
+from services import announcement_audience, photo_url_service
+from tenant import get_school_id, scoped_filter, scoped_query
 
 
 router = APIRouter(prefix="/api/guardian", tags=["guardian"])
@@ -79,12 +79,28 @@ async def ward_dashboard(student_id: str, request: Request,
     loans = await db.library_loans.find(
         scoped_query({"borrower_type": "student", "borrower_id": student_id}, branch_id=bid), {"_id": 0}
     ).sort("issued_at", -1).to_list(50)
+    # This filter used to read `audience` and `class_id`, two fields an announcement has
+    # never carried. Both were always absent, so `audience in (None, ...)` matched every
+    # row: parents were shown staff-only notices, other classes' notices, and even drafts
+    # and rejected ones. It now asks the same questions the rest of the platform asks.
+    # Announcements carry no branch of their own, so pinning the parent's branch here
+    # matched nothing that the sending screens actually write. Every other announcement
+    # reader treats them as school-wide; this one now agrees.
     announcements = await db.announcements.find(
-        scoped_query({}, branch_id=bid), {"_id": 0}
+        scoped_filter({"is_draft": {"$ne": True}}, get_school_id()), {"_id": 0}  # branch-scope: intentional - announcements are published to the whole school
     ).sort("created_at", -1).to_list(100)
+    ward_classes = {student.get("class_id")} if student.get("class_id") else set()
     visible_announcements = [item for item in announcements if (
-        item.get("audience") in (None, "all", "parents", "parent")
-        or item.get("class_id") == student.get("class_id")
+        str(item.get("status") or "active") == "active"
+        and announcement_audience.reaches(item, user, ward_classes)
+        and (
+            # A class notice is for this child's class, so it reaches the family that
+            # child belongs to. Everything else has to name parents, or be for everyone.
+            announcement_audience.is_class_targeted(item)
+            or item.get("audience_type") == announcement_audience.ALL_AUDIENCE
+            or "parent" in (item.get("audience_roles") or item.get("target_roles") or [])
+            or not (item.get("audience_roles") or item.get("target_roles"))
+        )
     )][:20]
     attendance_counts = {status: sum(1 for row in attendance if row.get("status") == status)
                          for status in ("present", "absent", "late")}

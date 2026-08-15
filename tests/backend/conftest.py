@@ -224,6 +224,13 @@ def _apply_pipeline(doc, pipeline):
             _set_nested(doc, key, _eval_agg_expr(expr, doc))
 
 
+def _value_in(actual, options):
+    """Mongo's `$in` against a field that holds an array: does the array overlap?"""
+    if isinstance(actual, (list, tuple, set)):
+        return any(item in options for item in actual)
+    return actual in options
+
+
 def _matches(doc, query):
     for key, expected in (query or {}).items():
         if key == "$and":
@@ -237,9 +244,15 @@ def _matches(doc, query):
         actual = _get_nested(doc, key)
         if isinstance(expected, dict):
             for op, value in expected.items():
-                if op == "$in" and actual not in value:
+                # Mongo matches a query value against an ARRAY field by asking whether
+                # the array CONTAINS it, not whether the whole array equals it. A
+                # stand-in that misses this is kinder than the real thing, and a
+                # stand-in kinder than the real thing manufactures green: audience
+                # targeting stored as a list would have looked broken in tests and
+                # worked in production, or the reverse, with nothing to show which.
+                if op == "$in" and not _value_in(actual, value):
                     return False
-                if op == "$nin" and actual in value:
+                if op == "$nin" and _value_in(actual, value):
                     return False
                 if op == "$ne" and actual == value:
                     return False

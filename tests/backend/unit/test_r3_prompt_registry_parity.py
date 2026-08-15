@@ -42,7 +42,12 @@ async def test_get_announcements_returns_published_visible(monkeypatch):
         _ann(id="staff", title="Staff only", audience_type="staff",
              target_roles=["admin", "teacher"]),                  # wrong audience
     ]
-    db = type("FakeDb", (), {"announcements": FakeCollection(docs)})()
+    # `students` and `guardians` are here because reading an announcement now also
+    # asks which class the reader is in. A stub missing them fails loudly, which is
+    # what we want: a stand-in quieter than the real thing manufactures green.
+    db = type("FakeDb", (), {"announcements": FakeCollection(docs),
+                             "students": FakeCollection([]),
+                             "guardians": FakeCollection([])})()
     monkeypatch.setattr(_mod, "get_db", lambda: db)
 
     result = await tool_get_announcements(
@@ -57,7 +62,9 @@ async def test_get_announcements_empty_is_not_a_crash(monkeypatch):
     from ai.tool_functions_v2 import tool_get_announcements
     import ai.tool_functions_v2 as _mod
 
-    db = type("FakeDb", (), {"announcements": FakeCollection([])})()
+    db = type("FakeDb", (), {"announcements": FakeCollection([]),
+                             "students": FakeCollection([]),
+                             "guardians": FakeCollection([])})()
     monkeypatch.setattr(_mod, "get_db", lambda: db)
     result = await tool_get_announcements(
         params={}, user={"id": "s1", "role": "student"}, scope=None,

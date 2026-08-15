@@ -109,6 +109,10 @@ MIGRATIONS = [
     # lookup with nothing to do. 043 believed it had signed 21 leavers out and had not.
     ("048_actually_sign_out_departed_staff", "Switch off the logins of the 21 departed staff, which migration 043 reported as done and had not done: it matched the wrong id field and silently changed nothing (data-changing; ALREADY APPLIED 2026-08-12; run explicitly only)"),
     ("049_stamp_branch_on_staff_logins", "Put the branch on the 95 staff logins that carried none, so branch filtering stops hiding colleagues from each other in staff messaging (data-changing; ALREADY APPLIED 2026-08-12; run explicitly only)"),
+    # 050 deletes real logins. Its `migrate()` raises on purpose, so listing it here can
+    # never run it: the entry exists because every migration file must be listed, and
+    # leaving it out is how a file stops being findable by the next person.
+    ("050_remove_shared_desk_logins", "Remove the four shared desk logins (transport, reception, ittech, maintenance): accounts standing for a department rather than a person (data-changing; ALREADY APPLIED 2026-08-15; run explicitly only, and it REFUSES to run through this file)"),
 ]
 
 

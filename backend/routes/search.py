@@ -4,6 +4,7 @@ import re
 from fastapi import APIRouter, Request
 from database import get_db
 from middleware.auth import get_current_user
+from services import announcement_audience
 from services.teacher_scope_service import compute_teacher_scope
 from tenant import get_school_id, scoped_filter
 
@@ -161,8 +162,25 @@ async def search(request: Request, q: str = "", type: str = "all"):
 
     # Search announcements
     if type in ["all", "announcements"]:
+        # Search asked only "is it a draft", so a student searching could turn up the
+        # title of a staff notice, or one aimed at another class. It now answers with
+        # what actually reaches the person doing the searching.
         annts = await db.announcements.find(
-            scoped_filter({"$or": [{"title": {"$regex": q_safe, "$options": "i"}}, {"content": {"$regex": q_safe, "$options": "i"}}], "is_draft": False}, get_school_id()),  # branch-scope: intentional - announcements are published to the whole school
+            scoped_filter({
+                "$and": [
+                    {"$or": [{"title": {"$regex": q_safe, "$options": "i"}}, {"content": {"$regex": q_safe, "$options": "i"}}]},
+                    {"$or": [
+                        {"audience_roles": {"$in": [role, "all"]}},
+                        {"audience_roles": {"$exists": False}},
+                        {"audience_roles": []},
+                        {"audience_type": "all"},
+                    ]},
+                    announcement_audience.class_visibility_clause(
+                        await announcement_audience.reader_class_ids(db, user)
+                    ),
+                ],
+                "is_draft": False,
+            }, get_school_id()),  # branch-scope: intentional - announcements are published to the whole school
             {"_id": 0, "id": 1, "title": 1, "created_at": 1}
         ).to_list(5)
         for a in annts:

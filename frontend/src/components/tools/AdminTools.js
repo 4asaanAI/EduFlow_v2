@@ -959,7 +959,7 @@ export function CircularSender() {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
-  const BLANK = { title: '', content: '', audience_type: 'all', audience_classes: [], audience_roles: [] };
+  const BLANK = { title: '', content: '', audience_type: 'all', audience_classes: [], audience_class_ids: [], audience_roles: [] };
   const [form, setForm] = useState(BLANK);
   const f = k => v => setForm(p => ({ ...p, [k]: v }));
 
@@ -1046,7 +1046,9 @@ export function CircularSender() {
                   {classes.map(c => {
                     const label = `${c.name}-${c.section}`;
                     const active = form.audience_classes.includes(label);
-                    return <span key={c.id} style={chipStyle(active)} onClick={() => toggleArr('audience_classes', label)}>{label}</span>;
+                    // Tick the label and the id together. The label is what the sender
+                    // reads; the id is what decides who receives it.
+                    return <span key={c.id} style={chipStyle(active)} onClick={() => { toggleArr('audience_classes', label); toggleArr('audience_class_ids', c.id); }}>{label}</span>;
                   })}
                   {classes.length === 0 && <span style={{ fontSize: 11, color: 'var(--c-faint)' }}>No classes found</span>}
                 </div>

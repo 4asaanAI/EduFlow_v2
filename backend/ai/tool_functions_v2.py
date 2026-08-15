@@ -16,7 +16,7 @@ from ai.class_resolver import describe_no_match, find_classes, resolve_class
 from school_identity import default_branch_id
 from tenant import add_school_id, get_school_id, scoped_filter, scoped_query
 from ai.fee_metrics import DEFAULTER_STATUSES, student_outstanding_from_txns
-from services import enrolment_status
+from services import announcement_audience, enrolment_status
 from services.audit_service import write_audit_doc
 from services.notification_service import create_notification, fan_out_notifications
 from services.actor_context import actor_ctx_from_user
@@ -2828,8 +2828,10 @@ async def tool_query_audit_log(params: dict, user: dict, scope: dict = None) -> 
 
 
 _AUDIENCE_ROLE_MAP = {
-    "all": ["teacher", "student", "admin", "parent"],
-    "staff": ["admin", "teacher"],
+    # "Everyone" includes the owner, matching the REST route. Without it an announcement
+    # to the whole school never reached the school's owner. (Abhimanyu, 2026-08-15.)
+    "all": ["owner", "teacher", "student", "admin", "parent"],
+    "staff": ["owner", "admin", "teacher"],
     "students": ["student"],
     "parents": ["parent"],
 }
@@ -3020,7 +3022,14 @@ async def tool_get_upcoming_events(params: dict, user: dict, scope: dict = None)
     # present, else fall back to the send date, and window-filter in Python.
     announcements = await db.announcements.find(
         scoped_query(
-            {"status": "active", "sent_at": {"$ne": None}},
+            {
+                "status": "active",
+                "sent_at": {"$ne": None},
+                # An event announced to one class belongs on that class's calendar only.
+                **announcement_audience.class_visibility_clause(
+                    await announcement_audience.reader_class_ids(db, user)
+                ),
+            },
             branch_id=bid
         ),
         {"_id": 0, "title": 1, "event_date": 1, "sent_at": 1}
@@ -3398,9 +3407,16 @@ async def tool_get_announcements(params: dict, user: dict, scope: dict = None) -
     query = {
         "is_draft": {"$ne": True},
         "sent_at": {"$ne": None},
-        "$or": [
-            {"target_roles": role},
-            {"audience_type": "all"},
+        "$and": [
+            {"$or": [
+                {"target_roles": role},
+                {"audience_type": "all"},
+            ]},
+            # A "By Class" notice reaches the chosen classes only. Flo answering with a
+            # notice meant for another class is the same fault as the screen showing it.
+            announcement_audience.class_visibility_clause(
+                await announcement_audience.reader_class_ids(db, user)
+            ),
         ],
     }
     anns = await db.announcements.find(query, {"_id": 0}).to_list(200)

@@ -102,6 +102,7 @@ import os
 import re
 from services.maps_service import geocode as _geocode_address, haversine_km as _haversine_km
 from services.transport_scope import scope_students_to_the_bus
+from services import announcement_audience
 
 router = APIRouter(prefix="/api/ops", tags=["operations"])
 workflow_router = APIRouter(prefix="/api/operations", tags=["operations-workflow"])
@@ -129,7 +130,11 @@ def _require_owner_or_accountant(request: Request) -> dict:
     raise HTTPException(status_code=403, detail="Forbidden")
 
 
-_ALL_ANNOUNCEMENT_ROLES = ["teacher", "student", "admin", "parent"]
+# "Everyone" now includes the school's owner. It did not, so an announcement sent to the
+# whole school never reached Aman's notifications at all, while it reached Adesh only
+# because the principal happens to hold the `admin` role. Abhimanyu, 2026-08-15:
+# announcements should definitely reach both of them.
+_ALL_ANNOUNCEMENT_ROLES = ["owner", "teacher", "student", "admin", "parent"]
 
 
 def _announcement_target_roles(body: dict, audience_type: str | None = None) -> list[str]:
@@ -1316,18 +1321,24 @@ async def list_announcements(request: Request, page: int = 1, limit: int = 20, u
         {"status": "active"},
         {"status": {"$exists": False}},
     ]}
+    # A "By Class" announcement reaches the chosen classes and nobody else. This clause is
+    # applied by the database rather than after the fact, so the count and the paging stay
+    # true: filtering afterwards would make "showing 20 of 60" a lie.
+    class_clause = announcement_audience.class_visibility_clause(
+        await announcement_audience.reader_class_ids(db, user)
+    )
     if role in ("owner", "admin"):
         query = {
             "is_draft": {"$ne": True},
             "$or": [
-                {"$and": [audience_clause, status_clause]},
+                {"$and": [audience_clause, status_clause, class_clause]},
                 {"created_by": user.get("id")},
             ],
         }
     else:
         query = {
             "is_draft": {"$ne": True},
-            "$and": [audience_clause, status_clause],
+            "$and": [audience_clause, status_clause, class_clause],
         }
     query = scoped_filter(query, get_school_id())  # branch-scope: intentional - announcements are published to the whole school; audience is decided by the audience_clause above, not by branch
     total = await db.announcements.count_documents(query)
@@ -1354,12 +1365,31 @@ async def create_announcement(request: Request, user: dict = Depends(require_rol
     except AnnouncementValidationError as e:
         raise HTTPException(422, detail=str(e))
 
+    # Class targeting is resolved to real class ids HERE, once, whichever screen sent it
+    # and whatever wording it used. Storing the printed label instead is what let two
+    # screens disagree ("10th A" against "10th-A") while both reported success.
+    class_ids, class_labels, unmatched = await announcement_audience.resolve_audience_classes(
+        db,
+        class_ids=body.get("audience_class_ids"),
+        class_labels=body.get("audience_classes"),
+    )
+    if unmatched:
+        # Named, never dropped. A class silently discarded is indistinguishable from one
+        # that was delivered, which is the whole fault this change closes.
+        raise HTTPException(
+            400,
+            detail=f"These classes are not on the school's class list: {', '.join(unmatched)}",
+        )
+    if audience_type == announcement_audience.CLASS_AUDIENCE and not class_ids:
+        raise HTTPException(400, detail="Choose at least one class to send this to.")
+
     announcement = add_school_id({
         "id": str(uuid.uuid4()),
         "title": body.get("title"),
         "content": body.get("content"),
         "audience_type": audience_type,
-        "audience_classes": body.get("audience_classes", []),
+        "audience_class_ids": class_ids,
+        "audience_classes": class_labels,
         "audience_roles": target_roles,
         "target_roles": target_roles,
         "channels": body.get("channels", []),
