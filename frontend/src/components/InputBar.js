@@ -97,11 +97,11 @@ function getVoiceErrorMessage(error) {
     case 'audio-capture':
       return 'No microphone was detected on this device.';
     case 'network':
-      return 'Voice capture lost connection. Please check your network and try again.';
+      return 'Voice capture lost connection. Check your network and try again.';
     case 'no-speech':
       return 'No speech was detected. Try again and speak a little closer to the mic.';
     default:
-      return 'Voice capture could not start. Please try again.';
+      return "Voice capture couldn't start. Try again.";
   }
 }
 
@@ -338,7 +338,7 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
       recognitionRef.current = null;
       listeningRef.current = false;
       setIsListening(false);
-      setVoiceError('Voice capture could not start. Please try again.');
+      setVoiceError("Voice capture couldn't start. Try again.");
     }
   };
 
@@ -357,7 +357,7 @@ export default function InputBar({ onSend, disabled, isDark = true }) {
     } catch (err) {
       // uploadChatFile throws with a specific reason (too large / blocked at the
       // edge / HTTP status); only a plain network drop falls back to the generic line.
-      setUploadError(err?.message && err.name !== 'AbortError' ? err.message : 'Upload failed. Please try again.');
+      setUploadError(err?.message && err.name !== 'AbortError' ? err.message : 'Upload failed. Try again.');
     }
     setUploadingFile(false);
     if (fileInputRef.current) fileInputRef.current.value = '';

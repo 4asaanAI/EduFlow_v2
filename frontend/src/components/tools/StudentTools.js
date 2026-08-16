@@ -27,7 +27,7 @@ async function* streamChat(convId, text) {
     headers: { ...h(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
   });
-  if (!res.ok) { yield '[Error: could not connect. Please try again.]'; return; }
+  if (!res.ok) { yield '[Error: couldn\'t connect. Try again.]'; return; }
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   while (true) {
@@ -72,7 +72,7 @@ export function AiTutor() {
         setMessages(prev => { const n = [...prev]; n[n.length - 1] = { role: 'ai', text: aiText }; return n; });
       }
     } catch {
-      setMessages(prev => [...prev, { role: 'ai', text: 'Sorry, I had trouble connecting. Please try again.' }]);
+      setMessages(prev => [...prev, { role: 'ai', text: 'Connection failed. Try again.' }]);
     }
     setLoading(false);
   };
@@ -137,13 +137,13 @@ export function DoubtSolver() {
     setResponse('');
     try {
       const cid = await createConv('Doubt Session');
-      if (!cid) { setResponse('Could not connect. Please try again.'); setLoading(false); return; }
+      if (!cid) { setResponse('Couldn\'t connect. Try again.'); setLoading(false); return; }
       let text = '';
       for await (const delta of streamChat(cid, `Doubt: ${doubt}`)) {
         text += delta;
         setResponse(text);
       }
-    } catch { setResponse('Could not solve doubt. Please try again.'); }
+    } catch { setResponse('Couldn\'t answer that. Try again.'); }
     setLoading(false);
   };
 
@@ -565,11 +565,11 @@ export function StudyPlanner() {
     try {
       const response = await apiFetch(`${API}/ops/study-plan`, { method: 'POST', headers: h(), body: JSON.stringify(plan) });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok || !body.success) throw new Error(body.detail || 'Unable to save your study plan.');
+      if (!response.ok || !body.success) throw new Error(body.detail || "Couldn't save your study plan.");
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (error) {
-      setSaveError(error.message || 'Unable to save your study plan.');
+      setSaveError(error.message || "Couldn't save your study plan.");
     } finally {
       setSaving(false);
     }
@@ -616,20 +616,20 @@ export function CareerGuidance() {
       const context = results?.length > 0 ? `Student's results: ${results.map(r => `${r.subject_name}: ${r.marks_obtained}/${r.max_marks}`).join(', ')}.` : '';
       const prompt = `${context} Student asks: ${input}. Provide thoughtful career guidance for a CBSE school student in India, considering their academic performance and interests. Suggest specific career paths, required subjects, and entrance exams.`;
       const cid = await createConv('Career Guidance');
-      if (!cid) { setResponse('Could not connect. Please try again.'); setLoading(false); return; }
+      if (!cid) { setResponse('Couldn\'t connect. Try again.'); setLoading(false); return; }
       let text = '';
       for await (const delta of streamChat(cid, prompt)) {
         text += delta;
         setResponse(text);
       }
-    } catch { setResponse('Could not load guidance. Please try again.'); }
+    } catch { setResponse('Couldn\'t load guidance. Try again.'); }
     setLoading(false);
   };
 
   const suggestions = ['What career should I choose based on my marks?', 'How to prepare for IIT JEE?', 'What are options after 10th?', 'Tell me about medical careers', 'What subjects for IAS/UPSC?'];
 
   return (
-    <ToolPage title="Career Guidance AI" subtitle="AI-powered career advice based on your performance">
+    <ToolPage title="Career Guidance AI" subtitle="Career advice based on your performance">
       <div style={{ maxWidth: 640 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 16 }}>
           {suggestions.map((s, i) => (
@@ -690,7 +690,7 @@ export function FeeStatusViewer() {
         body: JSON.stringify({ transaction_ids: transactionIds, ...(successUrl ? { success_url: successUrl } : {}) }),
       });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.detail || 'Unable to start online payment');
+      if (!response.ok) throw new Error(body.detail || "Couldn't start online payment");
       window.open(body.data.checkout_url, '_blank', 'noopener,noreferrer');
     } catch (err) {
       setCheckoutError(err.message);

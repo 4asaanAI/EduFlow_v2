@@ -202,7 +202,7 @@ function PersonalTab({ profile, onSave, isDark }) {
     try {
       const r = await onSave({ ...form, gender: form.gender ? form.gender.toLowerCase() : undefined });
       if (r.success) { setSaved(true); setTimeout(() => setSaved(false), 3000); }
-      else setError(r.detail || 'Could not save. Please try again.');
+      else setError(r.detail || "Couldn't save. Try again.");
     } catch { setError('Network error. Check your connection.'); }
     setSaving(false);
   }
@@ -261,7 +261,7 @@ function MedicalTab({ profile, onSave, isDark }) {
         medical_notes: form.medical_notes || undefined,
       });
       if (r.success) { setSaved(true); setTimeout(() => setSaved(false), 3000); }
-      else setError(r.detail || 'Could not save. Please try again.');
+      else setError(r.detail || "Couldn't save. Try again.");
     } catch { setError('Network error.'); }
     setSaving(false);
   }

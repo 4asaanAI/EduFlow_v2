@@ -180,11 +180,11 @@ export default function TokenUpgradeModal({ onClose, currentUsage, roleLimit, ca
       if (r.success && r.data?.checkout_url) {
         window.location.href = r.data.checkout_url;
       } else {
-        setCheckoutError(r.detail || 'Could not start checkout. Please try again.');
+        setCheckoutError(r.detail || "Couldn't start checkout. Try again.");
         setCheckoutLoading('');
       }
     } catch {
-      setCheckoutError('Network error. Please try again.');
+      setCheckoutError('Network error. Try again.');
       setCheckoutLoading('');
     }
   }, [canPurchase]);

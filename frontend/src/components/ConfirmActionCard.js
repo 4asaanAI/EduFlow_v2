@@ -98,7 +98,7 @@ function classifyConfirmError(httpStatus, body) {
         kind: 'opaque',
         message: correlationId
           ? `Nothing was applied because something went wrong. Reference: ${correlationId}`
-          : 'Nothing was applied because something went wrong. Please try again in a moment.',
+          : 'Nothing was applied because something went wrong. Try again in a moment.',
         // A transient/opaque failure can be re-attempted; the token may still be live.
         retryable: httpStatus >= 500,
         correlationId,
@@ -367,7 +367,7 @@ export default function ConfirmActionCard({ action, conversationId, sessionId, o
     } catch (err) {
       // Network/transport failure (fetch rejected) - no server response to
       // classify. Safe to re-attempt with the same token.
-      setErrorMsg(err.message || 'Something went wrong. Please try again.');
+      setErrorMsg(err.message || 'Something went wrong. Try again.');
       setErrorRetryable(true);
       setStatus('error');
       setClickedAction(null);

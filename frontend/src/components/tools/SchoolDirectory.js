@@ -199,7 +199,7 @@ function StudentsTab({ user, onOpen, onOpenFullScreen }) {
           { pageMax: STUDENTS_PAGE_MAX },
         );
         if (all.success) { setRows(all.data); setTotal(all.total); }
-        else { setError(all.detail || 'Unable to load students'); }
+        else { setError(all.detail || "Couldn't load students"); }
         setLoading(false);
         return;
       }
@@ -208,10 +208,10 @@ function StudentsTab({ user, onOpen, onOpenFullScreen }) {
         setRows(res.data || []);
         setTotal(res.meta?.total || 0);
       } else {
-        setError(res.detail || 'Unable to load students');
+        setError(res.detail || "Couldn't load students");
       }
     } catch (err) {
-      setError(err.message || 'Unable to load students');
+      setError(err.message || "Couldn't load students");
     }
     setLoading(false);
   }, [page, sort, pageSize, search, classId]);
@@ -368,7 +368,7 @@ function StaffTab({ onOpen, onOpenFullScreen }) {
           { pageMax: STAFF_PAGE_MAX },
         );
         if (all.success) { setRows(all.data); setTotal(all.total); }
-        else { setError(all.detail || 'Unable to load staff'); }
+        else { setError(all.detail || "Couldn't load staff"); }
         setLoading(false);
         return;
       }
@@ -377,10 +377,10 @@ function StaffTab({ onOpen, onOpenFullScreen }) {
         setRows(res.data || []);
         setTotal(res.meta?.total || 0);
       } else {
-        setError(res.detail || 'Unable to load staff');
+        setError(res.detail || "Couldn't load staff");
       }
     } catch (err) {
-      setError(err.message || 'Unable to load staff');
+      setError(err.message || "Couldn't load staff");
     }
     setLoading(false);
   }, [page, sort, pageSize, search]);

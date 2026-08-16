@@ -9,7 +9,7 @@ async function request(url, options = {}) {
     headers: { ...getAuthHeaders(), ...(options.body ? { 'Content-Type': 'application/json' } : {}) },
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.detail || 'Unable to update student leave');
+  if (!response.ok) throw new Error(body.detail || "Couldn't update student leave");
   return body;
 }
 

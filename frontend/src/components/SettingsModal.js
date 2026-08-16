@@ -121,7 +121,7 @@ export default function SettingsModal({ onClose }) {
       setPwForm({ new_password: '', confirm_password: '' });
       setTimeout(() => setPwSuccess(false), 3000);
     } catch {
-      setPwError('Network error. Please try again.');
+      setPwError('Network error. Try again.');
     } finally {
       setPwSaving(false);
     }
@@ -233,7 +233,7 @@ export default function SettingsModal({ onClose }) {
               )}
               {pwSuccess && (
                 <div style={{ padding: '8px 12px', borderRadius: 8, marginBottom: 12, fontSize: 12, background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.3)', color: '#34d399', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Check size={13} /> Password changed successfully!
+                  <Check size={13} /> Password changed
                 </div>
               )}
               <button type="submit" disabled={pwSaving}

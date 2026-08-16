@@ -192,7 +192,7 @@ function StaffModal({ initialStaff, canEditLeaveBalances, onClose, onSaved }) {
           onClose();
         }
       } else {
-        setError(res.detail || 'Unable to save staff profile');
+        setError(res.detail || "Couldn't save staff profile");
       }
     } catch (err) {
       setError(err.message || 'Network error');
@@ -565,12 +565,12 @@ export default function StaffTracker() {
         setStaff(staffRes.data || []);
         setTotal(staffRes.meta?.total || 0);
       } else {
-        setError(staffRes.detail || 'Unable to load staff profiles');
+        setError(staffRes.detail || "Couldn't load staff profiles");
       }
       if (leavesRes.success) setPendingLeaves(leavesRes.data || []);
       if (requestsRes.success) setChangeRequests(requestsRes.data || []);
     } catch (err) {
-      setError(err.message || 'Unable to load staff profiles');
+      setError(err.message || "Couldn't load staff profiles");
     }
     setLoading(false);
     setLeavesLoading(false);
@@ -616,7 +616,7 @@ export default function StaffTracker() {
       reason = window.prompt('Why is this not being approved? (optional)') || '';
     }
     const res = await decideProfileChangeRequest(requestId, status, reason.trim());
-    if (!res.success) setError(res.detail || 'Unable to decide that request');
+    if (!res.success) setError(res.detail || "Couldn't decide that request");
     loadData();
   };
 
@@ -627,7 +627,7 @@ export default function StaffTracker() {
       return;
     }
     const res = await updateLeave(leaveId, status, reason.trim());
-    if (!res.success) setError(res.detail || 'Unable to update leave request');
+    if (!res.success) setError(res.detail || "Couldn't update leave request");
     loadData();
   };
 
@@ -635,7 +635,7 @@ export default function StaffTracker() {
     if (!window.confirm(`Deactivate ${profile.name}? Their login sessions will be revoked.`)) return;
     const res = await deactivateStaff(profile.id);
     if (res.success) { loadData(); loadCounts(); }
-    else setError(res.detail || 'Unable to deactivate staff profile');
+    else setError(res.detail || "Couldn't deactivate staff profile");
   };
 
   /** Put someone back on the staff roll. Their login comes back with them. */
@@ -643,7 +643,7 @@ export default function StaffTracker() {
     if (!window.confirm(`Put ${profile.name} back on the staff roll? Their login will work again.`)) return;
     const res = await setStaffEnrolment(profile.id, 'active');
     if (res.success) { loadData(); loadCounts(); }
-    else setError(res.detail || 'Unable to restore this staff profile');
+    else setError(res.detail || "Couldn't restore this staff profile");
   };
 
   const changeState = async (state, reason) => {
@@ -656,7 +656,7 @@ export default function StaffTracker() {
       loadData();
       loadCounts();
     } else {
-      setError(res.detail || 'Unable to change this status');
+      setError(res.detail || "Couldn't change this status");
     }
   };
 
@@ -668,7 +668,7 @@ export default function StaffTracker() {
       loadData();
       loadCounts();
     } else {
-      setError(res.detail || 'Unable to erase this staff record');
+      setError(res.detail || "Couldn't erase this staff record");
     }
   };
 

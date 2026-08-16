@@ -277,7 +277,7 @@ export function QuerySection() {
         setFormError(data.detail || 'Failed to submit');
       }
     } catch {
-      setFormError('Network error. Please try again.');
+      setFormError('Network error. Try again.');
     }
     setSubmitting(false);
   };

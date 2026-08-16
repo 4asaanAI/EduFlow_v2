@@ -236,7 +236,7 @@ export default function PrincipalDailyOps() {
         apiFetch(`${API}/fees/summary`, { headers: h() }),
       ]);
       const subsJson = subsRes.status === 'fulfilled' ? await subsRes.value.json() : { success: false };
-      if (!subsJson.success) throw new Error(subsJson.detail || 'Unable to load substitution data');
+      if (!subsJson.success) throw new Error(subsJson.detail || "Couldn't load substitution data");
       setItems(subsJson.data || []);
       setMeta(subsJson.meta || {});
       const leavesJson = leavesRes.status === 'fulfilled' ? await leavesRes.value.json() : {};
@@ -246,7 +246,7 @@ export default function PrincipalDailyOps() {
       setCertificates((certsJson.data || []).slice(0, 10));
       setFeeSummary(feesJson.data || null);
     } catch (err) {
-      setError(err.message || 'Unable to load daily ops');
+      setError(err.message || "Couldn't load daily ops");
     } finally {
       setLoading(false);
     }

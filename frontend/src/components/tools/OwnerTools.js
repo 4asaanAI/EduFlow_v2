@@ -929,7 +929,7 @@ export function StaffAttendanceTracker({ title = 'Staff Tracker', subtitle = 'St
       } else {
         setSaveMsg(result.detail || 'Failed to save attendance.');
       }
-    } catch { setSaveMsg('Network error. Please try again.'); }
+    } catch { setSaveMsg('Network error. Try again.'); }
     setSaving(false);
   };
 
@@ -1214,7 +1214,7 @@ export function AnnouncementBroadcaster() {
       const r = await res.json();
       if (r.success) { resetForm(); load(); }
       else alert(`Failed to send announcement: ${r.detail || r.message || `HTTP ${res.status}`}`);
-    } catch (err) { alert(`Network error: ${err.message || 'Please try again.'}`); }
+    } catch (err) { alert(`Network error: ${err.message || 'Try again.'}`); }
     setSaving(false);
   };
 
@@ -1535,7 +1535,7 @@ export function AiHealthReport() {
         <div style={{ textAlign: 'center', padding: '40px 0' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🏥</div>
           <h3 style={{ fontFamily: 'Inter, sans-serif', color: 'var(--tool-hex-e5e5e5)', fontSize: 16, marginBottom: 8 }}>AI School Health Report</h3>
-          <p style={{ color: 'var(--tool-hex-737373)', fontSize: 12, marginBottom: 20 }}>Generate a comprehensive analysis of your school's current health status</p>
+          <p style={{ color: 'var(--tool-hex-737373)', fontSize: 12, marginBottom: 20 }}>Generate an analysis of your school's current health status</p>
           {error && <p style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginBottom: 16 }}>{error}</p>}
           <ActionBtn label={loading ? 'Generating...' : 'Generate Report'} onClick={generate} disabled={loading} />
         </div>
@@ -1759,8 +1759,8 @@ export function ExpenseTracker() {
         }).then(res => res.json());
       }
       if (r.success) { closeForm(); load(); }
-      else { alert(`Failed to ${editExpense ? 'update' : 'save'} expense. Please try again.`); }
-    } catch { alert('Network error. Please try again.'); }
+      else { alert(`Failed to ${editExpense ? 'update' : 'save'} expense.`); }
+    } catch { alert('Network error. Try again.'); }
   };
 
   const handleDelete = async (e) => {
@@ -2342,7 +2342,7 @@ export function BoardReport() {
       doc.text('EduFlow - Board Report - Confidential', 105, 290, { align: 'center' });
 
       doc.save(`board-report-${new Date().toISOString().slice(0, 10)}.pdf`);
-    } catch (err) { alert('PDF generation failed. Please try again.'); }
+    } catch (err) { alert('PDF generation failed. Try again.'); }
     setPdfLoading(false);
   };
 
@@ -2799,7 +2799,7 @@ export function AttendanceAlerts() {
                         background: smsResult.success ? 'color-mix(in srgb, var(--tool-hex-34d399) 10%, transparent)' : 'color-mix(in srgb, var(--tool-hex-f87171) 10%, transparent)',
                         border: `1px solid ${smsResult.success ? 'color-mix(in srgb, var(--tool-hex-34d399) 30%, transparent)' : 'color-mix(in srgb, var(--tool-hex-f87171) 30%, transparent)'}`,
                         color: smsResult.success ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-f87171)' }}>
-                        {smsResult.success ? `SMS ${smsResult.status === 'not_configured' ? 'logged (Twilio not configured)' : 'sent successfully!'}` : `Error: ${smsResult.error}`}
+                        {smsResult.success ? `SMS ${smsResult.status === 'not_configured' ? 'logged (Twilio not configured)' : 'sent'}` : `Error: ${smsResult.error}`}
                       </div>
                     )}
                     <button type="submit" disabled={sending}

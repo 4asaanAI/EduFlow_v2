@@ -114,7 +114,7 @@ export function LoadingCard({ message = 'Loading data...' }) {
   );
 }
 
-export function ErrorCard({ message = 'Unable to load data.', onRetry }) {
+export function ErrorCard({ message = "Couldn't load data.", onRetry }) {
   return (
     <div role="alert" style={{
       background: 'color-mix(in srgb, var(--color-danger) 7%, transparent)',

@@ -276,7 +276,7 @@ function PositionsTab({ canManage }) {
       closeModal();
       load();
     } else {
-      setError(res.detail || 'Unable to assign position');
+      setError(res.detail || "Couldn't assign position");
     }
     setSaving(false);
   };
@@ -442,7 +442,7 @@ function TeamsTab({ canManage }) {
   };
 
   const submit = async () => {
-    if (!form.sport) { setError('Please select a sport'); return; }
+    if (!form.sport) { setError('Select a sport'); return; }
     if (!form.name.trim()) { setError('Team name is required'); return; }
     setSaving(true);
     setError('');

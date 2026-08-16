@@ -471,7 +471,7 @@ export function AttendanceRecorder() {
     setRecords([]);
     try {
       const result = await getTodayAttendance(selectedClass, date);
-      if (!result?.success) throw new Error('Unable to load attendance');
+      if (!result?.success) throw new Error("Couldn't load attendance");
       setRecords(result.data || []);
     } catch {
       setLoadError(true);
@@ -489,10 +489,10 @@ export function AttendanceRecorder() {
     setSaveError('');
     try {
       const result = await bulkMarkAttendance({ class_id: selectedClass, date, records: records.map(s => ({ student_id: s.student_id, status: s.status })) });
-      if (!result?.success) throw new Error(result?.detail || 'Unable to save attendance.');
+      if (!result?.success) throw new Error(result?.detail || "Couldn't save attendance.");
       setSaved(true); setTimeout(() => setSaved(false), 3000);
     } catch (error) {
-      setSaveError(error.message || 'Unable to save attendance.');
+      setSaveError(error.message || "Couldn't save attendance.");
     } finally {
       setSaving(false);
     }
@@ -504,7 +504,7 @@ export function AttendanceRecorder() {
   return (
     <ToolPage title="Attendance Recorder" subtitle="Mark class attendance">
       {saveError && <ErrorCard message={saveError} />}
-      {loadError && <ErrorCard message="Unable to load this attendance register. Please try again." onRetry={loadStudents} />}
+      {loadError && <ErrorCard message="Couldn't load attendance. Try again." onRetry={loadStudents} />}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         <SearchableSelect value={selectedClass} onChange={e => setSelectedClass(e.target.value)} data-testid="class-select" style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 7, padding: '8px 12px', color: 'var(--c-text)', fontSize: 12, outline: 'none' }}>
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
@@ -662,7 +662,7 @@ function explainDownloadFailure(status) {
     return "Today's limit for generated documents has been reached. Please try tomorrow.";
   }
   if (status === 404) return 'That student record could not be found.';
-  return 'The document could not be generated. Please try again.';
+  return "The document couldn't be generated. Try again.";
 }
 
 async function downloadBlobAsPdf(url, body, filename, onStart, onDone, onError) {
@@ -1590,7 +1590,7 @@ export function DocumentScanner() {
           </div>
 
           <input type="file" ref={inputRef} style={{ display: 'none' }} accept=".pdf,.jpg,.jpeg,.png,.heic" onChange={handleUpload} />
-          <ActionBtn label={uploading ? 'Uploading...' : 'Choose & Upload File'} onClick={() => { if (!studentId) { setResult({ error: 'Please select a student first' }); return; } inputRef.current?.click(); }} disabled={uploading} />
+          <ActionBtn label={uploading ? 'Uploading...' : 'Choose & Upload File'} onClick={() => { if (!studentId) { setResult({ error: 'Select a student first' }); return; } inputRef.current?.click(); }} disabled={uploading} />
 
           {result && (
             <div style={{ marginTop: 12, padding: 12, background: result.error ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)', border: `1px solid ${result.error ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)'}`, borderRadius: 8, fontSize: 12, color: result.error ? 'var(--tool-hex-f87171)' : 'var(--tool-hex-34d399)' }}>
@@ -1799,7 +1799,7 @@ export function SmartFeeDefaulter() {
                     background: smsResult.success ? 'color-mix(in srgb, var(--tool-hex-34d399) 10%, transparent)' : 'color-mix(in srgb, var(--tool-hex-f87171) 10%, transparent)',
                     border: `1px solid ${smsResult.success ? 'color-mix(in srgb, var(--tool-hex-34d399) 30%, transparent)' : 'color-mix(in srgb, var(--tool-hex-f87171) 30%, transparent)'}`,
                     color: smsResult.success ? 'var(--tool-hex-34d399)' : 'var(--tool-hex-f87171)' }}>
-                    {smsResult.success ? `✓ SMS ${smsResult.status === 'not_configured' ? 'logged (Twilio not configured)' : 'sent successfully!'}` : `✗ ${smsResult.error}`}
+                    {smsResult.success ? `✓ SMS ${smsResult.status === 'not_configured' ? 'logged (Twilio not configured)' : 'sent'}` : `✗ ${smsResult.error}`}
                   </div>
                 )}
                 <button type="submit" disabled={sending}
@@ -1977,7 +1977,7 @@ export function ParentMessage() {
         setMessage('');
         setSelectedStudents(new Set());
       }
-    } catch { setResult({ error: 'Network error. Please try again.' }); }
+    } catch { setResult({ error: 'Network error. Try again.' }); }
     setSending(false);
   };
 
@@ -2125,7 +2125,7 @@ export function StudentTransfer() {
           body: JSON.stringify({ class_id: destinationClass, updated_at: new Date().toISOString() }),
         }).then(r => r.json());
         if (!res.success) throw new Error(res.detail || 'Failed');
-        setDone({ type: 'class_change', student: selectedStudent.name, msg: 'Student moved to new class successfully.' });
+        setDone({ type: 'class_change', student: selectedStudent.name, msg: 'Student moved to new class.' });
       } else {
         // Transfer or withdrawal - deactivate student
         const status = transferType === 'transfer' ? 'transferred' : 'withdrawn';

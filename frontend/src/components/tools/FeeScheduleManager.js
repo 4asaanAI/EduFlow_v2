@@ -50,7 +50,7 @@ export default function FeeScheduleManager({ currentUser, onChargesGenerated }) 
     setError('');
     try {
       const response = await apiFetch(`${API}/fees/structures`, { headers: getAuthHeaders() });
-      const body = await responseJson(response, 'Unable to load fee structures');
+      const body = await responseJson(response, "Couldn't load fee structures");
       const items = body.data || [];
       setStructures(items);
       setStructureId(previous => previous || items[0]?.id || '');
@@ -126,7 +126,7 @@ export default function FeeScheduleManager({ currentUser, onChargesGenerated }) 
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ installments: payload() }),
       });
-      await responseJson(response, 'Unable to save installment schedule');
+      await responseJson(response, "Couldn't save installment schedule");
       setNotice('Installment schedule saved as a new structure version.');
       await loadStructures();
     } catch (err) {
@@ -146,7 +146,7 @@ export default function FeeScheduleManager({ currentUser, onChargesGenerated }) 
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       });
-      const body = await responseJson(response, 'Unable to preview charges');
+      const body = await responseJson(response, "Couldn't preview charges");
       setPreview(body.data);
     } catch (err) {
       setError(err.message);
@@ -166,7 +166,7 @@ export default function FeeScheduleManager({ currentUser, onChargesGenerated }) 
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       });
-      const body = await responseJson(response, 'Unable to generate charges');
+      const body = await responseJson(response, "Couldn't generate charges");
       setNotice(`Generated ${body.data?.created_count || 0} charges; skipped ${body.data?.skipped_count || 0} existing charges.`);
       setPreview(null);
       if (onChargesGenerated) await onChargesGenerated();

@@ -68,10 +68,10 @@ export default function FeeSync() {
     setError('');
     try {
       const res = await getFeeSyncJob(id);
-      if (!res.success) throw new Error(res.detail || 'Unable to load sync job');
+      if (!res.success) throw new Error(res.detail || "Couldn't load sync job");
       setJob(res.data);
     } catch (err) {
-      setError(err.message || 'Unable to load sync job.');
+      setError(err.message || "Couldn't load sync job.");
     } finally {
       setLoading(false);
     }
@@ -83,11 +83,11 @@ export default function FeeSync() {
     setError('');
     try {
       const res = await resolveFeeSyncConflict(id, { conflict_id: conflictId, decision });
-      if (!res.success) throw new Error(res.detail || 'Unable to resolve conflict');
+      if (!res.success) throw new Error(res.detail || "Couldn't resolve conflict");
       setJob(res.data);
       setNotice('Conflict resolved.');
     } catch (err) {
-      setError(err.message || 'Unable to resolve conflict. Owner access is required.');
+      setError(err.message || "Couldn't resolve conflict. Owner access is required.");
     } finally {
       setLoading(false);
     }

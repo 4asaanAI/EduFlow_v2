@@ -74,11 +74,11 @@ export async function fetchAllRows(fetchPage, options = {}) {
       // A page that throws mid-walk must not surface as a short success. Rows
       // already collected are discarded on purpose: half a roll presented as a
       // whole one is the exact fault this file exists to prevent.
-      return { success: false, data: [], total: 0, truncated: false, detail: err.message || 'Unable to load' };
+      return { success: false, data: [], total: 0, truncated: false, detail: err.message || "Couldn't load" };
     }
 
     if (!res || !res.success) {
-      return { success: false, data: [], total: 0, truncated: false, detail: (res && res.detail) || 'Unable to load' };
+      return { success: false, data: [], total: 0, truncated: false, detail: (res && res.detail) || "Couldn't load" };
     }
 
     const batch = res.data || [];

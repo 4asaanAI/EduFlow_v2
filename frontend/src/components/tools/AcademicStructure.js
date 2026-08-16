@@ -77,7 +77,7 @@ export default function AcademicStructure() {
       setClasses(list);
       return list;
     }
-    setError(res.detail || 'Unable to load classes');
+    setError(res.detail || "Couldn't load classes");
     return [];
   }, []);
 

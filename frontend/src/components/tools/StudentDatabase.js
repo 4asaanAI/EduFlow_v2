@@ -276,11 +276,11 @@ function StudentProfileModal({ classes, initialStudent, onClose, onSaved }) {
           medical_notes: medical.medical_notes,
           emergency_contact: medical.emergency_contact,
         });
-        if (!res.success) { setError(res.detail || 'Unable to save'); setSaving(false); return; }
+        if (!res.success) { setError(res.detail || "Couldn't save"); setSaving(false); return; }
         studentId = initialStudent.id;
       } else {
         const res = await createStudent(payload);
-        if (!res.success) { setError(res.detail || 'Unable to save'); setSaving(false); return; }
+        if (!res.success) { setError(res.detail || "Couldn't save"); setSaving(false); return; }
         studentId = res.data?.id;
       }
 
@@ -1219,7 +1219,7 @@ export default function StudentDatabase() {
           { pageMax: SERVER_MAX_LIMIT },
         );
         if (!all.success) {
-          setError(all.detail || 'Unable to load students');
+          setError(all.detail || "Couldn't load students");
         } else {
           setStudents(all.data);
           setTotal(all.total);
@@ -1236,10 +1236,10 @@ export default function StudentDatabase() {
         setStudents(res.data || []);
         setTotal(res.meta?.total || 0);
       } else {
-        setError(res.detail || 'Unable to load students');
+        setError(res.detail || "Couldn't load students");
       }
     } catch (err) {
-      setError(err.message || 'Unable to load students');
+      setError(err.message || "Couldn't load students");
     }
     setLoading(false);
   }, [currentFilters, sort, page, pageSize]);
@@ -1260,7 +1260,7 @@ export default function StudentDatabase() {
     if (!window.confirm(`Deactivate ${student.name}?`)) return;
     const res = await deactivateStudent(student.id);
     if (res.success) loadData();
-    else setError(res.detail || 'Unable to deactivate student');
+    else setError(res.detail || "Couldn't deactivate student");
   };
 
   /**
@@ -1279,7 +1279,7 @@ export default function StudentDatabase() {
     if (!window.confirm(`Put ${student.name} back on the school roll?`)) return;
     const res = await setStudentEnrolment(student.id, 'active');
     if (res.success) { loadData(); loadCounts(); }
-    else setError(res.detail || 'Unable to restore student');
+    else setError(res.detail || "Couldn't restore student");
   };
 
   /** Move one student between the three states, with the optional note. */
@@ -1293,7 +1293,7 @@ export default function StudentDatabase() {
       loadData();
       loadCounts();
     } else {
-      setError(res.detail || 'Unable to change this student’s status');
+      setError(res.detail || "Couldn’t change this student’s status");
     }
   };
 
@@ -1305,7 +1305,7 @@ export default function StudentDatabase() {
       loadData();
       loadCounts();
     } else {
-      setError(res.detail || 'Unable to erase student');
+      setError(res.detail || "Couldn't erase student");
     }
   };
 

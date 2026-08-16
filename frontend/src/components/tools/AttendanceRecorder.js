@@ -56,11 +56,11 @@ export default function AttendanceRecorder() {
       try {
         const res = await getAllClasses();
         if (!active) return;
-        if (!res.success) throw new Error(res.detail || 'Unable to load classes');
+        if (!res.success) throw new Error(res.detail || "Couldn't load classes");
         setClasses(res.data || []);
         setSelectedClass(res.data?.[0]?.id || '');
       } catch (err) {
-        if (active) setError(err.message || 'Unable to load classes');
+        if (active) setError(err.message || "Couldn't load classes");
       } finally {
         if (active) setLoading(false);
       }
@@ -94,10 +94,10 @@ export default function AttendanceRecorder() {
     setHistory(null);
     try {
       const res = await getTodayAttendance(selectedClass, date);
-      if (!res.success) throw new Error(res.detail || 'Unable to load attendance');
+      if (!res.success) throw new Error(res.detail || "Couldn't load attendance");
       setRecords((res.data || []).map(row => ({ ...row, original_status: row.status })));
     } catch (err) {
-      setError(err.message || 'Unable to load attendance');
+      setError(err.message || "Couldn't load attendance");
       setRecords([]);
     } finally {
       setLoading(false);
@@ -133,7 +133,7 @@ export default function AttendanceRecorder() {
           date,
           records: newRecords.map(row => ({ student_id: row.student_id, status: row.status })),
         });
-        if (!res.success) throw new Error(res.detail || 'Unable to save attendance');
+        if (!res.success) throw new Error(res.detail || "Couldn't save attendance");
       }
 
       for (const row of changedExisting) {
@@ -142,14 +142,14 @@ export default function AttendanceRecorder() {
           correction_type: row.status,
           reason: correctionReason.trim(),
         });
-        if (!res.success) throw new Error(res.detail || `Unable to correct ${row.name}`);
+        if (!res.success) throw new Error(res.detail || `Couldn't correct ${row.name}`);
       }
 
       setNotice('Attendance saved.');
       setCorrectionReason('');
       await loadAttendance();
     } catch (err) {
-      setError(err.message || 'Unable to save attendance');
+      setError(err.message || "Couldn't save attendance");
     } finally {
       setSaving(false);
     }
@@ -187,10 +187,10 @@ export default function AttendanceRecorder() {
     setError('');
     try {
       const res = await getAttendanceHistory(attendanceId);
-      if (!res.success) throw new Error(res.detail || 'Unable to load correction history');
+      if (!res.success) throw new Error(res.detail || "Couldn't load correction history");
       setHistory(res.data);
     } catch (err) {
-      setError(err.message || 'Unable to load correction history');
+      setError(err.message || "Couldn't load correction history");
     }
   }
 

@@ -81,7 +81,7 @@ export default function ReportProblemModal({ onClose }) {
   }
 
   async function send() {
-    if (!title.trim()) { setError('Please say in one line what is wrong.'); return; }
+    if (!title.trim()) { setError('Say in one line what is wrong.'); return; }
     setSending(true);
     setError('');
     try {
@@ -95,9 +95,9 @@ export default function ReportProblemModal({ onClose }) {
         screenshot_mime: shot ? 'image/jpeg' : undefined,
       });
       if (res.success) setResult(res.data);
-      else setError(res.detail || 'The report could not be saved. Please try again.');
+      else setError(res.detail || 'Couldn\'t save the report. Try again.');
     } catch {
-      setError('The report could not be sent just now. Please try again.');
+      setError('Couldn\'t send the report. Try again.');
     } finally {
       setSending(false);
     }
@@ -174,7 +174,7 @@ export default function ReportProblemModal({ onClose }) {
             <div style={{ marginBottom: 12 }}>
               <label htmlFor="rp-detail" style={label}>What were you doing when it happened?</label>
               <textarea id="rp-detail" rows={3} style={{ ...field, resize: 'vertical' }} value={detail}
-                placeholder="It helps us a great deal to know the steps you took"
+                placeholder="It helps to know the steps you took"
                 onChange={(e) => setDetail(e.target.value)} />
             </div>
 

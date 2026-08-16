@@ -34,7 +34,7 @@ describe('reporting a problem', () => {
   it('will not send without one line saying what is wrong', async () => {
     render(<ReportProblemModal onClose={() => {}} />);
     fireEvent.click(screen.getByText('Send this report'));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Please say in one line what is wrong.');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Say in one line what is wrong.');
     expect(raisePlatformTicket).not.toHaveBeenCalled();
   });
 
@@ -73,7 +73,7 @@ describe('reporting a problem', () => {
   });
 
   it('tells the person when the report could not be saved at all', async () => {
-    raisePlatformTicket.mockResolvedValue({ success: false, detail: 'Please say in one line what is wrong.' });
+    raisePlatformTicket.mockResolvedValue({ success: false, detail: 'Could not save the report.' });
     render(<ReportProblemModal onClose={() => {}} />);
     fill();
     fireEvent.click(screen.getByText('Send this report'));

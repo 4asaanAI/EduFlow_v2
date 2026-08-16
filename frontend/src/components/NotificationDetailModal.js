@@ -410,7 +410,7 @@ export default function NotificationDetailModal({ notification, onClose }) {
                     <ArrowRight size={13} color={typeColor} />
                     <span style={{ fontWeight: 600, color: 'var(--c-text)', fontSize: 13 }}>Live summary alert</span>
                   </div>
-                  This is a real-time digest item generated from current school data. Click the notification to navigate to the relevant section for full details.
+                  This is a live summary from current school data. Open the notification to go to the relevant section for full details.
                 </div>
               ) : (
                 <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--c-muted)', fontSize: 13 }}>

@@ -47,7 +47,7 @@ async function executeAction(convId, action, params, label) {
   // {success:false, error}. Normalise both shapes here so the person still sees the
   // real reason ("You do not have permission...") instead of a generic failure.
   if (!res.ok) {
-    return { success: false, error: body.detail || body.error || 'Action failed. Please try again.' };
+    return { success: false, error: body.detail || body.error || 'Action failed. Try again.' };
   }
   return body;
 }
@@ -422,9 +422,9 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
         window.location.href = data.data.checkout_url;
         return;
       }
-      setRechargeError('Could not start checkout. Please try again.');
+      setRechargeError('Couldn\'t start checkout. Try again.');
     } catch {
-      setRechargeError('Could not start checkout - please check your connection and try again.');
+      setRechargeError('Couldn\'t start checkout. Check your connection and try again.');
     }
   };
 
@@ -640,7 +640,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
           setThinkingCollapsed(false);
           const errText = (typeof event.message === 'string' && event.message)
             ? event.message
-            : 'Flo hit a problem. Please try again.';
+            : 'Flo hit a problem. Try again.';
           {
             const prev = streamMsgRef.current;
             setStream(null);
@@ -787,7 +787,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
         setMessages(cur => [...cur, {
           id: `err-${Date.now()}`,
           role: 'assistant',
-          content: 'Something went wrong. Please try again.',
+          content: 'Something went wrong. Try again.',
           interrupted: true,
           created_at: new Date().toISOString(),
         }]);
@@ -822,7 +822,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
         setMessages(prev => [...prev, {
           id: resultId,
           role: 'assistant',
-          content: res.error || 'Action failed. Please try again.',
+          content: res.error || 'Action failed. Try again.',
           interrupted: true,
           created_at: new Date().toISOString(),
         }]);
@@ -832,7 +832,7 @@ export default function ChatInterface({ activeConvId, activeConvTitle, onConvCre
       setMessages(prev => [...prev, {
         id: resultId,
         role: 'assistant',
-        content: 'Action failed. Please try again.',
+        content: 'Action failed. Try again.',
         interrupted: true,
         created_at: new Date().toISOString(),
       }]);

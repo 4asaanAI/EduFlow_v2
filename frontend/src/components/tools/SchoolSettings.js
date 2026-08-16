@@ -65,7 +65,7 @@ export default function SchoolSettings() {
           communication_tone: d.ai_context?.communication_tone || '',
         });
       } else {
-        setError(res.detail || 'Unable to load school settings');
+        setError(res.detail || "Couldn't load school settings");
       }
       if (ayRes.success && ayRes.data) {
         setAcademicYear(ayRes.data.name || ayRes.data.year || '');

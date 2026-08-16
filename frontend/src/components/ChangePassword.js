@@ -90,7 +90,7 @@ export default function ChangePassword() {
             Set Your Password
           </h1>
           <p style={{ color: muted, fontSize: 14, marginTop: 8 }}>
-            Choose a secure password to continue
+            Create your password to continue
           </p>
         </div>
 

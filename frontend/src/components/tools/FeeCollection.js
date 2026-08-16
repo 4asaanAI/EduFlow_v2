@@ -225,8 +225,8 @@ export default function FeeCollection() {
         getDiscountTypes(),
         getDiscountSummary(),
       ]);
-      if (!summaryRes.success) throw new Error(summaryRes.detail || 'Unable to load fee summary');
-      if (!txnRes.success) throw new Error(txnRes.detail || 'Unable to load fee transactions');
+      if (!summaryRes.success) throw new Error(summaryRes.detail || "Couldn't load fee summary");
+      if (!txnRes.success) throw new Error(txnRes.detail || "Couldn't load fee transactions");
       setSummary(summaryRes.data);
       setTransactions(txnRes.data || []);
       setStudents(studentRes.data || []);
@@ -234,7 +234,7 @@ export default function FeeCollection() {
       setDiscountTypes(discountTypesRes.data || []);
       if (discountSummaryRes.success) setDiscountSummary(discountSummaryRes.data);
     } catch (err) {
-      setError(err.message || 'Unable to load fee data. Check whether the last payment was partially written before retrying.');
+      setError(err.message || "Couldn't load fee data. If the last payment was partially saved, wait a moment and try again.");
     } finally {
       setLoading(false);
     }

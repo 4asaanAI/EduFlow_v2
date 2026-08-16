@@ -95,7 +95,7 @@ export function ClassAttendanceMarker() {
   useEffect(() => { if (selectedClass) { setLoading(true); setLoadError(false); setRecords([]);
     apiFetch(`${API}/attendance/student/today/${selectedClass}?date=${date}`, { headers: h() })
       .then(r => r.json()).then(r => {
-        if (!r.success) throw new Error('Unable to load attendance');
+        if (!r.success) throw new Error("Couldn't load attendance");
         setRecords(r.data || []);
       }).catch(() => setLoadError(true)).finally(() => setLoading(false));
   } }, [selectedClass, date, currentUser]);
@@ -105,11 +105,11 @@ export function ClassAttendanceMarker() {
     setSaveError('');
     try {
       const result = await bulkMarkAttendance({ class_id: selectedClass, date, records: records.map(s => ({ student_id: s.student_id, status: s.status })) });
-      if (!result?.success) throw new Error(result?.detail || 'Unable to save attendance.');
+      if (!result?.success) throw new Error(result?.detail || "Couldn't save attendance.");
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (error) {
-      setSaveError(error.message || 'Unable to save attendance.');
+      setSaveError(error.message || "Couldn't save attendance.");
     } finally {
       setSaving(false);
     }
@@ -120,7 +120,7 @@ export function ClassAttendanceMarker() {
   return (
     <ToolPage title="Class Attendance" subtitle="Mark attendance for your class">
       {saveError && <ErrorCard message={saveError} />}
-      {loadError && <ErrorCard message="Unable to load this attendance register. Please try again." />}
+      {loadError && <ErrorCard message="Couldn't load attendance. Try again." />}
       {scope?.is_teacher && classes.length === 0 && (
         <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, padding: 16, marginBottom: 14, fontSize: 13, color: 'var(--c-muted)' }}>
           You are not set as the class teacher of any class yet. Ask your admin to assign you a class in Academic Structure to mark attendance.
@@ -318,7 +318,7 @@ export function QuestionPaperCreator() {
   const handleGenerate = async (e) => {
     e.preventDefault();
     if (!form.chapters) {
-      setError('Please fill in chapters');
+      setError('Fill in chapters');
       return;
     }
     setGenerating(true);
@@ -588,7 +588,7 @@ export function LeaveApplication() {
   const handleApply = async (e) => {
     e.preventDefault();
     if (!form.start_date || !form.end_date || !form.reason) {
-      setError('Please fill in all required fields');
+      setError('Fill in all required fields');
       return;
     }
     setSubmitting(true);
@@ -624,7 +624,7 @@ export function LeaveApplication() {
           </div>
           <FormField label="Reason" type="textarea" value={form.reason} onChange={f('reason')} placeholder="Reason for leave..." required />
           <ActionBtn label={submitted ? 'Submitted!' : submitting ? 'Submitting...' : 'Submit Application'} disabled={submitting} type="submit" />
-          {submitted && <p style={{ color: 'var(--tool-hex-34d399)', fontSize: 12, marginTop: 8 }}>Leave application submitted successfully!</p>}
+          {submitted && <p style={{ color: 'var(--tool-hex-34d399)', fontSize: 12, marginTop: 8 }}>Leave application submitted</p>}
           {error && <p style={{ color: 'var(--tool-hex-f87171)', fontSize: 12, marginTop: 8 }}>{error}</p>}
         </form>
       </div>
@@ -775,12 +775,12 @@ export function WorksheetCreator() {
       const method = editingId ? 'PATCH' : 'POST';
       const response = await apiFetch(url, { method, headers: h(), body: JSON.stringify(form) });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok || !body.success) throw new Error(body.detail || 'Unable to save the worksheet.');
+      if (!response.ok || !body.success) throw new Error(body.detail || "Couldn't save the worksheet.");
       setShowForm(false);
       setEditingId(null);
       await load();
     } catch (error) {
-      setSaveError(error.message || 'Unable to save the worksheet.');
+      setSaveError(error.message || "Couldn't save the worksheet.");
     } finally {
       setSaving(false);
     }
@@ -852,7 +852,7 @@ export function SubstitutionViewer() {
     // Fetch timetable changes / substitutions
     apiFetch(`${API}/academics/substitutions?user_id=${userId}`, { headers: h() })
       .then(r => r.json()).then(r => {
-        if (!r.success) throw new Error('Unable to load substitutions');
+        if (!r.success) throw new Error("Couldn't load substitutions");
         setSubs(r.data || []);
       })
       .catch(() => setLoadError(true)).finally(() => setLoading(false));
@@ -861,7 +861,7 @@ export function SubstitutionViewer() {
   return (
     <ToolPage title="Substitution Viewer" subtitle="View your schedule changes" loading={loading}>
       {loadError ? (
-        <ErrorCard message="Unable to load substitution assignments. Please try again." />
+        <ErrorCard message="Couldn't load substitution assignments. Try again." />
       ) : subs.length === 0 ? (
         <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)', background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 11, fontSize: 13 }}>
           No substitution assignments for today. Check back later.
