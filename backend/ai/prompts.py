@@ -384,28 +384,26 @@ TOOL_DRAFT_DOCUMENT = {
     "name": "draft_document",
     "description": (
         "Produce a REAL downloadable file and return a link to it: Word (docx), Excel "
-        "(xlsx), PowerPoint (pptx), PDF, CSV, Markdown or plain text. Use this whenever "
-        "someone wants a circular, notice, letter, report, template or "
-        "presentation as a FILE they can print, sign, email or share - not as chat text. "
-        "Put prose in `paragraphs` and any table in `headers` + `rows`. You already have "
-        "the content; this only formats and stores it. "
+        "(xlsx), PowerPoint (pptx), PDF, CSV, XML, Markdown or plain text. Use this "
+        "whenever someone wants a circular, notice, letter, report, template, "
+        "presentation, or ANY custom data as a FILE - not as chat text. If someone says "
+        "'give me this as CSV', 'save this as XML', 'create a downloadable file', or "
+        "asks for bulk/complex data in any file format, call this tool immediately. "
+        "NEVER display the content as a markdown table or chat text when a file was "
+        "asked for. Put prose in `paragraphs` and any table in `headers` + `rows`. "
+        "You already have the content; this only formats and stores it. "
         "DO NOT use this to hand over a WHOLE SET OF RECORDS - every student, all the "
         "staff, the payment ledger, attendance, expenses, enquiries or exam results. It "
         "can only hold the rows already in this conversation, so the file would be "
         "SHORT and nothing on it would say so, and a short file gets filed as if it "
         "were complete. Use `export_data_file` for those - it reads every row itself. "
         "Word, PDF, PowerPoint, Markdown and text come out on the school's own "
-        "letterhead (crest, name, CBSE affiliation line, address footer, page numbers) "
-        "automatically - never write the school's name and address into `paragraphs` "
-        "yourself or it will appear twice. Spreadsheets (xlsx, csv) are deliberately "
-        "plain, so the first row is the column headings and formulas and imports still "
-        "line up. "
-        "Hindi and other Devanagari text works in EVERY format including PDF, so write "
-        "in Hindi whenever the person asked in Hindi or the document is for parents who "
-        "read Hindi."
+        "letterhead automatically. Spreadsheets (xlsx, csv) and XML are deliberately "
+        "plain so formulas, imports and parsers still work. "
+        "Hindi and other Devanagari text works in EVERY format including PDF."
     ),
     "params_schema": {
-        "doc_type": "required - docx|xlsx|pptx|pdf|csv|md|txt",
+        "doc_type": "required - docx|xlsx|pptx|pdf|csv|xml|md|txt",
         "title": "optional heading",
         "filename": "optional name, no extension",
         "paragraphs": "optional list of text lines",
@@ -2016,6 +2014,32 @@ Rich block types:
 - file: {"type": "file", "file_name": "circular.docx", "doc_type": "docx", "size_kb": 14, "file_id": "b1c2d3e4-..."}
 - action_buttons: [{"label": "Approve Leave", "action": "approve_leave", "params": {"leave_id": "L123"}}]
 
+FILE CREATION RULE - ABSOLUTE, APPLIES TO EVERY REQUEST FOR A DOWNLOADABLE FILE:
+When someone asks for content as a file, spreadsheet, document, or download of ANY
+kind, you MUST call the appropriate file tool. NEVER display the data as plain chat
+text and skip the tool call. Showing rows in a markdown table is NOT the same as
+making a file. These are the three tools and when to use each one:
+
+- `export_whole_school_workbook` - EVERYTHING in one file: "the whole school", "all
+  our records", "everything in Excel", "a copy of the lot". One workbook, one sheet
+  per area. Owner and principal only; if anyone else asks, say so and offer a single
+  data set instead. Always read back the row count of every sheet.
+- `export_data_file` - DATABASE RECORDS: "the student list in Excel", "download all
+  staff", "export attendance", "send me the fee ledger as CSV". It reads every row
+  from the database itself, so the file is complete or refused - never short. Always
+  say how many rows it holds.
+- `draft_document` - CONTENT YOU HAVE WRITTEN OR COMPUTED: a circular, a notice, a
+  letter, a report, a summary, a template, a schedule, a custom table you have just
+  worked out. Supported formats: docx, xlsx, pptx, pdf, csv, xml, md, txt. Call this
+  for ANY custom file the user wants, regardless of format. Do NOT show the content
+  as chat text when a file was asked for - call the tool, then show a one-line
+  summary and the file block.
+
+WHEN IN DOUBT, CALL `draft_document`. If someone says "give me this as a CSV",
+"make this into an XML file", "save this as Excel", "create a downloadable file with
+this data" - that is always `draft_document` with the appropriate doc_type. Never
+respond to a file request with plain text output.
+
 WHICH TOOL MAKES A SPREADSHEET (2026-08-12). Three do, and picking the wrong one gives
 somebody a file that is quietly missing most of its rows:
 - `export_whole_school_workbook` - when they want EVERYTHING in one file: "the whole
@@ -2301,7 +2325,10 @@ def build_system_prompt(
             f"You are Flo, school assistant for {school_name}. "
             f"Today: {today}. User: {name} ({role_line}).{live_block}\n"
             f"Answer school questions and use available tools. "
-            f"Be concise and accurate. Confirm before any write action."
+            f"Be concise and accurate. Confirm before any write action.\n"
+            f"FILE RULE: When asked for a CSV, Excel, XML, Word, PDF, or any downloadable file, "
+            f"you MUST call draft_document with the correct doc_type. NEVER show the data as "
+            f"chat text or a markdown table instead of calling draft_document."
             f"{groq_catalogue}"
         )
 

@@ -67,8 +67,13 @@ CORE_TOOL_NAMES = frozenset({
     "get_messaging_status",
 })
 
-# Groq compact core: only the 6 most universal tools. Compact schemas are used so
-# the entire payload (system prompt + all schemas + history) stays under 8,000 tokens.
+# Groq compact core: tools sent with full (compact) schemas on every turn.
+# Compact schemas are used so the payload (system prompt + schemas + history)
+# stays under 8,000 tokens. draft_document MUST be here: if it is deferred,
+# Flo calls search_tools to find it, gets the full schema back as a tool result,
+# and the next Groq call includes that result in history — pushing the total
+# past 8,000 and triggering a 413. Keeping it core costs ~200 tokens upfront
+# on every turn and saves ~700 tokens of tool-call round-trip overhead.
 GROQ_CORE_TOOL_NAMES = frozenset({
     "search_tools",
     "get_school_pulse",
@@ -76,6 +81,7 @@ GROQ_CORE_TOOL_NAMES = frozenset({
     "get_fee_summary",
     "get_staff_list",
     "get_class_list",
+    "draft_document",
 })
 
 
@@ -117,17 +123,32 @@ _SYNONYMS = {
     "library": ("get_library_status",),
     "house": ("get_house_standings", "award_house_points"),
     "certificate": ("draft_document",),
+    "document": ("draft_document",),
+    "circular": ("draft_document",),
+    "notice": ("draft_document",),
+    "letter": ("draft_document",),
+    "report": ("draft_document",),
+    "template": ("draft_document",),
+    "xml": ("draft_document",),
+    "pdf": ("draft_document",),
+    "docx": ("draft_document",),
+    "word": ("draft_document",),
+    "pptx": ("draft_document",),
+    "powerpoint": ("draft_document",),
+    "presentation": ("draft_document",),
+    "file": ("draft_document", "export_data_file"),
     # Release 3, 2026-08-12. The everyday words for "give me the whole list as a file"
     # must reach the tool that READS every row, never the one that formats the rows
     # already in the conversation. Getting this wrong produces a short spreadsheet
     # with nothing on it to say so, which is the fault the release exists to remove.
     "excel": ("export_data_file", "export_whole_school_workbook"),
     "spreadsheet": ("export_data_file", "export_whole_school_workbook"),
-    "download": ("export_data_file", "export_whole_school_workbook"),
+    "download": ("export_data_file", "export_whole_school_workbook", "draft_document"),
     "export": ("export_data_file", "export_whole_school_workbook"),
     "xlsx": ("export_data_file",),
     "sheet": ("export_data_file", "draft_document"),
-    "csv": ("export_data_file",),
+    # csv maps to both: export_data_file for DB records, draft_document for custom data.
+    "csv": ("export_data_file", "draft_document"),
     # "everything" and "whole school" are how somebody asks for the one file with
     # every area in it. They must not land on the single-data-set tool, which would
     # answer "everything" with one sheet and look like it had complied.

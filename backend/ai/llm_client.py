@@ -66,26 +66,27 @@ def ai_unavailable_result(reason: str) -> LLMResult:
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_DEFAULT_MODEL = "openai/gpt-oss-120b"
 
+# Amazon Bedrock — Nova 2 Lite via global cross-region inference profile.
+# The global profile routes to the nearest available region automatically.
+# Model ID stays here so switching to Nova Pro or a future model needs one edit.
+BEDROCK_DEFAULT_MODEL = "global.amazon.nova-2-lite-v1:0"
+BEDROCK_DEFAULT_REGION = "ap-south-1"
+
 
 def get_azure_key() -> str:
-    """Read the Azure OpenAI key, accepting BOTH documented names (R9.1/C2).
-
-    The incident-class config bug: code read only ``AZURE_OPENAI_API_KEY`` while
-    CLAUDE.md/.env.example documented ``AZURE_OPENAI_KEY`` - a mismatch that left
-    the client silently unconfigured (every turn degraded, no error). Accept
-    either, preferring the SDK-native ``AZURE_OPENAI_API_KEY``.
-    """
+    """Read the Azure OpenAI key, accepting BOTH documented names (R9.1/C2)."""
     return os.environ.get("AZURE_OPENAI_API_KEY") or os.environ.get("AZURE_OPENAI_KEY", "")
 
 
 def validate_ai_config() -> None:
-    """Fail LOUD at startup when the AI config is missing outside development.
+    """Fail loud at startup when no AI provider is configured outside development.
 
-    Accepts either Groq (GROQ_API_KEY) or Azure OpenAI config. Groq takes
-    priority when both are present.
+    Priority: Bedrock (AWS_BEARER_TOKEN_BEDROCK) → Groq (GROQ_API_KEY) → Azure.
     """
     env = os.environ.get("ENVIRONMENT", "development").strip().lower()
     if env in ("development", "test", "testing"):
+        return
+    if os.environ.get("AWS_BEARER_TOKEN_BEDROCK"):
         return
     if os.environ.get("GROQ_API_KEY"):
         return
@@ -96,10 +97,8 @@ def validate_ai_config() -> None:
         missing.append("AZURE_OPENAI_ENDPOINT")
     if missing:
         raise ValueError(
-            "LLM configuration is required outside development. Set GROQ_API_KEY, "
-            "or set both: " + ", ".join(missing)
-            + ". The AI assistant cannot function without it; refusing to start "
-            "rather than degrade silently."
+            "LLM configuration required outside development. Set AWS_BEARER_TOKEN_BEDROCK, "
+            "GROQ_API_KEY, or both: " + ", ".join(missing)
         )
 
 
@@ -108,13 +107,27 @@ from ai.writing_style import plain_dashes
 
 class LLMClient:
     def __init__(self):
+        bedrock_token = os.environ.get("AWS_BEARER_TOKEN_BEDROCK", "")
         groq_key = os.environ.get("GROQ_API_KEY", "")
 
-        if groq_key and OpenAI:
-            # Groq is the primary provider when GROQ_API_KEY is set.
+        if bedrock_token:
+            # Bedrock is the primary provider when AWS_BEARER_TOKEN_BEDROCK is set.
+            self._provider = "bedrock"
+            self.deployment = os.environ.get("BEDROCK_MODEL_ID", BEDROCK_DEFAULT_MODEL)
+            self._bedrock_token = bedrock_token
+            self._bedrock_region = os.environ.get("AWS_REGION", BEDROCK_DEFAULT_REGION)
+            self._client = None  # OpenAI-compat client unused for Bedrock
+            self._bedrock_client = self._make_bedrock_client()
+            # Groq kept as fallback if Bedrock is set but fails at runtime.
+            self._groq_key = groq_key
+            logger.info("LLM client using Bedrock | model=%s | region=%s",
+                        self.deployment, self._bedrock_region)
+        elif groq_key and OpenAI:
             self.deployment = os.environ.get("GROQ_MODEL", GROQ_DEFAULT_MODEL)
             self._provider = "groq"
             self._client = OpenAI(api_key=groq_key, base_url=GROQ_BASE_URL)
+            self._bedrock_client = None
+            self._bedrock_token = ""
             logger.info("LLM client using Groq | model=%s", self.deployment)
         else:
             self.api_key = get_azure_key()
@@ -122,6 +135,8 @@ class LLMClient:
             self.deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-5.6-luna")
             self.api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2026-03-03")
             self._provider = "azure_openai"
+            self._bedrock_client = None
+            self._bedrock_token = ""
 
             if self.api_key and self.endpoint and OpenAI:
                 base_url = self.endpoint.rstrip("/")
@@ -131,7 +146,137 @@ class LLMClient:
                 self._client = None
                 logger.warning("LLM client not configured")
 
+    def _make_bedrock_client(self):
+        """Create a boto3 bedrock-runtime client with bearer token auth."""
+        try:
+            import boto3
+            token = self._bedrock_token
+
+            client = boto3.client(
+                "bedrock-runtime",
+                region_name=self._bedrock_region,
+                aws_access_key_id="bedrock-bearer-auth",
+                aws_secret_access_key="bedrock-bearer-auth",
+            )
+
+            def _inject_bearer(request, **kwargs):
+                request.headers["Authorization"] = f"Bearer {token}"
+
+            client.meta.events.register("before-send.bedrock-runtime.*", _inject_bearer)
+            return client
+        except Exception as e:
+            logger.error("Failed to create Bedrock client: %s", e)
+            return None
+
+    # ── Bedrock message/tool translation ─────────────────────────────────
+
+    def _build_bedrock_messages(self, messages: list, system_prompt: str = "") -> list:
+        """Convert internal message list to Bedrock Converse format.
+
+        Nova 2 Lite does not support the `system` parameter in Converse; when
+        system_prompt is supplied it is injected as a user+assistant prelude so
+        all Nova models work the same way. Tool results become user-role messages
+        per the Converse API contract.
+        """
+        out = []
+        if system_prompt:
+            out.append({"role": "user", "content": [{"text": system_prompt}]})
+            out.append({"role": "assistant", "content": [{"text": "Understood."}]})
+        for msg in messages:
+            role = msg.get("role", "user")
+            if role == "model":
+                role = "assistant"
+
+            if role == "tool":
+                # Tool results are sent as user messages in Bedrock Converse.
+                content_text = msg.get("content", "") or ""
+                out.append({
+                    "role": "user",
+                    "content": [{"toolResult": {
+                        "toolUseId": msg.get("tool_call_id", ""),
+                        "content": [{"text": content_text}],
+                    }}],
+                })
+                continue
+
+            if role == "assistant" and msg.get("tool_calls"):
+                # Re-emit tool call blocks from a prior assistant turn.
+                content = []
+                if msg.get("content"):
+                    content.append({"text": msg["content"]})
+                for tc in msg["tool_calls"]:
+                    fn = getattr(tc, "function", None)
+                    tc_id = getattr(tc, "id", "") or ""
+                    tc_name = getattr(fn, "name", "") if fn else (tc.get("id", "") if isinstance(tc, dict) else "")
+                    tc_args = {}
+                    if isinstance(tc, dict):
+                        tc_id = tc.get("id", "")
+                        fn_data = tc.get("function", {})
+                        tc_name = fn_data.get("name", "")
+                        args_raw = fn_data.get("arguments", "{}")
+                        try:
+                            tc_args = json.loads(args_raw) if isinstance(args_raw, str) else args_raw
+                        except (ValueError, TypeError):
+                            tc_args = {}
+                    content.append({"toolUse": {
+                        "toolUseId": tc_id,
+                        "name": tc_name,
+                        "input": tc_args,
+                    }})
+                out.append({"role": "assistant", "content": content})
+                continue
+
+            text = msg.get("content") or ""
+            if not isinstance(text, str):
+                text = str(text)
+            out.append({"role": role, "content": [{"text": text}]})
+        return out
+
+    @staticmethod
+    def _openai_tools_to_bedrock(tools: list) -> list:
+        """Convert OpenAI function-calling schema list to Bedrock toolSpec list."""
+        result = []
+        for t in (tools or []):
+            fn = t.get("function", {})
+            params = fn.get("parameters", {}) or {}
+            result.append({"toolSpec": {
+                "name": fn.get("name", ""),
+                "description": fn.get("description", fn.get("name", "")),
+                "inputSchema": {"json": params},
+            }})
+        return result
+
+    @staticmethod
+    def _extract_bedrock_tool_calls(content_blocks: list) -> list:
+        """Extract ToolCall objects from a Bedrock assistant content block list."""
+        calls = []
+        for block in (content_blocks or []):
+            tu = block.get("toolUse")
+            if not tu:
+                continue
+            calls.append(ToolCall(
+                id=tu.get("toolUseId", ""),
+                name=tu.get("name", ""),
+                arguments=tu.get("input", {}) or {},
+            ))
+        return calls
+
+    @staticmethod
+    def _bedrock_text(content_blocks: list) -> str:
+        """Extract concatenated text from Bedrock assistant content blocks."""
+        parts = []
+        for block in (content_blocks or []):
+            if "text" in block:
+                parts.append(block["text"])
+        return "".join(parts)
+
     # ── message assembly ──────────────────────────────────────────────────
+    # Groq free tier: 8,000 tokens per request. A tool result from get_staff_list
+    # (90+ staff) or get_student_database can be 4,000-6,000 tokens on its own,
+    # leaving no room for the system prompt + history. Cap each tool result at
+    # ~1,200 chars (~300 tokens) when in Groq mode so the follow-up call fits.
+    _GROQ_TOOL_RESULT_CHAR_LIMIT = 4800  # ~1,200 tokens; generous for small results
+
     def _build_messages(self, system_prompt: str, messages: list) -> list:
         """Translate our internal message list to the chat-completions shape.
 
@@ -140,16 +285,20 @@ class LLMClient:
         `role: "tool"` result message carrying `tool_call_id`.
         """
         az_messages = [{"role": "system", "content": system_prompt}]
+        groq_mode = self._provider == "groq"
         for msg in messages:
             msg_role = msg.get("role", "user")
             if msg_role == "model":
                 msg_role = "assistant"
 
             if msg_role == "tool":
+                content = msg.get("content", "") or ""
+                if groq_mode and len(content) > self._GROQ_TOOL_RESULT_CHAR_LIMIT:
+                    content = content[:self._GROQ_TOOL_RESULT_CHAR_LIMIT] + "\n...[truncated for token limit]"
                 az_messages.append({
                     "role": "tool",
                     "tool_call_id": msg.get("tool_call_id", ""),
-                    "content": msg.get("content", "") or "",
+                    "content": content,
                 })
                 continue
 
@@ -201,6 +350,9 @@ class LLMClient:
         """
         if not session_id:
             session_id = f"sess-{uuid.uuid4()}"
+
+        if getattr(self, "_provider", None) == "bedrock":
+            return await self._chat_bedrock(system_prompt, messages, session_id, tools, tool_choice)
 
         if not self._client:
             return ai_unavailable_result("not_configured")
@@ -289,10 +441,12 @@ class LLMClient:
             duration = round((time.perf_counter() - t0) * 1000, 1)
             error_name = e.__class__.__name__.lower()
             error_code = str(getattr(e, 'code', '') or '').lower()
+            error_msg = str(e)
             logger.error(
                 "LLM error | class=%s | code=%s | msg=%.300s",
-                error_name, error_code, str(e),
+                error_name, error_code, error_msg,
             )
+
             from services.layaastat import emit_llm_span
             await emit_llm_span(
                 model=self.deployment,
@@ -326,6 +480,12 @@ class LLMClient:
         """
         if not session_id:
             session_id = f"sess-{uuid.uuid4()}"
+
+        if getattr(self, "_provider", None) == "bedrock":
+            async for chunk in self._chat_stream_bedrock(system_prompt, messages, session_id):
+                yield chunk
+            return
+
         if not self._client:
             yield {"type": "error", "reason": "not_configured", "ok": False, "text": ""}
             return
@@ -423,6 +583,169 @@ class LLMClient:
                     }
         finally:
             # Best-effort: the daemon thread exits when the stream closes/GCs.
+            pass
+
+    # ── Bedrock implementation ────────────────────────────────────────────
+
+    async def _chat_bedrock(
+        self, system_prompt: str, messages: list, session_id: str,
+        tools: list = None, tool_choice: str = "auto",
+    ) -> LLMResult:
+        """Non-streaming Bedrock Converse call with tool support."""
+        if not self._bedrock_client:
+            return ai_unavailable_result("bedrock_not_configured")
+
+        bedrock_messages = self._build_bedrock_messages(messages, system_prompt)
+        kwargs: dict = {
+            "modelId": self.deployment,
+            "messages": bedrock_messages,
+            "inferenceConfig": {
+                "maxTokens": DEFAULT_MAX_COMPLETION_TOKENS,
+                "temperature": 0.7,
+            },
+        }
+        if tools:
+            bedrock_tools = self._openai_tools_to_bedrock(tools)
+            kwargs["toolConfig"] = {
+                "tools": bedrock_tools,
+                "toolChoice": {"auto": {}} if tool_choice == "auto" else {"any": {}},
+            }
+
+        t0 = time.perf_counter()
+        try:
+            resp = await asyncio.to_thread(self._bedrock_client.converse, **kwargs)
+            duration = round((time.perf_counter() - t0) * 1000, 1)
+
+            msg = resp.get("output", {}).get("message", {})
+            content_blocks = msg.get("content", [])
+            stop_reason = resp.get("stopReason", "")
+            usage = resp.get("usage", {})
+            input_tok = usage.get("inputTokens", 0)
+            output_tok = usage.get("outputTokens", 0)
+            tokens = input_tok + output_tok
+
+            tool_calls = self._extract_bedrock_tool_calls(content_blocks)
+            text = plain_dashes(self._bedrock_text(content_blocks))
+
+            from services.layaastat import emit_llm_span
+            await emit_llm_span(
+                model=self.deployment, provider_name=self._provider,
+                input_tokens=input_tok, output_tokens=output_tok,
+                duration_ms=duration, trace_id=session_id,
+            )
+            logger.debug(
+                "Bedrock done | session=%s | tokens=%d | stop=%s | tool_calls=%d",
+                session_id, tokens, stop_reason, len(tool_calls),
+            )
+
+            if tool_calls:
+                return LLMResult(text=text, tokens=tokens, ok=True, reason=stop_reason, tool_calls=tool_calls)
+            if not text.strip():
+                return LLMResult(text="", tokens=tokens, ok=False, reason=f"empty_{stop_reason or 'unknown'}")
+            return LLMResult(text=text, tokens=tokens, ok=True, reason=stop_reason)
+
+        except Exception as e:
+            duration = round((time.perf_counter() - t0) * 1000, 1)
+            error_name = e.__class__.__name__.lower()
+            error_code = str(getattr(e, "response", {}).get("Error", {}).get("Code", "") or "").lower()
+            logger.error("Bedrock error | class=%s | code=%s | msg=%.300s", error_name, error_code, str(e))
+            from services.layaastat import emit_llm_span
+            await emit_llm_span(
+                model=self.deployment, provider_name=self._provider, duration_ms=duration,
+                error_type=error_code or error_name or "bedrock_failed", trace_id=session_id,
+            )
+            # Fallback to Groq if available; trim history to last 6 messages so
+            # the total stays under Groq's 8,000-token limit.
+            if self._groq_key and OpenAI:
+                logger.warning("Bedrock failed; falling back to Groq | session=%s", session_id)
+                groq = LLMClient.__new__(LLMClient)
+                groq.deployment = os.environ.get("GROQ_MODEL", GROQ_DEFAULT_MODEL)
+                groq._provider = "groq"
+                groq._client = OpenAI(api_key=self._groq_key, base_url=GROQ_BASE_URL)
+                groq._bedrock_client = None
+                groq._bedrock_token = ""
+                trimmed = messages[-6:] if len(messages) > 6 else messages
+                return await groq.chat(system_prompt, trimmed, session_id, role=None,
+                                       tools=tools, tool_choice=tool_choice)
+            return ai_unavailable_result(error_code or error_name or "bedrock_failed")
+
+    async def _chat_stream_bedrock(
+        self, system_prompt: str, messages: list, session_id: str,
+    ):
+        """Streaming Bedrock ConverseStream — yields same dicts as chat_stream()."""
+        if not self._bedrock_client:
+            yield {"type": "error", "reason": "bedrock_not_configured", "ok": False, "text": ""}
+            return
+
+        bedrock_messages = self._build_bedrock_messages(messages, system_prompt)
+        kwargs = {
+            "modelId": self.deployment,
+            "messages": bedrock_messages,
+            "inferenceConfig": {"maxTokens": DEFAULT_MAX_COMPLETION_TOKENS, "temperature": 0.7},
+        }
+
+        q: "queue.Queue" = queue.Queue(maxsize=256)
+        t0 = time.perf_counter()
+
+        def _drain_bedrock():
+            try:
+                resp = self._bedrock_client.converse_stream(**kwargs)
+                stream = resp.get("stream")
+                input_tok = output_tok = 0
+                finish_reason = None
+                for event in stream:
+                    if "contentBlockDelta" in event:
+                        delta = event["contentBlockDelta"].get("delta", {})
+                        if "text" in delta:
+                            q.put(("delta", delta["text"]))
+                    elif "messageStop" in event:
+                        finish_reason = event["messageStop"].get("stopReason")
+                    elif "metadata" in event:
+                        usage = event["metadata"].get("usage", {})
+                        input_tok = usage.get("inputTokens", 0)
+                        output_tok = usage.get("outputTokens", 0)
+                q.put(("done", (input_tok + output_tok, finish_reason)))
+            except Exception as exc:
+                q.put(("error", exc))
+            finally:
+                q.put((None, None))
+
+        worker = threading.Thread(target=_drain_bedrock, daemon=True)
+        worker.start()
+
+        buffered = []
+        try:
+            while True:
+                kind, payload = await asyncio.to_thread(q.get)
+                if kind is None:
+                    break
+                if kind == "delta":
+                    payload = plain_dashes(payload)
+                    buffered.append(payload)
+                    yield {"type": "delta", "text": payload}
+                elif kind == "done":
+                    tokens, finish_reason = payload
+                    duration = round((time.perf_counter() - t0) * 1000, 1)
+                    text = "".join(buffered)
+                    tokens = tokens or max(1, len(text) // 4)
+                    from services.layaastat import emit_llm_span
+                    await emit_llm_span(
+                        model=self.deployment, provider_name=self._provider,
+                        output_tokens=tokens, duration_ms=duration, trace_id=session_id,
+                    )
+                    yield {"type": "done", "tokens": tokens, "reason": finish_reason, "ok": True}
+                elif kind == "error":
+                    duration = round((time.perf_counter() - t0) * 1000, 1)
+                    e = payload
+                    error_name = e.__class__.__name__.lower()
+                    logger.error("Bedrock stream error | class=%s | msg=%.200s", error_name, str(e))
+                    from services.layaastat import emit_llm_span
+                    await emit_llm_span(
+                        model=self.deployment, provider_name=self._provider,
+                        duration_ms=duration, error_type=error_name, trace_id=session_id,
+                    )
+                    yield {"type": "error", "reason": error_name, "ok": False, "text": "".join(buffered)}
+        finally:
             pass
 
 

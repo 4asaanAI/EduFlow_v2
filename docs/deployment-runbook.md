@@ -219,9 +219,11 @@ Every variable from `backend/.env.example` must be reviewed for each environment
 | `SCHOOL_ID` | Yes | Tenant identifier; required outside development. |
 | `SCHOOL_NAME` | Yes | Display name and SMS context. |
 | `JWT_SECRET` | Yes | Strong production-only secret. |
-| `GROQ_API_KEY` | Yes (or Azure) | Groq API key. When set, Groq is the primary LLM provider (model: `openai/gpt-oss-120b`). Takes priority over Azure OpenAI. |
+| `AWS_BEARER_TOKEN_BEDROCK` | Yes (or Groq/Azure) | Amazon Bedrock API key (bearer token). When set, Bedrock is the **primary** LLM provider. Get from AWS Console → Amazon Bedrock → API keys. |
+| `BEDROCK_MODEL_ID` | Optional | Bedrock model/inference-profile ID. Defaults to `global.amazon.nova-2-lite-v1:0` (Nova 2 Lite, global cross-region profile). |
+| `GROQ_API_KEY` | Yes (or Bedrock/Azure) | Groq API key. When `AWS_BEARER_TOKEN_BEDROCK` is absent, Groq is the primary provider. Also used as Bedrock fallback. |
 | `GROQ_MODEL` | Optional | Override the Groq model. Defaults to `openai/gpt-oss-120b`. |
-| `AZURE_OPENAI_API_KEY` | Yes (or Groq) | Azure OpenAI key. Used when `GROQ_API_KEY` is absent. |
+| `AZURE_OPENAI_API_KEY` | Yes (or Bedrock/Groq) | Azure OpenAI key. Used when neither Bedrock nor Groq keys are present. |
 | `AZURE_OPENAI_ENDPOINT` | Yes (or Groq) | Azure OpenAI endpoint. |
 | `AZURE_OPENAI_DEPLOYMENT` | Yes (or Groq) | Azure deployment name. |
 | `OPENAI_SPEND_ALERT_INR` | Recommended | Spend alert threshold. |

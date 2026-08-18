@@ -25,6 +25,7 @@ def test_get_azure_key_accepts_both_env_names(monkeypatch):
 
 def test_validate_ai_config_dev_ok_but_prod_missing_raises(monkeypatch):
     from ai import llm_client
+    monkeypatch.delenv("AWS_BEARER_TOKEN_BEDROCK", raising=False)
     monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("AZURE_OPENAI_KEY", raising=False)
     monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
@@ -33,7 +34,11 @@ def test_validate_ai_config_dev_ok_but_prod_missing_raises(monkeypatch):
     llm_client.validate_ai_config()  # dev: never raises
     monkeypatch.setenv("ENVIRONMENT", "production")
     with pytest.raises(ValueError):
-        llm_client.validate_ai_config()  # no Azure and no Groq key → must raise
+        llm_client.validate_ai_config()  # no Bedrock, Groq, or Azure → must raise
+    # Bedrock token alone is enough.
+    monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "bedrock-test")
+    llm_client.validate_ai_config()
+    monkeypatch.delenv("AWS_BEARER_TOKEN_BEDROCK")
     # Groq key alone is enough.
     monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
     llm_client.validate_ai_config()

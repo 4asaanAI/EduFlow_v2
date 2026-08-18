@@ -4616,7 +4616,7 @@ async def tool_draft_document(params: dict, user: dict, scope: dict = None) -> d
     doc_type = (params.get("doc_type") or params.get("format") or "").strip().lower()
     if not doc_type:
         return {"success": False, "denied": False, "data": {}, "meta": {"count": 0},
-                "message": "Which format? Choose docx, xlsx, pptx, pdf, csv, md or txt."}
+                "message": "Which format? Choose docx, xlsx, pptx, pdf, csv, xml, md or txt."}
 
     rows = params.get("rows") or []
     headers = params.get("headers") or []
@@ -4648,7 +4648,7 @@ async def tool_draft_document(params: dict, user: dict, scope: dict = None) -> d
             rows=rows,
             slides=params.get("slides"),
             source="assistant",
-            max_rows=EXPORT_MAX_ROWS if doc_type in ("xlsx", "csv") else None,
+            max_rows=EXPORT_MAX_ROWS if doc_type in ("xlsx", "csv", "xml") else None,
         )
     except (DocumentQuotaExceeded, DocumentStorageUnavailable) as exc:
         return {"success": False, "denied": False, "data": {}, "meta": {"count": 0},
@@ -5520,12 +5520,15 @@ TOOL_REGISTRY = {
         "dispatch_type": "read",
         "description": (
             "Create a real downloadable file from content YOU have written - a Word "
-            "document, Excel workbook, PowerPoint deck, PDF, CSV, Markdown or plain "
-            "text. Use this whenever someone asks for a circular, notice, letter, "
-            "report, template or presentation as a FILE they can print, sign, "
-            "email or share. Put prose in `paragraphs` and tabular data in "
-            "`headers` + `rows`. Returns a short `file_id` (not a link); append it in a "
-            "`file` rich block and the download button fetches a fresh link on tap. "
+            "document, Excel workbook, PowerPoint deck, PDF, CSV, XML, Markdown or "
+            "plain text. Use this whenever someone asks for a circular, notice, letter, "
+            "report, template, presentation, or ANY custom data as a FILE. If someone "
+            "says 'give me this as CSV', 'save as XML', 'create a downloadable file', "
+            "or asks for bulk/complex data in any file format, call this tool. NEVER "
+            "show the content as chat text when a file was requested. Put prose in "
+            "`paragraphs` and tabular data in `headers` + `rows`. Returns a short "
+            "`file_id` (not a link); append it in a `file` rich block and the download "
+            "button fetches a fresh link on tap. "
             "DO NOT use this to hand over a whole data set - every student, all the "
             "staff, the payment ledger, attendance, expenses, enquiries or results. "
             "The rows would only be the ones already mentioned in this conversation, "
@@ -5534,7 +5537,7 @@ TOOL_REGISTRY = {
             "row itself."
         ),
         "params_schema": {
-            "doc_type": {"type": "string", "description": "docx, xlsx, pptx, pdf, csv, md or txt"},
+            "doc_type": {"type": "string", "description": "docx, xlsx, pptx, pdf, csv, xml, md or txt"},
             "title": {"type": "string", "description": "Document title / heading"},
             "filename": {"type": "string", "description": "Optional file name, without extension"},
             "paragraphs": {"type": "array", "description": "Lines of prose, in order"},
@@ -8145,16 +8148,25 @@ WRITE_TOOL_NAMES = {
 
 
 def compact_tool_schema(name: str, tool_def: dict, required: "tuple | list" = ()) -> dict:
-    """Minimal schema for token-limited providers: param names only, no descriptions."""
+    """Minimal schema for token-limited providers: param names only, no descriptions.
+
+    Optional params are marked nullable (type: [X, "null"]) so strict validators
+    like Groq don't reject a null value for a parameter the model chose to omit.
+    """
     props = {}
+    req_set = set(required or ())
     for key, spec in (tool_def.get("params_schema") or {}).items():
         t = spec.get("type", "string") if isinstance(spec, dict) else "string"
-        entry: dict = {"type": t}
         if t == "array":
-            entry["items"] = {}
+            entry: dict = {"type": "array", "items": {}}
+        elif key not in req_set:
+            # Optional param — allow null so strict validators don't reject omissions.
+            entry = {"type": [t, "null"]}
+        else:
+            entry = {"type": t}
         props[key] = entry
     parameters = {"type": "object", "properties": props}
-    req = [k for k in (required or ()) if k in props]
+    req = [k for k in req_set if k in props]
     if req:
         parameters["required"] = req
     return {

@@ -46,6 +46,7 @@ CONTENT_TYPES = {
     "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     "pdf": "application/pdf",
     "csv": "text/csv",
+    "xml": "application/xml",
     "md": "text/markdown",
     "txt": "text/plain",
 }
@@ -57,7 +58,9 @@ SUPPORTED_TYPES = tuple(CONTENT_TYPES)
 # row down, so a formula, a filter or an import into another system starts on the
 # wrong line. Every other format is something a person reads, where the branding is
 # the point.
-UNBRANDED_TYPES = frozenset({"xlsx", "csv"})
+# XML is also unbranded: it is a data-interchange format and adding school header
+# rows would break any parser reading it.
+UNBRANDED_TYPES = frozenset({"xlsx", "csv", "xml"})
 
 
 class DocumentBuildError(Exception):
@@ -970,6 +973,64 @@ def _build_pdf(title, paragraphs, headers, rows, truncated_note, letterhead=True
     return bytes(out) if isinstance(out, (bytes, bytearray)) else out.encode("latin-1")
 
 
+def _build_xml(title, paragraphs, headers, rows, truncated_note):
+    """Build a well-formed XML document from the supplied content.
+
+    The structure is intentionally simple so any XML parser can read it without
+    a schema: a root <document> with <metadata>, <content> (prose paragraphs),
+    and <table> (headers + rows) sections. The school's name is in metadata, not
+    embedded as extra rows, so a program iterating <row> elements gets clean data.
+    """
+    import xml.etree.ElementTree as ET
+
+    root = ET.Element("document")
+    if title:
+        root.set("title", str(title)[:300])
+
+    # Metadata carries the school's identity without polluting the data rows.
+    meta = ET.SubElement(root, "metadata")
+    try:
+        from school_identity import default_school_identity
+        identity = default_school_identity()
+        ET.SubElement(meta, "school").text = identity.get("school_name", "")
+        ET.SubElement(meta, "board").text = identity.get("board", "")
+        ET.SubElement(meta, "city").text = identity.get("city", "")
+    except Exception:
+        pass
+    if title:
+        ET.SubElement(meta, "title").text = str(title)[:300]
+    if truncated_note:
+        ET.SubElement(meta, "note").text = truncated_note
+
+    if paragraphs:
+        content_el = ET.SubElement(root, "content")
+        for para in paragraphs[:MAX_PARAGRAPHS]:
+            p = ET.SubElement(content_el, "paragraph")
+            p.text = _clean_cell(para)
+
+    if rows:
+        table_el = ET.SubElement(root, "table")
+        if headers:
+            hdrs_el = ET.SubElement(table_el, "headers")
+            for h in headers:
+                ET.SubElement(hdrs_el, "header").text = h
+        rows_el = ET.SubElement(table_el, "rows")
+        for row in rows:
+            row_el = ET.SubElement(rows_el, "row")
+            for idx, cell in enumerate(row):
+                cell_el = ET.SubElement(row_el, "cell")
+                if headers and idx < len(headers):
+                    # Use the column name as the attribute so the cell is self-describing.
+                    safe_attr = re.sub(r"[^A-Za-z0-9_.-]", "_", headers[idx]) or f"col{idx}"
+                    cell_el.set("name", safe_attr)
+                cell_el.text = cell
+
+    # ET.tostring gives bytes with the declaration only when encoding != "unicode".
+    declaration = b'<?xml version="1.0" encoding="UTF-8"?>\n'
+    body = ET.tostring(root, encoding="unicode", xml_declaration=False)
+    return declaration + body.encode("utf-8")
+
+
 def _build_text(doc_type, title, paragraphs, headers, rows, truncated_note, letterhead=True):
     lines: List[str] = []
     if doc_type == "csv":
@@ -1210,6 +1271,8 @@ def build_document(
         content = _build_pptx(title, paragraphs, hdrs, norm_rows, note, slides, letterhead)
     elif doc_type == "pdf":
         content = _build_pdf(title, paragraphs, hdrs, norm_rows, note, letterhead)
+    elif doc_type == "xml":
+        content = _build_xml(title, paragraphs, hdrs, norm_rows, note)
     else:
         content = _build_text(doc_type, title, paragraphs, hdrs, norm_rows, note, letterhead)
 

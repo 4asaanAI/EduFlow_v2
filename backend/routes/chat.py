@@ -3143,6 +3143,29 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
     # ── Phase 12: Parse rich content ──────────────────────────────────────
     clean_text, rich_content = _extract_rich_content(clean_response)
 
+    # Auto-inject file rich blocks for file-producing tools. LLMs (especially compact
+    # models) often describe the file in prose instead of emitting a <<<RICH_CONTENT>>>
+    # block. Injecting from the tool result guarantees the download button always appears.
+    _FILE_PRODUCING_TOOLS = {"draft_document", "export_data_file", "export_whole_school_workbook"}
+    for _tc in all_tool_calls:
+        if _tc.get("tool") not in _FILE_PRODUCING_TOOLS:
+            continue
+        _tc_data = (_tc.get("result") or {}).get("data") or {}
+        _file_id = _tc_data.get("file_id", "")
+        if not _file_id:
+            continue
+        if rich_content is None:
+            rich_content = {}
+        _blocks = rich_content.setdefault("rich_blocks", [])
+        _existing = {b.get("file_id") for b in _blocks if b.get("type") == "file"}
+        if _file_id not in _existing:
+            _blocks.insert(0, {
+                "type": "file",
+                "file_id": _file_id,
+                "file_name": _tc_data.get("file_name") or "document",
+                "doc_type": _tc_data.get("doc_type") or "",
+            })
+
     # Epic G (G.4): append the in-chat "remember that?" question to the reply when
     # the assistant is genuinely uncertain (never a UI control). Only when there is
     # already some answer text, so we don't surface a bare question.
