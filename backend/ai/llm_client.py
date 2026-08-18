@@ -63,6 +63,10 @@ def ai_unavailable_result(reason: str) -> LLMResult:
     return LLMResult(text="", tokens=0, ok=False, reason=reason)
 
 
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+GROQ_DEFAULT_MODEL = "openai/gpt-oss-120b"
+
+
 def get_azure_key() -> str:
     """Read the Azure OpenAI key, accepting BOTH documented names (R9.1/C2).
 
@@ -77,17 +81,13 @@ def get_azure_key() -> str:
 def validate_ai_config() -> None:
     """Fail LOUD at startup when the AI config is missing outside development.
 
-    Same posture as ``tenant.validate_school_id`` (R9.1/C2 AC2): a
-    non-development environment with no LLM key or endpoint is a
-    misconfiguration that would otherwise surface only as silent AI degradation,
-    so we raise here and refuse to boot.
-
-    NOTE (confidentiality): env-var names retain the historical AZURE_* prefix
-    for ops continuity, but no user-facing surface ever names the provider - the
-    assistant is "Layaa AI" to every client.
+    Accepts either Groq (GROQ_API_KEY) or Azure OpenAI config. Groq takes
+    priority when both are present.
     """
     env = os.environ.get("ENVIRONMENT", "development").strip().lower()
     if env in ("development", "test", "testing"):
+        return
+    if os.environ.get("GROQ_API_KEY"):
         return
     missing = []
     if not get_azure_key():
@@ -96,8 +96,8 @@ def validate_ai_config() -> None:
         missing.append("AZURE_OPENAI_ENDPOINT")
     if missing:
         raise ValueError(
-            "LLM configuration is required outside development. Missing: "
-            + ", ".join(missing)
+            "LLM configuration is required outside development. Set GROQ_API_KEY, "
+            "or set both: " + ", ".join(missing)
             + ". The AI assistant cannot function without it; refusing to start "
             "rather than degrade silently."
         )
@@ -108,22 +108,28 @@ from ai.writing_style import plain_dashes
 
 class LLMClient:
     def __init__(self):
-        self.api_key = get_azure_key()
-        self.endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
-        self.deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-5.6-luna")
-        self.api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2026-03-03")
+        groq_key = os.environ.get("GROQ_API_KEY", "")
 
-        if self.api_key and self.endpoint and OpenAI:
-            # Endpoint already includes /openai/v1 path (AI Foundry v1 style).
-            # Use the standard OpenAI client with base_url to avoid a doubled path.
-            base_url = self.endpoint.rstrip("/")
-            self._client = OpenAI(
-                api_key=self.api_key,
-                base_url=base_url,
-            )
+        if groq_key and OpenAI:
+            # Groq is the primary provider when GROQ_API_KEY is set.
+            self.deployment = os.environ.get("GROQ_MODEL", GROQ_DEFAULT_MODEL)
+            self._provider = "groq"
+            self._client = OpenAI(api_key=groq_key, base_url=GROQ_BASE_URL)
+            logger.info("LLM client using Groq | model=%s", self.deployment)
         else:
-            self._client = None
-            logger.warning("LLM client not configured")
+            self.api_key = get_azure_key()
+            self.endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
+            self.deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-5.6-luna")
+            self.api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2026-03-03")
+            self._provider = "azure_openai"
+
+            if self.api_key and self.endpoint and OpenAI:
+                base_url = self.endpoint.rstrip("/")
+                self._client = OpenAI(api_key=self.api_key, base_url=base_url)
+                logger.info("LLM client using Azure OpenAI | model=%s", self.deployment)
+            else:
+                self._client = None
+                logger.warning("LLM client not configured")
 
     # ── message assembly ──────────────────────────────────────────────────
     def _build_messages(self, system_prompt: str, messages: list) -> list:
@@ -264,7 +270,7 @@ class LLMClient:
             from services.layaastat import emit_llm_span
             await emit_llm_span(
                 model=self.deployment,
-                provider_name="azure_openai",
+                provider_name=self._provider,
                 input_tokens=input_tok,
                 output_tokens=output_tok,
                 duration_ms=duration,
@@ -290,7 +296,7 @@ class LLMClient:
             from services.layaastat import emit_llm_span
             await emit_llm_span(
                 model=self.deployment,
-                provider_name="azure_openai",
+                provider_name=self._provider,
                 duration_ms=duration,
                 error_type=error_code or error_name or "request_failed",
                 trace_id=session_id,
@@ -389,7 +395,7 @@ class LLMClient:
                     from services.layaastat import emit_llm_span
                     await emit_llm_span(
                         model=self.deployment,
-                        provider_name="azure_openai",
+                        provider_name=self._provider,
                         output_tokens=tokens,
                         duration_ms=duration,
                         trace_id=session_id,
@@ -404,7 +410,7 @@ class LLMClient:
                     from services.layaastat import emit_llm_span
                     await emit_llm_span(
                         model=self.deployment,
-                        provider_name="azure_openai",
+                        provider_name=self._provider,
                         duration_ms=duration,
                         error_type=error_code or error_name or "stream_failed",
                         trace_id=session_id,

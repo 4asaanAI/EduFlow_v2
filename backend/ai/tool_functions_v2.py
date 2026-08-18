@@ -8144,6 +8144,29 @@ WRITE_TOOL_NAMES = {
 }
 
 
+def compact_tool_schema(name: str, tool_def: dict, required: "tuple | list" = ()) -> dict:
+    """Minimal schema for token-limited providers: param names only, no descriptions."""
+    props = {}
+    for key, spec in (tool_def.get("params_schema") or {}).items():
+        t = spec.get("type", "string") if isinstance(spec, dict) else "string"
+        entry: dict = {"type": t}
+        if t == "array":
+            entry["items"] = {}
+        props[key] = entry
+    parameters = {"type": "object", "properties": props}
+    req = [k for k in (required or ()) if k in props]
+    if req:
+        parameters["required"] = req
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": name.replace("_", " "),
+            "parameters": parameters,
+        },
+    }
+
+
 def openai_tool_schema(name: str, tool_def: dict, required: "tuple | list" = ()) -> dict:
     """R11.2 AC2: derive a native function-calling schema from ONE registry entry.
 

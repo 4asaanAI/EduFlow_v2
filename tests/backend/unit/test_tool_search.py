@@ -40,6 +40,9 @@ STUDENT = {"id": "s1", "role": "student", "name": "Kid", "branch_id": "branch-jo
 @pytest.fixture(autouse=True)
 def _enabled(monkeypatch):
     monkeypatch.setenv("EDUFLOW_TOOL_SEARCH", "1")
+    # These tests verify the standard (non-Groq) CORE set.
+    import ai.llm_client as _lc
+    monkeypatch.setattr(_lc.llm_client, "_provider", "azure_openai")
 
 
 def _tokens(user, unlocked=None):

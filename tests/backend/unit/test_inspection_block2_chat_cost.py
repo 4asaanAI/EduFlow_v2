@@ -36,6 +36,10 @@ TEACHER = {"id": "t1", "role": "teacher"}
 @pytest.fixture(autouse=True)
 def _enabled(monkeypatch):
     monkeypatch.setenv("EDUFLOW_TOOL_SEARCH", "1")
+    # These tests verify the standard (non-Groq) CORE set. Force the singleton to the
+    # Azure path so GROQ_COMPACT_MODE does not change what is advertised.
+    import ai.llm_client as _lc
+    monkeypatch.setattr(_lc.llm_client, "_provider", "azure_openai")
 
 
 def _advertised(user, unlocked=None):

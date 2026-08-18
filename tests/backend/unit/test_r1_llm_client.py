@@ -26,6 +26,7 @@ def _client_with(responses):
     """Build an LLMClient whose underlying SDK returns `responses` in order."""
     client = LLMClient.__new__(LLMClient)
     client.deployment = "test-deploy"
+    client._provider = "test"
     calls = {"n": 0, "max_tokens": []}
 
     class _Completions:
@@ -85,6 +86,7 @@ async def test_empty_length_retries_with_more_headroom(monkeypatch):
 async def test_exception_returns_ok_false(monkeypatch):
     client = LLMClient.__new__(LLMClient)
     client.deployment = "x"
+    client._provider = "test"
 
     class _Boom:
         def create(self, **k):

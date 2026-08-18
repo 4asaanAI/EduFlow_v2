@@ -219,9 +219,11 @@ Every variable from `backend/.env.example` must be reviewed for each environment
 | `SCHOOL_ID` | Yes | Tenant identifier; required outside development. |
 | `SCHOOL_NAME` | Yes | Display name and SMS context. |
 | `JWT_SECRET` | Yes | Strong production-only secret. |
-| `AZURE_OPENAI_API_KEY` | Yes | Required for AI chat. |
-| `AZURE_OPENAI_ENDPOINT` | Yes | Azure OpenAI endpoint. |
-| `AZURE_OPENAI_DEPLOYMENT` | Yes | Deployment name. |
+| `GROQ_API_KEY` | Yes (or Azure) | Groq API key. When set, Groq is the primary LLM provider (model: `openai/gpt-oss-120b`). Takes priority over Azure OpenAI. |
+| `GROQ_MODEL` | Optional | Override the Groq model. Defaults to `openai/gpt-oss-120b`. |
+| `AZURE_OPENAI_API_KEY` | Yes (or Groq) | Azure OpenAI key. Used when `GROQ_API_KEY` is absent. |
+| `AZURE_OPENAI_ENDPOINT` | Yes (or Groq) | Azure OpenAI endpoint. |
+| `AZURE_OPENAI_DEPLOYMENT` | Yes (or Groq) | Azure deployment name. |
 | `OPENAI_SPEND_ALERT_INR` | Recommended | Spend alert threshold. |
 | `BIOMETRIC_ENABLED` | Optional | Enables biometric dependency health check. |
 | `BIOMETRIC_HEALTH_URL` | Optional | Biometric provider health URL. |

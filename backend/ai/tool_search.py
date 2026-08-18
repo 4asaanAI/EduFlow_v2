@@ -67,6 +67,38 @@ CORE_TOOL_NAMES = frozenset({
     "get_messaging_status",
 })
 
+# Groq compact core: only the 6 most universal tools. Compact schemas are used so
+# the entire payload (system prompt + all schemas + history) stays under 8,000 tokens.
+GROQ_CORE_TOOL_NAMES = frozenset({
+    "search_tools",
+    "get_school_pulse",
+    "search_students",
+    "get_fee_summary",
+    "get_staff_list",
+    "get_class_list",
+})
+
+
+def is_groq_core(tool_name: str) -> bool:
+    return tool_name in GROQ_CORE_TOOL_NAMES
+
+
+def groq_catalogue_block(authorized_names: List[str]) -> str:
+    """Like catalogue_block but defers everything not in GROQ_CORE_TOOL_NAMES.
+
+    Standard CORE tools (like draft_document, mark_attendance) are not in the
+    Groq schema payload, so they must be listed here — otherwise the model has
+    no way to know they exist and cannot call search_tools to fetch them.
+    """
+    deferred = sorted(n for n in authorized_names if n not in GROQ_CORE_TOOL_NAMES)
+    if not deferred:
+        return ""
+    names_str = ", ".join(deferred)
+    return (
+        "\n\nADDITIONAL TOOLS (call search_tools first to get the schema before using):\n"
+        + names_str
+    )
+
 # Words that should pull a tool up even though they do not appear in its name.
 _SYNONYMS = {
     "message": ("send_parent_message", "draft_parent_message", "create_announcement"),

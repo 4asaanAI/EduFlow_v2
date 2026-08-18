@@ -28,12 +28,17 @@ def test_validate_ai_config_dev_ok_but_prod_missing_raises(monkeypatch):
     monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("AZURE_OPENAI_KEY", raising=False)
     monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
     monkeypatch.setenv("ENVIRONMENT", "development")
     llm_client.validate_ai_config()  # dev: never raises
     monkeypatch.setenv("ENVIRONMENT", "production")
     with pytest.raises(ValueError):
-        llm_client.validate_ai_config()
-    # A configured prod is fine.
+        llm_client.validate_ai_config()  # no Azure and no Groq key → must raise
+    # Groq key alone is enough.
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test")
+    llm_client.validate_ai_config()
+    monkeypatch.delenv("GROQ_API_KEY")
+    # Azure config alone is also fine.
     monkeypatch.setenv("AZURE_OPENAI_KEY", "k")
     monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://x")
     llm_client.validate_ai_config()

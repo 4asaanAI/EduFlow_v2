@@ -44,6 +44,7 @@ from ai.tool_functions_v2 import (
     TOOL_REGISTRY,
     WRITE_TOOL_NAMES,
     openai_tool_schema,
+    compact_tool_schema,
 )
 from ai.scope_resolver import resolve_scope, Scope
 from ai.tool_access import is_tool_authorized
@@ -1061,6 +1062,7 @@ def _build_llm_tools(user: dict, only: "set | None" = None,
     at dispatch, now enforced at the model boundary too. Schemas come straight
     from TOOL_REGISTRY (single source, AC2).
     """
+    groq_mode = getattr(llm_client, "_provider", "") == "groq"
     tools = []
     for name, tdef in TOOL_REGISTRY.items():
         if only is not None and name not in only:
@@ -1069,16 +1071,18 @@ def _build_llm_tools(user: dict, only: "set | None" = None,
             continue
         if only is None and not is_chat_advertised(user, name):
             continue
-        # Deferred tool loading (2026-08-08). Send the CORE schemas plus anything the
-        # model has already searched for this turn; the rest are named in the prompt
-        # catalogue and fetched on demand. Cost only - the authorization gate above is
-        # unchanged, and an explicitly-named tool (`only=...`) is never deferred, so
-        # nothing becomes unreachable.
-        if only is None and tool_search.enabled():
+        # Groq compact mode: only a tiny CORE set to stay under the 8k TPM cap.
+        # Everything else remains reachable via search_tools (same deferred-load path).
+        if groq_mode and only is None:
+            if not tool_search.is_groq_core(name) and name not in (unlocked or set()):
+                continue
+        elif only is None and tool_search.enabled():
+            # Standard deferred loading for non-Groq providers.
             if not tool_search.is_core(name) and name not in (unlocked or set()):
                 continue
         required = WRITE_TOOL_REQUIRED_PARAMS.get(name, ())
-        tools.append(openai_tool_schema(name, tdef, required))
+        schema_fn = compact_tool_schema if groq_mode else openai_tool_schema
+        tools.append(schema_fn(name, tdef, required))
     return tools
 
 
@@ -2275,6 +2279,7 @@ async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_i
         system_prompt = build_system_prompt(
             user, school_context, lang,
             school_settings=school_context.get("_school_settings") or {},
+            compact=getattr(llm_client, "_provider", "") == "groq",
         )
 
         # Epic G (G.3): inject recalled memories/skills for Owner/Principal. Hybrid
