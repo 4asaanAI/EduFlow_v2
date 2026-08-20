@@ -18,6 +18,7 @@ import { API, apiFetch,
 } from '../../lib/api';
 import { getAuthHeaders } from '../../lib/authSession';
 import { useColumnSort, SortableHeaderRow } from './ToolPage';
+import ExportButton from '../ui/ExportButton';
 import SearchableSelect from '../ui/SearchableSelect';
 
 
@@ -26,6 +27,12 @@ const STATUS_OPTIONS = [
   { value: 'absent', label: 'Absent', color: 'var(--tool-hex-f87171)' },
   { value: 'late', label: 'Late', color: 'var(--tool-hex-fbbf24)' },
   { value: 'holiday', label: 'Holiday', color: 'var(--c-faint)' },
+];
+
+const REGISTER_EXPORT_COLUMNS = [
+  { key: 'roll_number', label: 'Roll' },
+  { key: 'name', label: 'Student' },
+  { key: 'status', label: 'Status', exportValue: (r) => badge(r.status).label },
 ];
 
 const blankManual = { student_id: '', status: 'present', reason: '' };
