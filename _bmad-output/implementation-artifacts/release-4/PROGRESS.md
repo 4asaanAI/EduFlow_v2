@@ -712,3 +712,14 @@ did, three months of history is already gone. **Check before deciding anything.*
 
 Neither gap is urgent and neither was fixed. Both are recorded here so the next person does
 not have to find them again.
+
+### 2026-08-26 - Gap 1 is FIXED in code, Gap 2 still needs an index decision
+
+Deleting a staff message now writes `message_delete`, with the full pre-deletion message
+snapshot under `changes.snapshot`, alongside the existing `message_edit` audit. The test
+pins who deleted the message, when, and what its text had been. The messaging API suite
+and the R4-2 audit coverage gate pass.
+
+The SMS retention question remains deliberately open because changing expiry is a live
+database/index decision. Before deciding anything, check whether the ninety-day TTL index
+actually exists on production `sms_logs`; startup index creation is disabled there.

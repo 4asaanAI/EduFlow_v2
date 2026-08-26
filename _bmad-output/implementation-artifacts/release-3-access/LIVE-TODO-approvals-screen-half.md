@@ -36,7 +36,32 @@ handing Chaman his credentials, is still a deliberate act nobody has taken.
 | 1 | The raise form. A person can only answer a request, not start one. Screen half only. | **DONE** |
 | 2 | The colleague pick-list, and opening an attachment. | **DONE** |
 | 3 | Merge the two staff leave decision paths, keep the one that marks the person away. Pin with a test that Aman or Adesh can act on all six kinds. | **DONE** |
-| 4 | **NEW, asked 2026-08-15:** make every pick-list across EduFlow type-to-search. List them all first. | Survey in progress |
+| 4 | **NEW, asked 2026-08-15:** make every pick-list across EduFlow type-to-search. List them all first. | CLOSED: all school-data pick-lists are searchable or already covered |
+
+## Update, 2026-08-26: Fee Collection pick-lists are closed
+
+The three student pick-lists on Fee Collection (payment, correction, discount) now all use
+`SearchableSelect`. More importantly, they no longer ask the server for a separate capped
+slice of students per form: payment fetched only 20, while correction and discount fetched
+up to 500 per class. They now share one complete page-walked school roll from
+`getAllStudents()`, narrow it by the selected class on screen, and search that list.
+A regression test pins that a 1,876-child roll is complete and searchable, including the
+child who would have been missing under the old first-page fetch.
+
+Validation: `FeeCollectionPickLists.test.js`, `SearchableSelect.test.js`, and frontend
+lint pass. The wider "every pick-list" survey remains open.
+
+## Update, 2026-08-26 (later): the survey is closed
+
+Every remaining bare `<select>` was read against the rule: it needs type-to-search when
+it is filled from school data and can grow long. The remaining bare selects are either
+short static vocabularies (status, role, payment mode), sort controls, settings choices,
+or already wrapped by `SearchableSelect` / `SearchablePicker`. No further product change
+is required.
+
+Separately, deleting a staff message now writes a `message_delete` audit row carrying the
+sender's snapshot before removal. Editing was already audited; deletion was not. The
+messaging suite proves the audit records who deleted the message, when, and what was said.
 
 **Gate after 1 to 3:** backend 4,000 passed / 0 failed / 14 deselected. Frontend 875 passed
 across 73 suites. Production build clean including lint. Baseline before this work was

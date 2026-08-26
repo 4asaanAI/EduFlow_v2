@@ -758,8 +758,12 @@ async def delete_message(
         raise HTTPException(404, "Message not found")
     thread = await _thread_for_member(db, message["thread_id"], user)
     deleted_at = _now()
+    deletion = {
+        "text": "",
+        "deleted_at": deleted_at,
+    }
     await db.platform_messages.update_one(
-        _scope({"id": message_id}, user), {"$set": {"text": "", "deleted_at": deleted_at}}
+        _scope({"id": message_id}, user), {"$set": deletion}
     )
     if (thread.get("last_message") or {}).get("id") == message_id:
         await db.platform_message_threads.update_one(
@@ -770,6 +774,20 @@ async def delete_message(
         "type": "message_deleted", "thread_id": thread["id"], "message_id": message_id,
         "deleted_at": deleted_at,
     })
+    # Decision 13: sending is not audited because the message row IS the record, but
+    # this update removes the only copy of what was said. The audit row is the part
+    # that can still answer who removed it and when.
+    await write_audit(
+        db,
+        action="message_delete",
+        entity_id=message_id,
+        collection="platform_messages",
+        changed_by=user.get("id", ""),
+        changed_by_role=user.get("role", ""),
+        school_id=get_school_id(),
+        branch_id=user.get("branch_id", ""),
+        changes=audit_changes.removed(message),
+    )
     return {"success": True}
 
 

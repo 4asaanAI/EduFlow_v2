@@ -14,7 +14,7 @@ import { API, apiFetch,
   getFeeDiscounts,
   getFeeSummary,
   getFeeTransactions,
-  getStudents,
+  getAllStudents,
   getAllClasses,
   getWhatsappDefaulters,
   listPayrollDisbursements,
@@ -119,15 +119,9 @@ export default function FeeCollection() {
   const [classes, setClasses] = useState([]);
   // per-form class + student pickers
   const [paymentClass, setPaymentClass] = useState('');
-  const [paymentStudents, setPaymentStudents] = useState([]);
-  const [paymentStudentsLoading, setPaymentStudentsLoading] = useState(false);
   const [correctionClass, setCorrectionClass] = useState('');
   const [correctionStudent, setCorrectionStudent] = useState('');
-  const [correctionStudents, setCorrectionStudents] = useState([]);
-  const [correctionStudentsLoading, setCorrectionStudentsLoading] = useState(false);
   const [discountClass, setDiscountClass] = useState('');
-  const [discountStudents, setDiscountStudents] = useState([]);
-  const [discountStudentsLoading, setDiscountStudentsLoading] = useState(false);
   const [overdueDays, setOverdueDays] = useState(30);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -217,11 +211,10 @@ export default function FeeCollection() {
     setLoading(true);
     setError('');
     try {
-      const [summaryRes, txnRes, overdueRes, studentRes, discountTypesRes, discountSummaryRes] = await Promise.all([
+      const [summaryRes, txnRes, overdueRes, discountTypesRes, discountSummaryRes] = await Promise.all([
         getFeeSummary(payment.fee_period ? { fee_period: payment.fee_period } : {}),
         getFeeTransactions({}),
         getFeeTransactions({ overdue_days: overdueDays }),
-        getStudents({ limit: 20 }),
         getDiscountTypes(),
         getDiscountSummary(),
       ]);
@@ -229,7 +222,6 @@ export default function FeeCollection() {
       if (!txnRes.success) throw new Error(txnRes.detail || "Couldn't load fee transactions");
       setSummary(summaryRes.data);
       setTransactions(txnRes.data || []);
-      setStudents(studentRes.data || []);
       setOverdueList(overdueRes.data || []);
       setDiscountTypes(discountTypesRes.data || []);
       if (discountSummaryRes.success) setDiscountSummary(discountSummaryRes.data);
@@ -242,26 +234,35 @@ export default function FeeCollection() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Load class list once
-  useEffect(() => { getAllClasses().then(r => { if (r.success) setClasses(r.data || []); }); }, []);
-
-  // Fetch students when a class is selected in each form
+  // Every form on this screen searches the same complete school roll, so one fetch
+  // replaces several capped per-form requests. A class still narrows each list before it
+  // is sent, which keeps a wrong choice from reaching another class's fee record.
   useEffect(() => {
-    if (!paymentClass) { setPaymentStudents([]); setPayment(p => ({ ...p, student_id: '' })); return; }
-    setPaymentStudentsLoading(true);
-    getStudents({ class_id: paymentClass, limit: 500 }).then(r => { if (r.success) setPaymentStudents(r.data || []); }).finally(() => setPaymentStudentsLoading(false));
+    let active = true;
+    getAllClasses().then((r) => {
+      if (active && r.success) setClasses(r.data || []);
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    getAllStudents().then((r) => {
+      if (active) setStudents(r.success ? r.data || [] : []);
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!paymentClass) { setPayment(p => ({ ...p, student_id: '' })); }
   }, [paymentClass]);
 
   useEffect(() => {
-    if (!correctionClass) { setCorrectionStudents([]); setCorrectionStudent(''); return; }
-    setCorrectionStudentsLoading(true);
-    getStudents({ class_id: correctionClass, limit: 500 }).then(r => { if (r.success) setCorrectionStudents(r.data || []); }).finally(() => setCorrectionStudentsLoading(false));
+    if (!correctionClass) { setCorrectionStudent(''); }
   }, [correctionClass]);
 
   useEffect(() => {
-    if (!discountClass) { setDiscountStudents([]); setDiscountApply(d => ({ ...d, student_id: '' })); return; }
-    setDiscountStudentsLoading(true);
-    getStudents({ class_id: discountClass, limit: 500 }).then(r => { if (r.success) setDiscountStudents(r.data || []); }).finally(() => setDiscountStudentsLoading(false));
+    if (!discountClass) { setDiscountApply(d => ({ ...d, student_id: '' })); }
   }, [discountClass]);
 
   useEffect(() => {
@@ -610,9 +611,9 @@ export default function FeeCollection() {
             <option value="">-- Select class --</option>
             {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
           </SearchableSelect>
-          <SearchableSelect value={payment.student_id} onChange={e => setPayment(prev => ({ ...prev, student_id: e.target.value }))} style={inputStyle} disabled={!paymentClass || paymentStudentsLoading}>
-            <option value="">{paymentStudentsLoading ? 'Loading...' : paymentClass ? 'Select student' : '-- Select class first --'}</option>
-            {paymentStudents.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          <SearchableSelect aria-label="Payment student" data-testid="payment-student" value={payment.student_id} onChange={e => setPayment(prev => ({ ...prev, student_id: e.target.value }))} style={inputStyle} disabled={!paymentClass}>
+            <option value="">{paymentClass ? 'Select student' : '-- Select class first --'}</option>
+            {students.filter(s => !paymentClass || s.class_id === paymentClass).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </SearchableSelect>
           <div style={twoCol}>
             <input value={payment.fee_period} onChange={e => setPayment(prev => ({ ...prev, fee_period: e.target.value }))} placeholder="2026-05" style={inputStyle} />
@@ -647,9 +648,9 @@ export default function FeeCollection() {
             <option value="">-- Select class --</option>
             {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
           </SearchableSelect>
-          <SearchableSelect value={correctionStudent} onChange={e => { setCorrectionStudent(e.target.value); setCorrection(initialCorrection); }} style={inputStyle} disabled={!correctionClass || correctionStudentsLoading}>
-            <option value="">{correctionStudentsLoading ? 'Loading...' : correctionClass ? 'Select student' : '-- Select class first --'}</option>
-            {correctionStudents.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          <SearchableSelect aria-label="Correction student" data-testid="correction-student" value={correctionStudent} onChange={e => { setCorrectionStudent(e.target.value); setCorrection(initialCorrection); }} style={inputStyle} disabled={!correctionClass}>
+            <option value="">{correctionClass ? 'Select student' : '-- Select class first --'}</option>
+            {students.filter(s => !correctionClass || s.class_id === correctionClass).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </SearchableSelect>
           <SearchableSelect value={correction.transaction_id} onChange={e => setCorrection(prev => ({ ...prev, transaction_id: e.target.value }))} style={inputStyle} disabled={!correctionStudent}>
             <option value="">{correctionStudent ? 'Select transaction' : '-- Select student first --'}</option>
@@ -731,12 +732,12 @@ export default function FeeCollection() {
             <option value="">-- Select class --</option>
             {classes.map(c => <option key={c.id} value={c.id}>{c.name}-{c.section}</option>)}
           </SearchableSelect>
-          <SearchableSelect value={discountApply.student_id} onChange={e => {
+          <SearchableSelect aria-label="Discount student" data-testid="discount-student" value={discountApply.student_id} onChange={e => {
             setDiscountApply(prev => ({ ...prev, student_id: e.target.value }));
             if (e.target.value) loadDiscountBreakdown(e.target.value);
-          }} style={inputStyle} disabled={!discountClass || discountStudentsLoading}>
-            <option value="">{discountStudentsLoading ? 'Loading...' : discountClass ? 'Select student' : '-- Select class first --'}</option>
-            {discountStudents.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          }} style={inputStyle} disabled={!discountClass}>
+            <option value="">{discountClass ? 'Select student' : '-- Select class first --'}</option>
+            {students.filter(s => !discountClass || s.class_id === discountClass).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </SearchableSelect>
           <SearchableSelect value={discountApply.discount_type_id} onChange={e => setDiscountApply(prev => ({ ...prev, discount_type_id: e.target.value }))} style={inputStyle}>
             <option value="">Select discount type</option>

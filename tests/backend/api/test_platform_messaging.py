@@ -551,3 +551,36 @@ def test_replying_to_a_colleague_does_not_500_on_mongos_own_id(client, messaging
         "send fail while the message had already been written"
     )
     assert reply.json()["data"]["text"] == "hello"
+
+
+def test_deleting_a_message_records_who_removed_it_and_what_was_lost(client, messaging_db):
+    """Editing a message is audited; deleting one was not. The row survives with an
+    empty body, but without the audit record the fact of the deletion - and the only
+    copy of what was deleted - disappeared from the school's history."""
+    owner_headers = _headers("owner-1", role="owner", sub_category="owner")
+
+    thread_id = client.post(
+        "/api/messaging/threads/direct",
+        headers=owner_headers,
+        json={"user_id": "principal-1"},
+    ).json()["data"]["id"]
+    sent = client.post(
+        f"/api/messaging/threads/{thread_id}/messages",
+        headers=owner_headers,
+        json={"text": "The bus leaves at six."},
+    )
+    assert sent.status_code == 201
+    message_id = sent.json()["data"]["id"]
+
+    response = client.delete(f"/api/messaging/messages/{message_id}", headers=owner_headers)
+
+    assert response.status_code == 200
+    audits = [doc for doc in messaging_db.audit_logs.docs if doc.get("entity_id") == message_id]
+    assert len(audits) == 1
+    audit = audits[0]
+    assert audit["action"] == "message_delete"
+    assert audit["changed_by"] == "owner-1"
+    snapshot = audit["changes"]["snapshot"]
+    assert audit["changes"]["kind"] == "delete"
+    assert snapshot["id"] == message_id
+    assert snapshot["text"] == "The bus leaves at six."
