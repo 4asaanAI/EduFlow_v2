@@ -32,6 +32,13 @@ jobs:
   backend:
     name: Backend suite
     runs-on: ubuntu-latest
+    # cost trim: skip the duplicate run on the merge commit after the PR
+    # already validated the same content. pull_request / schedule /
+    # workflow_dispatch always run; a push runs only when a person made the
+    # commit (a PR merge is committed by GitHub's web-flow bot).
+    if: >-
+      github.event_name != 'push' ||
+      github.event.head_commit.committer.email != 'noreply@github.com'
     steps:
       - uses: actions/checkout@v4
 
@@ -56,6 +63,13 @@ jobs:
   frontend:
     name: Frontend suite and production build
     runs-on: ubuntu-latest
+    # cost trim: skip the duplicate run on the merge commit after the PR
+    # already validated the same content. pull_request / schedule /
+    # workflow_dispatch always run; a push runs only when a person made the
+    # commit (a PR merge is committed by GitHub's web-flow bot).
+    if: >-
+      github.event_name != 'push' ||
+      github.event.head_commit.committer.email != 'noreply@github.com'
     defaults:
       run:
         working-directory: frontend
@@ -88,7 +102,11 @@ jobs:
     # path specifically. It runs nightly, on main, and on any change that touches
     # the AI layer or the database. Policy written down in
     # tests/backend/mongo_real/README.md.
-    if: github.event_name != 'pull_request'
+    # cost trim: also skip on the PR-merge push (already covered by the PR).
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'push' ||
+       github.event.head_commit.committer.email != 'noreply@github.com')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
