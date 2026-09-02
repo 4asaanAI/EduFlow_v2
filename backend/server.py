@@ -488,8 +488,20 @@ async def _check_sms() -> str:
 
 
 @app.get("/api/health/ready")
-async def health_ready():
+async def health_ready(request: Request):
+    # Unauthenticated callers get only the HTTP status (200/503).
+    # Callers with the HEALTH_CHECK_TOKEN header get the full breakdown.
+    health_token = os.environ.get("HEALTH_CHECK_TOKEN", "")
+    caller_token = request.headers.get("X-Health-Token", "")
+    detailed = health_token and caller_token == health_token
+
     db_status = await _check_db()
+
+    if not detailed:
+        if db_status == "error":
+            return JSONResponse(status_code=503, content={"overall": "down"})
+        return JSONResponse(status_code=200, content={"overall": "ready"})
+
     ai_status = await _check_ai()
     s3_status = await _check_s3()
     sms_status = await _check_sms()

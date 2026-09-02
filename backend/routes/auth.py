@@ -24,6 +24,7 @@ from middleware.auth import (
     get_current_user,
     hash_password,
     require_role,
+    require_owner_or_principal,
     verify_password,
 )
 from services.audit_service import write_audit
@@ -54,6 +55,11 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 # Maximum login attempts before temporary lockout
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
+
+# IP-based rate limit: max attempts from one IP across all usernames per window
+_IP_MAX_ATTEMPTS = 30
+_IP_WINDOW_SECONDS = 900  # 15 minutes
+_ip_attempts: dict = {}  # {ip: (count, window_start_epoch)}
 
 
 # ─── Request models ──────────────────────────────────────────────────────────
@@ -198,6 +204,11 @@ async def login(body: LoginRequest, request: Request, response: Response):
     db = get_db()
     username = body.username
     password = body.password
+
+    # IP-level rate limit: block credential-stuffing across many usernames
+    client_ip = _client_ip(request)
+    if _check_ip_rate_limit(client_ip):
+        raise HTTPException(429, "Too many login attempts from this network. Try again later.")
 
     # Rate limiting: check login attempts (key includes school so one tenant's
     # failed attempts don't lock the same username at another tenant)
@@ -406,10 +417,30 @@ async def _record_failed_attempt(db, key: str):
 
 
 def _client_ip(request: Request) -> str:
+    import re as _re
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
-        return forwarded.split(",")[0].strip() or "unknown"
+        raw = forwarded.split(",")[0].strip()
+        return _re.sub(r"[^\w.:\-]", "", raw) or "unknown"
     return request.client.host if request.client else "unknown"
+
+
+def _check_ip_rate_limit(ip: str) -> bool:
+    """Return True if IP has exceeded the attempt threshold (should block)."""
+    import time
+    now = time.monotonic()
+    entry = _ip_attempts.get(ip)
+    if entry:
+        count, window_start = entry
+        if now - window_start < _IP_WINDOW_SECONDS:
+            if count >= _IP_MAX_ATTEMPTS:
+                return True
+            _ip_attempts[ip] = (count + 1, window_start)
+        else:
+            _ip_attempts[ip] = (1, now)
+    else:
+        _ip_attempts[ip] = (1, now)
+    return False
 
 
 def _log_login_failed(request: Request, username: str, reason: str) -> None:
@@ -425,7 +456,7 @@ def _log_login_failed(request: Request, username: str, reason: str) -> None:
 
 
 @router.post("/admin/users/{user_id}/reset-password")
-async def admin_reset_password(user_id: str, body: AdminResetPasswordRequest, user: dict = Depends(require_role("owner", "admin"))):
+async def admin_reset_password(user_id: str, body: AdminResetPasswordRequest, user: dict = Depends(require_owner_or_principal)):
     db = get_db()
     new_password = body.new_password or f"EduFlow-{uuid.uuid4().hex[:10]}"
     try:

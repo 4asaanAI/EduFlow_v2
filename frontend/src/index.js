@@ -16,7 +16,10 @@ async function initializeMonitoring() {
   Sentry.init({
     dsn: "https://e8ef0145205dcfe0fa6a6aee20153299@o4511416842715136.ingest.us.sentry.io/4511416944558080",
     environment: process.env.NODE_ENV,
-    integrations: [Sentry.browserTracingIntegration(), Sentry.replayIntegration()],
+    integrations: [
+      Sentry.browserTracingIntegration(),
+      Sentry.replayIntegration({ maskAllInputs: true, maskAllText: true }),
+    ],
     tracesSampleRate: 1.0,
     replaysSessionSampleRate: 0.1,
     replaysOnErrorSampleRate: 1.0,

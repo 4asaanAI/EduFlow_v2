@@ -660,11 +660,7 @@ def check_input_safety(user_message: str, role: str) -> dict:
         "filtered_message": user_message,
     }
 
-    # Only apply student-specific filters to student role
-    if role != "student":
-        return result
-
-    # --- Check 1: Prompt injection / jailbreak ---
+    # --- Check 1: Prompt injection / jailbreak (all roles) ---
     injection_match = _check_prompt_injection(user_message)
     if injection_match:
         logger.warning(
@@ -677,19 +673,22 @@ def check_input_safety(user_message: str, role: str) -> dict:
         }
 
     # --- Check 2: Blocked topics (English) ---
-    blocked = _check_blocked_topics(user_message)
-    if blocked:
-        logger.warning(
-            "Blocked topic '%s' detected in student input", blocked
-        )
-        return {
-            "safe": False,
-            "reason": f"blocked_topic:{blocked}",
-            "filtered_message": get_blocked_response(user_message),
-        }
+    # --- Check 2: Blocked topics — student only ---
+    if role == "student":
+      blocked = _check_blocked_topics(user_message)
+      if blocked:
+          logger.warning(
+              "Blocked topic '%s' detected in student input", blocked
+          )
+          return {
+              "safe": False,
+              "reason": f"blocked_topic:{blocked}",
+              "filtered_message": get_blocked_response(user_message),
+          }
 
-    # --- Check 2b: Hindi/Devanagari blocked topics ---
-    for pattern in _BLOCKED_HINDI_COMPILED:
+    # --- Check 2b: Hindi/Devanagari blocked topics — student only ---
+    if role == "student":
+      for pattern in _BLOCKED_HINDI_COMPILED:
         if pattern.search(user_message):
             logger.warning(
                 "Hindi blocked topic detected in student input"

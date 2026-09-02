@@ -308,7 +308,10 @@ async def attendance_stream(request: Request, user: dict = Depends(require_role(
     )
     keepalive = int(request.query_params.get("keepalive", KEEPALIVE_SECONDS))
     once = request.query_params.get("once", "").lower() == "true"
-    queue = await sse_connect("attendance", session_id)
+    try:
+        queue = await sse_connect("attendance", session_id, user_id=user["id"])
+    except RuntimeError:
+        raise HTTPException(status_code=429, detail="Too many active connections. Close another tab and try again.")
 
     async def event_generator():
         try:
@@ -335,7 +338,7 @@ async def attendance_stream(request: Request, user: dict = Depends(require_role(
                     break
                 yield encode_sse(event)
         finally:
-            await sse_disconnect("attendance", session_id, queue)
+            await sse_disconnect("attendance", session_id, queue, user_id=user["id"])
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

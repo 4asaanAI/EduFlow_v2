@@ -1674,7 +1674,6 @@ export function SmartFeeDefaulter() {
   };
 
   const openSmsForm = (d) => {
-    console.log(d)
     setSelectedDefaulter(d);
     setSmsResult(null);
     setSmsForm({

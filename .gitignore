@@ -89,8 +89,11 @@ backend/uploads/
 aaryans_database/
 **/*.xlsx
 
-# MemPalace: exclude vendored/agent-artifact bulk from mining
-_bmad/
+# BMAD runtime: track installer config and repo-local Codex skills.
+# Ignore local-only personal settings and macOS metadata.
+_bmad/config.user.toml
+_bmad/custom/config.user.toml
+**/.DS_Store
 
 # MemPalace per-project files (issue #185)
 mempalace.yaml

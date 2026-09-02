@@ -799,7 +799,10 @@ async def messaging_stream(
     db = get_db()
     await _require_contact(db, user["id"], user)
     session_id = normalize_session_id(request.headers.get("X-SSE-Session-ID"))
-    queue = await sse_connect(_channel(user["id"]), session_id)
+    try:
+        queue = await sse_connect(_channel(user["id"]), session_id, user_id=user["id"])
+    except RuntimeError:
+        raise HTTPException(status_code=429, detail="Too many active connections. Close another tab and try again.")
     contacts = await _staff_contacts(db, user)
     contact_ids = [contact["id"] for contact in contacts]
     connected_at = _now()
@@ -842,7 +845,7 @@ async def messaging_stream(
         except asyncio.CancelledError:
             raise
         finally:
-            await sse_disconnect(_channel(user["id"]), session_id, queue)
+            await sse_disconnect(_channel(user["id"]), session_id, queue, user_id=user["id"])
             last_seen = _now()
             await db.platform_message_presence.update_one(
                 _scope({"user_id": user["id"]}, user),

@@ -11,11 +11,11 @@ import { API, apiFetch,
   listExams, createExam, updateExam, deleteExam, getAllClasses, getSubjects,
   getExamSheet, saveExamSchedule, bulkEnterResults,
 } from '../../lib/api';
+import { getAuthHeaders } from '../../lib/authSession';
 import SearchableSelect from '../ui/SearchableSelect';
 
 function _authHeaders() {
-  const token = localStorage.getItem('token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  return getAuthHeaders(null);
 }
 
 const EXAM_TYPES = [

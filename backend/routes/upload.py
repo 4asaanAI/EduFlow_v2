@@ -106,8 +106,21 @@ async def upload_file(
     if ext not in allowed:
         raise HTTPException(400, f"File type .{ext} not allowed for role {role}. Allowed: {', '.join(allowed)}")
 
-    content = await file.read()
     max_size = MAX_SIZE_BY_ROLE.get(role, 10 * 1024 * 1024)
+    # M-12: check Content-Length before reading the body so an oversized upload
+    # cannot force the server to buffer the whole file into memory first.
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > max_size:
+                raise HTTPException(
+                    400,
+                    f"File size exceeds {role} upload limit of {_format_size_limit(max_size)}",
+                )
+        except ValueError:
+            pass
+
+    content = await file.read()
     if len(content) > max_size:
         size_mb = len(content) / (1024 * 1024)
         raise HTTPException(

@@ -45,7 +45,8 @@ SCHOOL_ID = os.environ.get("SCHOOL_ID", "aaryans-joya")
 BRANCH_ID = "branch-joya"
 NOW = datetime.now().isoformat()
 SEED_TAG = "teacher_directory_seed"
-FALLBACK_PW = "rkoY2J619730"
+import secrets as _secrets
+FALLBACK_PW = _secrets.token_urlsafe(16)  # random per run — force reset on any account that used the old hardcoded value
 
 
 def gid() -> str:

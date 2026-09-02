@@ -10,7 +10,7 @@ import {
 import { ON_ROLL_VIEW, OFF_ROLL_VIEW, readState } from '../../lib/enrolmentStates';
 import ProfileNotes from '../ui/ProfileNotes';
 import ProfileDocuments from '../ui/ProfileDocuments';
-import { ArrowRight, CheckCircle, Edit3, KeyRound, Plus, RefreshCw, RotateCcw, Search, Trash2, X, XCircle } from 'lucide-react';
+import { ArrowRight, CheckCircle, Edit3, Eye, EyeOff, KeyRound, Plus, RefreshCw, RotateCcw, Search, Trash2, X, XCircle } from 'lucide-react';
 import { Pill } from '../ui/primitives';
 import { useUser } from '../../contexts/UserContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -137,6 +137,31 @@ function ActionButton({ children, onClick, disabled, variant = 'primary', type =
   );
 }
 
+function IssuedPasswordRow({ password }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>PASSWORD</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div
+          data-testid="issued-password"
+          style={{ color: 'var(--c-text)', fontSize: 15, fontFamily: 'monospace', wordBreak: 'break-all', flex: 1 }}
+        >
+          {visible ? password : '•'.repeat(Math.min(password.length, 16))}
+        </div>
+        <button
+          type="button"
+          aria-label={visible ? 'Hide password' : 'Show password'}
+          onClick={() => setVisible(v => !v)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-faint)', padding: 4, display: 'flex', alignItems: 'center' }}
+        >
+          {visible ? <EyeOff size={15} /> : <Eye size={15} />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function StaffModal({ initialStaff, canEditLeaveBalances, onClose, onSaved }) {
   const editing = Boolean(initialStaff);
   const [form, setForm] = useState(() => initialStaff ? { ...blankForm, ...initialStaff } : blankForm);
@@ -212,8 +237,7 @@ function StaffModal({ initialStaff, canEditLeaveBalances, onClose, onSaved }) {
           <div style={{ background: 'var(--c-bg)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 14, marginBottom: 16 }}>
             <div style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>USERNAME</div>
             <div data-testid="issued-username" style={{ color: 'var(--c-text)', fontSize: 15, fontFamily: 'monospace', marginBottom: 12, wordBreak: 'break-all' }}>{issued.username}</div>
-            <div style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>PASSWORD</div>
-            <div data-testid="issued-password" style={{ color: 'var(--c-text)', fontSize: 15, fontFamily: 'monospace', wordBreak: 'break-all' }}>{issued.password}</div>
+            <IssuedPasswordRow password={issued.password} />
           </div>
           <div style={{ color: 'var(--c-muted)', fontSize: 11, marginBottom: 16 }}>
             They can change this password themselves at any time from Settings.

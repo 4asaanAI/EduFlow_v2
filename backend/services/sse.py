@@ -23,7 +23,9 @@ from typing import Any
 # a redis pub/sub fan-out; `connect/disconnect` remain per-worker.
 KEEPALIVE_SECONDS = 30
 KEEPALIVE_COMMENT = ": keepalive\n\n"
+MAX_SSE_PER_USER = 5
 _connections: dict[str, dict[str, asyncio.Queue]] = defaultdict(dict)
+_user_connection_count: dict[str, int] = defaultdict(int)
 logger = logging.getLogger(__name__)
 
 
@@ -62,7 +64,11 @@ def normalize_session_id(session_id: str | None, *, fallback: str | None = None)
     return generated
 
 
-async def connect(channel: str, session_id: str) -> asyncio.Queue:
+async def connect(channel: str, session_id: str, user_id: str | None = None) -> asyncio.Queue:
+    if user_id:
+        if _user_connection_count[user_id] >= MAX_SSE_PER_USER:
+            raise RuntimeError(f"SSE connection limit reached for user {user_id}")
+        _user_connection_count[user_id] += 1
     channel_connections = _connections[channel]
     previous = channel_connections.get(session_id)
     if previous:
@@ -73,7 +79,11 @@ async def connect(channel: str, session_id: str) -> asyncio.Queue:
     return queue
 
 
-async def disconnect(channel: str, session_id: str, queue: asyncio.Queue) -> None:
+async def disconnect(channel: str, session_id: str, queue: asyncio.Queue, user_id: str | None = None) -> None:
+    if user_id:
+        _user_connection_count[user_id] = max(0, _user_connection_count[user_id] - 1)
+        if _user_connection_count[user_id] == 0:
+            _user_connection_count.pop(user_id, None)
     channel_connections = _connections.get(channel)
     if not channel_connections:
         return

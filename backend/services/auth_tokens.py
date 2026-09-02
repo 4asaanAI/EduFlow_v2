@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 REFRESH_COOKIE_NAME = "eduflow_refresh_token"
-REFRESH_TOKEN_TTL_DAYS = 7
+REFRESH_TOKEN_TTL_DAYS = 3
 REFRESH_TOKEN_TTL_SECONDS = REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60
 
 

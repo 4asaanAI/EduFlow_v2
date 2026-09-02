@@ -23,6 +23,7 @@ import re
 import time
 import uuid
 import logging
+from collections import defaultdict
 from datetime import datetime, date, timedelta, timezone
 from typing import Any, Optional
 from fastapi import APIRouter, Request, HTTPException, Depends
@@ -107,6 +108,25 @@ class RateLimitExceeded(Exception):
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+# Per-user chat rate limiter: max 20 messages per minute (single-worker safe)
+_CHAT_RATE_WINDOW = 60  # seconds
+_CHAT_RATE_MAX = 20
+_chat_rate: dict = defaultdict(lambda: [0, 0.0])  # user_id -> [count, window_start]
+
+
+def _check_chat_rate(user_id: str) -> bool:
+    """Return True if user is over the chat rate limit."""
+    now = time.monotonic()
+    count, window_start = _chat_rate[user_id]
+    if now - window_start >= _CHAT_RATE_WINDOW:
+        _chat_rate[user_id] = [1, now]
+        return False
+    if count >= _CHAT_RATE_MAX:
+        return True
+    _chat_rate[user_id][0] += 1
+    return False
+
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -3298,6 +3318,8 @@ def _tool_accepts_scope(tool_def: dict) -> bool:
 async def send_message(conv_id: str, request: Request):
     db = get_db()
     user = get_current_user(request)
+    if _check_chat_rate(user["id"]):
+        raise HTTPException(status_code=429, detail="Too many messages. Please wait a moment before sending again.")
     await _require_owned_conversation(db, conv_id, user)
     body = await request.json()
     _raw_text = body.get("text", "") or ""

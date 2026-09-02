@@ -109,7 +109,7 @@ export default function SettingsModal({ onClose }) {
     }
     setPwSaving(true);
     try {
-      const authToken = token || currentUser?.token || localStorage.getItem('token') || '';
+      const authToken = token || currentUser?.token || '';
       const res = await apiFetch(`${API}/auth/set-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
