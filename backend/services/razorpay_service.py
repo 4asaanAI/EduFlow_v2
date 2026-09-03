@@ -344,24 +344,6 @@ async def create_subscription_session(
             f"Set env var {plan['razorpay_plan_env']}."
         )
 
-    # Block re-purchasing the same plan — allow upgrading to a different one.
-    raw_db = get_raw_db()
-    school_id = await _resolve_school_for_branch(raw_db, branch_id)
-    if school_id:
-        ctx_token = _school_id_var.set(school_id)
-        try:
-            existing = await get_db().token_balances.find_one(
-                {"branch_id": branch_id, "subscription_status": "active"}
-            )
-        finally:
-            _school_id_var.reset(ctx_token)
-        if existing and existing.get("subscription_plan") == plan_id:
-            raise ValueError(
-                f"You already have an active {plan_id} subscription. "
-                "It will renew automatically next month. "
-                "Choose a different plan to upgrade."
-            )
-
     client = _razorpay_client()
     subscription = client.subscription.create(
         {
