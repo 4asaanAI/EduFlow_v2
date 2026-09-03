@@ -496,11 +496,22 @@ async def handle_subscription_charged(subscription: dict, payment_id: str | None
 
     # R12.2: use raw_db to find the balance doc cross-tenant, then scope to resolved school.
     raw_db = get_raw_db()
+    notes = subscription.get("notes") or {}
+
     # balance_doc lookup needs to span all schools (subscription_id is globally unique).
     balance_doc = await raw_db.token_balances.find_one({"subscription_id": subscription_id})
     if not balance_doc:
-        logger.warning("subscription_charged_no_balance_doc", extra={"subscription_id": subscription_id})
-        return
+        # Race condition: subscription.charged and subscription.activated arrive simultaneously.
+        # activated creates the balance doc; if charged ran first the doc doesn't exist yet.
+        # Fall back to the notes on the subscription object which carry branch_id and plan_id.
+        branch_id_from_notes = notes.get("branch_id")
+        if not branch_id_from_notes:
+            logger.warning("subscription_charged_no_balance_doc", extra={"subscription_id": subscription_id})
+            return
+        balance_doc = await raw_db.token_balances.find_one({"branch_id": branch_id_from_notes})
+        if not balance_doc:
+            logger.warning("subscription_charged_no_balance_doc", extra={"subscription_id": subscription_id})
+            return
 
     branch_id = balance_doc["branch_id"]
     school_id = balance_doc.get("schoolId") or await _resolve_school_for_branch(raw_db, branch_id)
@@ -511,9 +522,8 @@ async def handle_subscription_charged(subscription: dict, payment_id: str | None
         )
         return
 
-    notes = subscription.get("notes") or {}
     user_id = notes.get("user_id") or balance_doc.get("subscription_user_id", "unknown")
-    plan_id = balance_doc.get("subscription_plan")
+    plan_id = balance_doc.get("subscription_plan") or notes.get("plan_id")
     plan = SUBSCRIPTION_PLANS.get(plan_id) if plan_id else None
     tokens = plan["tokens_per_month"] if plan else 0
 
