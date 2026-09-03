@@ -40,6 +40,7 @@ function TokenCard({ isDark, currentUser }) {
   const isUnlimited = tokenUsage?.unlimited === true || tokenUsage?.role_limit == null;
   const limit    = isUnlimited ? 0 : (tokenUsage?.role_limit || 0);
   const used     = tokenUsage?.total_used || 0;
+  const topup    = tokenUsage?.personal_topup_balance || 0;
   const usagePct = (!isUnlimited && limit > 0) ? Math.min(100, Math.round((used / limit) * 100)) : 0;
   const usageColor = usagePct >= 90 ? '#ef4444' : usagePct >= 70 ? '#f59e0b' : '#10b981';
 
@@ -65,9 +66,14 @@ function TokenCard({ isDark, currentUser }) {
         </div>
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: muted }}>
-        <span>{isUnlimited ? `${fmt(used)} used` : `${fmt(used)} / ${fmt(limit)}`}</span>
+        <span>{isUnlimited ? `${fmt(used)} used` : `${fmt(used)} / ${fmt(limit)} this month`}</span>
         {!isUnlimited && usagePct >= 80 && <span style={{ color: '#4f8ff7', fontWeight: 600 }}>⚡ Top up</span>}
       </div>
+      {topup > 0 && (
+        <div style={{ marginTop: 6, fontSize: 11, color: '#10b981', fontWeight: 600 }}>
+          ⚡ {fmt(topup)} top-up tokens available
+        </div>
+      )}
       {tokenUsage == null && <p style={{ fontSize: 11, color: muted, marginTop: 4 }}>Loading usage…</p>}
     </div>
   );

@@ -97,6 +97,7 @@ export default function AccountMenu({ onOpenProfile, onOpenSettings, onSelectToo
   const isUnlimited = usage ? (usage.unlimited === true || usage.role_limit == null) : false;
   const limit = isUnlimited ? 0 : (usage?.role_limit || 0);
   const used = usage?.total_used || 0;
+  const topup = usage?.personal_topup_balance || 0;
   const pct = (!isUnlimited && limit > 0) ? Math.min(100, Math.round((used / limit) * 100)) : 0;
   const barColor = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#10b981';
 
@@ -221,6 +222,11 @@ export default function AccountMenu({ onOpenProfile, onOpenSettings, onSelectToo
                       Manage
                     </button>
                   </div>
+                  {topup > 0 && (
+                    <div style={{ marginTop: 4, fontSize: 11, color: '#10b981', fontWeight: 600 }}>
+                      ⚡ {fmtTokens(topup)} top-up tokens available
+                    </div>
+                  )}
                 </div>
               )}
             </>
