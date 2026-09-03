@@ -36,35 +36,54 @@ function fmtUsed(n) {
   return `${n}`;
 }
 
-function PlanCard({ plan, meta, isDark, onSelect, busy, isSelected }) {
+function PlanCard({ plan, meta, isDark, onSelect, busy, isSelected, isCurrentPlan }) {
   const [hovered, setHovered] = useState(false);
   const Icon = meta.icon;
   const accent = isDark ? meta.accent.dark : meta.accent.light;
-  const cardBg = (hovered || isSelected) ? (isDark ? meta.bg.dark : meta.bg.light) : 'var(--color-surface)';
-  const borderCol = (hovered || isSelected) ? accent : 'var(--color-border)';
+  const active = !isCurrentPlan && (hovered || isSelected);
+  const cardBg = isCurrentPlan
+    ? (isDark ? '#0d2d1a' : '#f0fdf4')
+    : (active ? (isDark ? meta.bg.dark : meta.bg.light) : 'var(--color-surface)');
+  const borderCol = isCurrentPlan ? '#10b981' : (active ? accent : 'var(--color-border)');
   const textCol = isDark ? '#f0f0f0' : '#111827';
   const mutedCol = isDark ? '#888' : '#6b7280';
+
+  const handleClick = () => { if (!isCurrentPlan) onSelect(plan.id); };
 
   return (
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={() => onSelect(plan.id)}
+      onClick={handleClick}
       style={{
-        position: 'relative', cursor: 'pointer',
+        position: 'relative',
+        cursor: isCurrentPlan ? 'default' : 'pointer',
         flex: '1 1 220px', minWidth: 220,
         background: cardBg,
         border: `2px solid ${borderCol}`,
         borderRadius: 20,
-        padding: plan.popular ? '30px 22px 22px' : '22px',
+        padding: (plan.popular || isCurrentPlan) ? '30px 22px 22px' : '22px',
         transition: 'all 0.2s ease',
-        transform: (hovered || isSelected) ? 'translateY(-4px)' : 'none',
-        boxShadow: (hovered || isSelected)
-          ? `0 12px 40px ${accent}25`
-          : (isDark ? '0 1px 4px rgba(0,0,0,0.35)' : '0 1px 4px rgba(0,0,0,0.07)'),
+        transform: active ? 'translateY(-4px)' : 'none',
+        boxShadow: isCurrentPlan
+          ? '0 4px 20px rgba(16,185,129,0.15)'
+          : (active
+            ? `0 12px 40px ${accent}25`
+            : (isDark ? '0 1px 4px rgba(0,0,0,0.35)' : '0 1px 4px rgba(0,0,0,0.07)')),
+        opacity: isCurrentPlan ? 0.95 : 1,
       }}
     >
-      {plan.popular && (
+      {isCurrentPlan && (
+        <div style={{
+          position: 'absolute', top: -13, left: '50%', transform: 'translateX(-50%)',
+          background: '#10b981', color: '#fff',
+          fontSize: 10, fontWeight: 800, letterSpacing: '0.08em',
+          padding: '3px 14px', borderRadius: 20, whiteSpace: 'nowrap',
+        }}>
+          CURRENT PLAN
+        </div>
+      )}
+      {!isCurrentPlan && plan.popular && (
         <div style={{
           position: 'absolute', top: -13, left: '50%', transform: 'translateX(-50%)',
           background: accent, color: '#fff',
@@ -78,10 +97,11 @@ function PlanCard({ plan, meta, isDark, onSelect, busy, isSelected }) {
       {/* Icon */}
       <div style={{
         width: 42, height: 42, borderRadius: 13, marginBottom: 14,
-        background: `${accent}18`, border: `1.5px solid ${accent}40`,
+        background: isCurrentPlan ? 'rgba(16,185,129,0.12)' : `${accent}18`,
+        border: `1.5px solid ${isCurrentPlan ? 'rgba(16,185,129,0.35)' : `${accent}40`}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        <Icon size={20} color={accent} />
+        <Icon size={20} color={isCurrentPlan ? '#10b981' : accent} />
       </div>
 
       {/* Plan name */}
@@ -92,11 +112,12 @@ function PlanCard({ plan, meta, isDark, onSelect, busy, isSelected }) {
       {/* Tokens / month */}
       <div style={{
         display: 'inline-flex', alignItems: 'center', gap: 6,
-        background: `${accent}15`, border: `1px solid ${accent}30`,
+        background: isCurrentPlan ? 'rgba(16,185,129,0.1)' : `${accent}15`,
+        border: `1px solid ${isCurrentPlan ? 'rgba(16,185,129,0.25)' : `${accent}30`}`,
         borderRadius: 8, padding: '5px 10px', marginBottom: 12,
       }}>
-        <Sparkles size={12} color={accent} />
-        <span style={{ fontSize: 13, fontWeight: 700, color: accent }}>
+        <Sparkles size={12} color={isCurrentPlan ? '#10b981' : accent} />
+        <span style={{ fontSize: 13, fontWeight: 700, color: isCurrentPlan ? '#10b981' : accent }}>
           {fmtTokens(plan.tokens_per_month)} tokens / month
         </span>
       </div>
@@ -118,32 +139,35 @@ function PlanCard({ plan, meta, isDark, onSelect, busy, isSelected }) {
           <div style={{ fontSize: 10, color: mutedCol }}>per month</div>
         </div>
         <button
-          onClick={e => { e.stopPropagation(); onSelect(plan.id); }}
-          disabled={busy}
+          onClick={e => { e.stopPropagation(); if (!isCurrentPlan) onSelect(plan.id); }}
+          disabled={busy || isCurrentPlan}
           style={{
             padding: '9px 16px', borderRadius: 10, border: 'none',
-            background: (hovered || isSelected) ? accent : (isDark ? '#252525' : '#f3f4f6'),
-            color: (hovered || isSelected) ? '#fff' : mutedCol,
-            fontSize: 12, fontWeight: 700, cursor: busy ? 'wait' : 'pointer',
+            background: isCurrentPlan
+              ? 'rgba(16,185,129,0.15)'
+              : (active ? accent : (isDark ? '#252525' : '#f3f4f6')),
+            color: isCurrentPlan ? '#10b981' : (active ? '#fff' : mutedCol),
+            fontSize: 12, fontWeight: 700,
+            cursor: isCurrentPlan ? 'default' : (busy ? 'wait' : 'pointer'),
             display: 'flex', alignItems: 'center', gap: 6,
             transition: 'all 0.2s ease',
             flexShrink: 0,
-            boxShadow: (hovered || isSelected) ? `0 4px 14px ${accent}50` : 'none',
+            boxShadow: active ? `0 4px 14px ${accent}50` : 'none',
           }}
         >
           {busy && isSelected ? (
             <span style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
-          ) : (
+          ) : isCurrentPlan ? null : (
             <ArrowRight size={13} />
           )}
-          {busy && isSelected ? 'Redirecting…' : 'Choose'}
+          {busy && isSelected ? 'Redirecting…' : isCurrentPlan ? 'Active ✓' : 'Choose'}
         </button>
       </div>
     </div>
   );
 }
 
-export default function TokenUpgradeModal({ onClose, currentUsage, roleLimit, canPurchase }) {
+export default function TokenUpgradeModal({ onClose, currentUsage, roleLimit, canPurchase, activePlan, subscriptionActive }) {
   const { isDark } = useTheme();
   const [plans, setPlans] = useState([]);
   const [fetchLoading, setFetchLoading] = useState(true);
@@ -260,6 +284,7 @@ export default function TokenUpgradeModal({ onClose, currentUsage, roleLimit, ca
                   onSelect={handleSelect}
                   busy={!!checkoutLoading}
                   isSelected={checkoutLoading === plan.id}
+                  isCurrentPlan={subscriptionActive && activePlan === plan.id}
                 />
               ))}
             </div>

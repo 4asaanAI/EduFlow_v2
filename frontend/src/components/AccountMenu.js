@@ -317,6 +317,8 @@ export default function AccountMenu({ onOpenProfile, onOpenSettings, onSelectToo
           currentUsage={usage?.total_used || 0}
           roleLimit={usage?.role_limit || 0}
           canPurchase={currentUser.role !== 'student'}
+          activePlan={usage?.subscription_plan}
+          subscriptionActive={usage?.subscription_status === 'active'}
         />
       )}
 
