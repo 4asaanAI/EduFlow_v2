@@ -344,6 +344,24 @@ async def create_subscription_session(
             f"Set env var {plan['razorpay_plan_env']}."
         )
 
+    # Block duplicate subscriptions — if an active subscription already exists
+    # for this branch, refuse rather than letting Razorpay charge twice next month.
+    raw_db = get_raw_db()
+    school_id = await _resolve_school_for_branch(raw_db, branch_id)
+    if school_id:
+        ctx_token = _school_id_var.set(school_id)
+        try:
+            existing = await get_db().token_balances.find_one(
+                {"branch_id": branch_id, "subscription_status": "active"}
+            )
+        finally:
+            _school_id_var.reset(ctx_token)
+        if existing and existing.get("subscription_id"):
+            raise ValueError(
+                "An active subscription already exists for this branch. "
+                "Cancel it before subscribing to a new plan."
+            )
+
     client = _razorpay_client()
     subscription = client.subscription.create(
         {
