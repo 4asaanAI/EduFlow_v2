@@ -374,6 +374,8 @@ async def get_usage_stats(
             "personal_topup_balance": personal_topup,
             "self_recharge_enabled": self_recharge_enabled,
             "breakdown_by_day": breakdown_by_day,
+            "subscription_plan": balance_doc.get("subscription_plan") if balance_doc else None,
+            "subscription_status": balance_doc.get("subscription_status") if balance_doc else None,
         }
 
     # ── Branch-level stats (owner view) ──
