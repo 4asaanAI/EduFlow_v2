@@ -77,6 +77,7 @@ from services.memory import chat_integration as chat_memory
 from services.ai_kill_switch import ai_writes_enabled
 from services.ai_shadow_mode import ai_dry_run_enabled
 from services.ai_metrics import record_ai_metric
+from services.ai_capacity import try_acquire_slot, release_slot, HEAVY_USAGE_MESSAGE
 from services.audit_service import write_audit
 from tenant import get_school_id, scoped_filter
 from ai import plan_executor
@@ -2148,6 +2149,31 @@ def _validate_image_data(image_data) -> str | None:
 
 
 async def _generate_chat_sse(conv_id: str, user_text: str, user: dict, session_id: str = None, request=None, image_data: str = None):
+    """
+    Concurrency gate wrapper around `_generate_chat_sse_body`.
+
+    Claims one of the instance's limited AI-request slots (sized off vCPU
+    count - see services/ai_capacity.py) before doing any real work. If the
+    instance is already at capacity, tells the caller immediately instead of
+    letting the request queue silently behind others.
+    """
+    if not await try_acquire_slot():
+        yield thinking_event("error", HEAVY_USAGE_MESSAGE)
+        yield f"data: {json.dumps({'type': 'text_delta', 'delta': HEAVY_USAGE_MESSAGE})}\n\n"
+        yield f"data: {json.dumps({'type': 'heavy_usage', 'message': HEAVY_USAGE_MESSAGE})}\n\n"
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        return
+
+    try:
+        async for chunk in _generate_chat_sse_body(
+            conv_id, user_text, user, session_id=session_id, request=request, image_data=image_data
+        ):
+            yield chunk
+    finally:
+        await release_slot()
+
+
+async def _generate_chat_sse_body(conv_id: str, user_text: str, user: dict, session_id: str = None, request=None, image_data: str = None):
     """
     SSE generator for chat streaming.
 
