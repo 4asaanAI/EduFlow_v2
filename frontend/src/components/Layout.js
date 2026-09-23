@@ -160,6 +160,8 @@ export default function Layout() {
       const next = new URLSearchParams(prev);
       if (toolId) next.set('tool', toolId);
       else next.delete('tool');
+      if (options.focus) next.set('focus', options.focus);
+      else next.delete('focus');
       return next;
     }, { replace: !!options.replace });
   }, [setSearchParams]);
@@ -288,8 +290,15 @@ export default function Layout() {
   useEffect(() => {
     const handler = (e) => {
       if (!e.detail) return;
-      pushTool(resolveToolId(e.detail));
-      setActiveToolParam(e.detail);
+      // `e.detail` is either a plain tool-id string (back-compat) or
+      // `{tool, focus}` when the caller (e.g. a search result) needs to
+      // deep-link straight into a specific record's profile, the same way
+      // School Directory's row click does via `setSearchParams`.
+      const isDeepLink = typeof e.detail === 'object';
+      const toolId = isDeepLink ? e.detail.tool : e.detail;
+      const focus = isDeepLink ? e.detail.focus : undefined;
+      pushTool(resolveToolId(toolId));
+      setActiveToolParam(toolId, { focus });
     };
     window.addEventListener('open-tool', handler);
     return () => window.removeEventListener('open-tool', handler);

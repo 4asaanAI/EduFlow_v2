@@ -22,7 +22,7 @@ import {
   uploadStudentPhoto,
   upsertGuardians,
 } from '../../lib/api';
-import { Camera, ChevronLeft, ChevronRight, Edit3, MinusCircle, Plus, RefreshCw, RotateCcw, Search, Trash2, User, X } from 'lucide-react';
+import { Camera, ChevronLeft, ChevronRight, Edit3, MinusCircle, Plus, RefreshCw, RotateCcw, Search, Trash2, User, Wallet, X } from 'lucide-react';
 import DataTable, { cellValue } from '../ui/DataTable';
 import { Pill } from '../ui/primitives';
 import {
@@ -34,6 +34,7 @@ import {
 import { ON_ROLL_VIEW, OFF_ROLL_VIEW, readState } from '../../lib/enrolmentStates';
 import ProfileNotes from '../ui/ProfileNotes';
 import ProfileDocuments from '../ui/ProfileDocuments';
+import StudentFeePanel from '../ui/StudentFeePanel';
 import { ALL_ROWS, useTablePageSize } from '../../hooks/useTablePrefs';
 import { fetchAllRows } from '../../lib/fetchAllRows';
 import { collectAllRows } from '../../lib/exportTable';
@@ -507,9 +508,13 @@ function StudentProfileModal({ classes, initialStudent, onClose, onSaved }) {
 
 // ─── Student Detail Side Panel ────────────────────────────────────────────────
 
-function DetailPanel({ studentId, onClose, onEdit, canManage, canKeepNotes }) {
+function DetailPanel({ studentId, onClose, onEdit, canManage, canKeepNotes, canManageFees }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Search-open-profile + Fee Collection CTA (2026-09-23). Student-only, gated the
+  // same way the backend gates `/api/fees/transactions` (`require_finance_profile`)
+  // so the button never appears somewhere the panel it opens would just 403.
+  const [showFeePanel, setShowFeePanel] = useState(false);
   // R2-2 / decision 1, 2026-08-10. The management head chases families about fees and
   // until now his student screens could not tell him who was behind at all. This is
   // the flag he was promised: paid or not, and never an amount. The route returns
@@ -556,6 +561,10 @@ function DetailPanel({ studentId, onClose, onEdit, canManage, canKeepNotes }) {
     setFeeExplain(null);
     setProblem('');
     setOneTime({ open: false, amount: '', authorised_by: '' });
+    // A second `focus` deep-link can swap `studentId` while this panel is already
+    // open (the panel is not remounted, just re-pointed) - close any fee panel
+    // left open for the PREVIOUS student rather than let it linger mid-swap.
+    setShowFeePanel(false);
     getStudent(studentId).then(res => {
       if (res.success) setData(res.data);
       setLoading(false);
@@ -611,10 +620,19 @@ function DetailPanel({ studentId, onClose, onEdit, canManage, canKeepNotes }) {
         {!loading && data && (
           <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 18 }}>
             {/* Actions */}
-            {canManage && (
+            {(canManage || canManageFees) && (
               <div style={{ display: 'flex', gap: 8 }}>
-                <Btn variant="secondary" onClick={() => onEdit(data)} style={{ flex: 1, justifyContent: 'center' }}><Edit3 size={12} />Edit Profile</Btn>
+                {canManage && (
+                  <Btn variant="secondary" onClick={() => onEdit(data)} style={{ flex: 1, justifyContent: 'center' }}><Edit3 size={12} />Edit Profile</Btn>
+                )}
+                {canManageFees && (
+                  <Btn variant="secondary" onClick={() => setShowFeePanel(true)} style={{ flex: 1, justifyContent: 'center' }}><Wallet size={12} />Fee Collection</Btn>
+                )}
               </div>
+            )}
+
+            {showFeePanel && (
+              <StudentFeePanel studentId={data.id} studentName={data.name} onClose={() => setShowFeePanel(false)} />
             )}
 
             {/* Personal Info */}
@@ -947,14 +965,17 @@ export default function StudentDatabase() {
   // Epic 7 - deep-link from the School Directory. A row there opens
   // `?tool=student-database&focus=<id>`; open that student's profile once, then
   // strip the param so closing it (or a reload) does not reopen, and the URL
-  // stays tidy. Applied a single time via the ref - not on every param change.
+  // stays tidy. Guarded by the LAST APPLIED id, not a plain boolean (2026-09-23):
+  // the top-bar search can now send a second, different `focus` while this screen
+  // is already mounted (switching tool never happens, so the component never
+  // remounts) - a boolean-once guard would silently swallow that second click.
   const [searchParams, setSearchParams] = useSearchParams();
-  const appliedFocusRef = useRef(false);
+  const appliedFocusRef = useRef(null);
   useEffect(() => {
-    if (appliedFocusRef.current) return;
     const focus = searchParams.get('focus');
     if (!focus) return;
-    appliedFocusRef.current = true;
+    if (appliedFocusRef.current === focus) return;
+    appliedFocusRef.current = focus;
     setDetailId(focus);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -974,6 +995,11 @@ export default function StudentDatabase() {
   // student. Erase was owner-only, so the principal saw View / Edit / Status and
   // nothing else. It now matches require_owner_or_principal on the erase endpoint.
   const canErase = isHeadOfSchool;
+  // Fee Collection CTA (2026-09-23): matches `require_finance_profile` on
+  // `backend/routes/fees.py` exactly (owner, or admin+principal/accountant/accounts)
+  // so the button is never shown where the panel behind it would just 403.
+  const canManageFees = currentUser.role === 'owner'
+    || (currentUser.role === 'admin' && ['principal', 'accountant', 'accounts'].includes(currentUser.sub_category));
 
   // UX-DR10: the user's chosen page size, remembered per table.
   const [pageSize, setPageSize] = useTablePageSize('students');
@@ -1516,7 +1542,7 @@ export default function StudentDatabase() {
       {/* Modals */}
       {showAdd && <StudentProfileModal classes={classes} onClose={() => setShowAdd(false)} onSaved={loadData} />}
       {editing && <StudentProfileModal classes={classes} initialStudent={editing} onClose={() => setEditing(null)} onSaved={loadData} />}
-      {detailId && <DetailPanel studentId={detailId} onClose={() => setDetailId(null)} onEdit={openEdit} canManage={canManage} canKeepNotes={canRestore} />}
+      {detailId && <DetailPanel studentId={detailId} onClose={() => setDetailId(null)} onEdit={openEdit} canManage={canManage} canKeepNotes={canRestore} canManageFees={canManageFees} />}
 
       {stateTarget && (
         <EnrolmentStateModal

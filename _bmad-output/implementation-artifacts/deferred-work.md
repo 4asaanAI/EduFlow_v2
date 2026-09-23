@@ -1,5 +1,13 @@
 # Deferred Work
 
+## Deferred from: code review of spec-search-open-profile-and-fee-cta (2026-09-23)
+
+- **Idempotency-Key case mismatch when `fee_period` has uppercase letters** — `backend/routes/fees.py`'s `record_payment` compares `key.strip().lower()` (the whole submitted header) against `expected_key` from `services/fees_service.py:normalize_fee_key`, which only lowercases `fee_head`, not `fee_period`. A `fee_period` like `"Term-A"` produces a spurious 400. Pre-existing in `FeeCollection.js`'s identical key-generation pattern (line 317), which the new `StudentFeePanel.js` deliberately mirrors per spec — not something this story introduced or was scoped to fix. [backend/routes/fees.py, backend/services/fees_service.py]
+- **`record_payment` does not check the student still exists/is active** — a payment can be recorded against a student deactivated or erased between the profile being opened and Save being pressed. No backend changes were in scope for this story. [backend/services/fees_service.py]
+- **Search's own-profile result may omit `id`** — `backend/routes/search.py` (~line 192) can return a student's own-profile search result without an `id` field; the new search→profile deep-link would then dispatch `focus: undefined` for that one case. Explicitly out of scope per the spec's own "Never" list — needs its own fix, not bundled here. [backend/routes/search.py]
+- **No request cancellation in `StudentFeePanel.js`'s `load()`** — if `studentId` changes while a `getFeeTransactions` fetch is in flight, a stale response could theoretically overwrite state for the new student. Low real-world risk given current mount/remount pattern (`DetailPanel` closes the fee panel on `studentId` change, see the code review of this spec), and matches the same no-cancellation pattern already used by `ProfileDocuments.js`/`ProfileNotes.js` in this codebase. [frontend/src/components/ui/StudentFeePanel.js]
+- **No validation against negative/zero payment amounts** — matches `FeeCollection.js`'s existing permissiveness (relies on backend). Not a regression introduced by this story. [frontend/src/components/ui/StudentFeePanel.js, frontend/src/components/tools/FeeCollection.js]
+
 ## Deferred from: code review of 7-42-token-recharge-subscription-billing (2026-05-18)
 
 - **Frontend handleRecharge silently swallows payment errors** — no user feedback when Razorpay payment-link/subscription creation fails (misconfigured key, 500, network error). Token bar stays showing "upgrade" but clicking does nothing. Phase 3 UX hardening. [frontend/src/components/ChatInterface.js]

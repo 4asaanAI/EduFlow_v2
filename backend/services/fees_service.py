@@ -126,6 +126,13 @@ async def record_payment(
         **_serialize(txn),
         "_id": txn.id,
         "schoolId": school_id,
+        # Bug fix (2026-09-23): this was never stamped, so `correct_transaction`/
+        # `delete_transaction` (which filter strictly on branch_id for any
+        # non-owner actor) 404'd on a transaction that had just been created by
+        # that same branch-scoped user - "not found" on a record right in front
+        # of them. Every other fee_transactions write path (correct, delete)
+        # already threads branch_id through `scoped_query`; only creation missed it.
+        "branch_id": actor_ctx.branch_id,
         "fee_period": fee_period,
         "fee_head": fee_head,
         "paid_amount": paid_amount,

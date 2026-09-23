@@ -4,6 +4,19 @@ API Tests: Fee CRUD and idempotency - EduFlow Backend.
 
 from datetime import datetime, timedelta
 
+from middleware.auth import create_jwt
+
+
+def _branch_scoped_headers(user_id="acct-branch-1", branch_id="branch-a"):
+    # `auth_headers` (the module fixture) logs in as the seeded test owner, whose
+    # branch_id is None - that SKIPS the branch_id clause in `scoped_query`
+    # entirely (see tenant.py), so it can never exercise the branch-scoping bug
+    # this file's delete-after-create test below is pinned against. A real
+    # branch-scoped role (accountant/principal) is required to catch it.
+    token = create_jwt({"user_id": user_id, "role": "admin", "name": "Branch Accountant",
+                         "sub_category": "accountant", "branch_id": branch_id})
+    return {"Authorization": f"Bearer {token}"}
+
 
 def _payment_payload():
     return {
@@ -112,3 +125,43 @@ class TestFeeCrud:
         # unknown id → 404, not silent success
         missing = client.delete("/api/fees/transactions/no-such-txn", headers=auth_headers)
         assert missing.status_code == 404
+
+    def test_a_branch_scoped_user_can_delete_a_payment_they_just_recorded(self, client, fake_db):
+        # Regression for a real 404 hit in production: `record_payment` never
+        # stamped `branch_id` on the document it created, while `delete_transaction`
+        # (and `correct_transaction`) filter strictly on branch_id for any
+        # non-owner actor. A branch-scoped user (accountant/principal - anyone but
+        # owner, whose branch_id is None and skips the filter) recording a payment
+        # and then immediately deleting/editing that SAME record got a "not found"
+        # for a row sitting right in front of them.
+        fake_db.fee_transactions.docs.clear()
+        fake_db.fee_idempotency_keys.docs.clear()
+        headers = {**_branch_scoped_headers(), "Idempotency-Key": "student-1|2026-06|tuition"}
+        payload = {**_payment_payload(), "fee_period": "2026-06"}
+
+        created = client.post("/api/fees/transactions", json=payload, headers=headers)
+        assert created.status_code == 200
+        txn = created.json()["data"]
+        assert txn["branch_id"] == "branch-a"
+
+        deleted = client.delete(f"/api/fees/transactions/{txn['id']}", headers=_branch_scoped_headers())
+        assert deleted.status_code == 200
+        doc = next(d for d in fake_db.fee_transactions.docs if d["id"] == txn["id"])
+        assert doc["deleted"] is True
+
+    def test_a_branch_scoped_user_can_correct_a_payment_they_just_recorded(self, client, fake_db):
+        fake_db.fee_transactions.docs.clear()
+        fake_db.fee_idempotency_keys.docs.clear()
+        headers = {**_branch_scoped_headers(), "Idempotency-Key": "student-1|2026-07|tuition"}
+        payload = {**_payment_payload(), "fee_period": "2026-07"}
+
+        created = client.post("/api/fees/transactions", json=payload, headers=headers)
+        txn = created.json()["data"]
+
+        corrected = client.patch(
+            f"/api/fees/transactions/{txn['id']}/correct",
+            json={"amount": 2600, "reason": "Bank settlement corrected the amount"},
+            headers=_branch_scoped_headers(),
+        )
+        assert corrected.status_code == 200
+        assert corrected.json()["data"]["amount"] == 2600

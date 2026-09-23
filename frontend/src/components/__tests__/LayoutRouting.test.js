@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import Layout from '../Layout';
 
@@ -163,4 +163,37 @@ test('a genuinely different user still gets the previous tool cleared', async ()
 
   // The tab is re-stamped with the person actually signed in now.
   expect(sessionStorage.getItem('eduflow_session_user')).toBe('owner-1');
+});
+
+// ─── Search result → profile open (2026-09-23) ────────────────────────────────
+// The top-bar search panel dispatches `open-tool` with `{tool, focus}` instead of
+// a bare tool-id string when a result points at a specific student/staff record -
+// School Directory already deep-links profiles the same way via `?tool=&focus=`.
+
+test('open-tool event carrying {tool, focus} sets both URL params, matching Directory\'s deep-link', async () => {
+  render(<Harness initialEntries={['/']} />);
+  expect(await screen.findByTestId('location-search')).toBeInTheDocument();
+
+  act(() => {
+    window.dispatchEvent(new CustomEvent('open-tool', { detail: { tool: 'student-database', focus: 'student-42' } }));
+  });
+
+  await waitFor(() => {
+    expect(screen.getByTestId('location-search')).toHaveTextContent('tool=student-database');
+  });
+  expect(screen.getByTestId('location-search')).toHaveTextContent('focus=student-42');
+});
+
+test('open-tool event with a plain string detail still works (back-compat, no focus param)', async () => {
+  render(<Harness initialEntries={['/']} />);
+  expect(await screen.findByTestId('location-search')).toBeInTheDocument();
+
+  act(() => {
+    window.dispatchEvent(new CustomEvent('open-tool', { detail: 'attendance-recorder' }));
+  });
+
+  await waitFor(() => {
+    expect(screen.getByTestId('location-search')).toHaveTextContent('tool=attendance-recorder');
+  });
+  expect(screen.getByTestId('location-search')).not.toHaveTextContent('focus=');
 });

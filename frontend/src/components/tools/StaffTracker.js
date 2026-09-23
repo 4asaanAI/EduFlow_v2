@@ -460,16 +460,18 @@ export default function StaffTracker() {
   // button opens; it is not a second way to edit a profile, which is the fork D-44
   // was written to avoid. The record is fetched by id because this list is paginated
   // on the server, so the person may not be on the page that happens to be loaded.
-  // Applied once via the ref, then the parameter is stripped so closing the editor
-  // (or reloading) does not reopen it.
+  // Guarded by the LAST APPLIED id, not a plain boolean (2026-09-23): the top-bar
+  // search can send a second, different `focus` while this screen is already
+  // mounted (the tool never switches, so the component never remounts) - a
+  // boolean-once guard would silently swallow that second click.
   const [searchParams, setSearchParams] = useSearchParams();
-  const appliedFocusRef = useRef(false);
+  const appliedFocusRef = useRef(null);
   const [focusError, setFocusError] = useState('');
   useEffect(() => {
-    if (appliedFocusRef.current) return;
     const focus = searchParams.get('focus');
     if (!focus) return;
-    appliedFocusRef.current = true;
+    if (appliedFocusRef.current === focus) return;
+    appliedFocusRef.current = focus;
 
     // The parameter is stripped AFTER the record is fetched, not before. Stripping
     // first re-runs this effect, and a cleanup that cancelled the in-flight request

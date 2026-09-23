@@ -80,8 +80,10 @@ function SearchPanel({ user, onClose, isDark }) {
   const handleResultClick = (r) => {
     onClose();
     if (r.type === 'tool') window.dispatchEvent(new CustomEvent('open-tool', { detail: r.id }));
-    else if (r.type === 'student') window.dispatchEvent(new CustomEvent('open-tool', { detail: 'student-database' }));
-    else if (r.type === 'staff') window.dispatchEvent(new CustomEvent('open-tool', { detail: 'staff-attendance-tracker' }));
+    // Student/staff results deep-link straight into that person's profile,
+    // the same way School Directory's row click does (`tool` + `focus`).
+    else if (r.type === 'student') window.dispatchEvent(new CustomEvent('open-tool', { detail: { tool: 'student-database', focus: r.id } }));
+    else if (r.type === 'staff') window.dispatchEvent(new CustomEvent('open-tool', { detail: { tool: 'staff-tracker', focus: r.id } }));
     else if (r.type === 'announcement') window.dispatchEvent(new CustomEvent('open-tool', { detail: 'announcement-broadcaster' }));
   };
 
