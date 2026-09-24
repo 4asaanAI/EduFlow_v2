@@ -15,7 +15,10 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pencil, Trash2, X } from 'lucide-react';
-import { correctFeeTransaction, deleteFeeTransaction, getFeeTransactions, recordFeePayment } from '../../lib/api';
+import {
+  calculateLateFine, correctFeeTransaction, deleteFeeTransaction,
+  getFeeDiscounts, getFeeTransactions, recordFeePayment,
+} from '../../lib/api';
 import { inputStyle } from './primitives';
 
 const overlayStyle = {
@@ -26,11 +29,24 @@ const overlayStyle = {
 
 const panelStyle = {
   background: 'var(--c-input)', border: '1px solid var(--c-border)',
-  borderRadius: 10, padding: 22, width: 640, maxWidth: '100%',
-  maxHeight: '90vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16,
+  borderRadius: 10, padding: 22, width: 'min(1200px, 96vw)', maxWidth: '100%',
+  maxHeight: '94vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16,
 };
 
 const twoCol = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 };
+
+// Single source of truth for the history table's column count, so `colSpan`
+// on the correction row and the Total row can never drift from the `<thead>`.
+const HISTORY_COLUMN_LABELS = [
+  'Period', 'Head', 'Total Fees', 'Fees Paid', 'Discount', 'Fine',
+  'Status', 'Created At', 'Last Edited', 'Due', 'Actions',
+];
+// The Total row merges the first two (Period, Head) under one "Total" cell,
+// then renders one real value per of the next four (Total Fees, Fees Paid,
+// Discount, Fine) - everything after that is blank filler out to the header's
+// own width, so it's derived instead of a second hardcoded number.
+const TOTAL_ROW_LEADING_COLSPAN = 2;
+const TOTAL_ROW_VALUE_COLUMNS = 4;
 
 const initialPayment = { fee_period: '', fee_head: 'tuition', amount: '', paid_amount: '', payment_mode: 'upi', status: 'paid', transaction_ref: '' };
 const initialCorrection = { amount: '', status: '', due_date: '', payment_mode: '', transaction_ref: '', reason: '' };
@@ -39,10 +55,38 @@ function normalizeFeeKey(studentId, feePeriod, feeHead) {
   return `${studentId}|${feePeriod}|${(feeHead || '').trim().toLowerCase()}`;
 }
 
+// Same convention as the collected/pending totals below: a `paid` record is
+// fully settled by its `amount` even when `paid_amount` was never set; only
+// `partial` records report the actually-collected figure separately.
+function feesPaidFor(t) {
+  if (t.status === 'paid') return Number(t.amount || 0);
+  if (t.status === 'partial') return Number(t.paid_amount || 0);
+  return 0;
+}
+
+const FEE_PERIOD_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
+
+// The school's session runs April to March. April-December sit in the session
+// that started that same calendar year; January-March sit in the session that
+// started the previous year (see services/late_fine_service.py QUARTERS).
+function deriveQuarter(feePeriod) {
+  const match = FEE_PERIOD_RE.exec(feePeriod || '');
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (month >= 4 && month <= 6) return { quarter: 'q1', sessionStartYear: year };
+  if (month >= 7 && month <= 9) return { quarter: 'q2', sessionStartYear: year };
+  if (month >= 10 && month <= 12) return { quarter: 'q3', sessionStartYear: year };
+  return { quarter: 'q4', sessionStartYear: year - 1 };
+}
+
 export default function StudentFeePanel({ studentId, studentName, onClose }) {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [totalDiscount, setTotalDiscount] = useState(0);
+  const [fineByTxnId, setFineByTxnId] = useState({});
+  const [fineByGroup, setFineByGroup] = useState({});
   const [payment, setPayment] = useState(initialPayment);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
@@ -66,25 +110,96 @@ export default function StudentFeePanel({ studentId, studentName, onClose }) {
   // is also now treated as "already gone", not a failure (see below).
   const deletingRef = useRef(false);
 
+  // Fine is calculate-only by design (services/late_fine_service.py: "it writes
+  // nothing") - computed here for display and never sent back to the server.
+  //
+  // Grouped by (session year, quarter), NOT by transaction: late_fine_service's own
+  // rule is "one fine per child per quarter, never one per fee head", and it actively
+  // rejects a batch where the same quarter appears twice as still-accruing. Two fee
+  // records due the same quarter (tuition + transport) is the normal case, so treating
+  // each transaction as its own quarter would routinely trip that guard and blank the
+  // whole request. Every transaction in a quarter shares one outstanding figure and one
+  // computed fine, shown on each of its rows - the same convention already used for
+  // Discount, which is also one figure repeated per row.
+  const loadFines = useCallback(async (txns) => {
+    const bySessionYear = new Map();
+    txns.forEach((t) => {
+      const derived = deriveQuarter(t.fee_period);
+      if (!derived) return;
+      const quarters = bySessionYear.get(derived.sessionStartYear) || new Map();
+      const group = quarters.get(derived.quarter) || { ids: [], outstanding: 0, allPaid: true, latestPaidDate: null };
+      group.ids.push(t.id);
+      group.outstanding += Math.max(Number(t.amount || 0) - feesPaidFor(t), 0);
+      if (t.status !== 'paid') group.allPaid = false;
+      if (t.paid_date && (!group.latestPaidDate || t.paid_date > group.latestPaidDate)) group.latestPaidDate = t.paid_date;
+      quarters.set(derived.quarter, group);
+      bySessionYear.set(derived.sessionStartYear, quarters);
+    });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const perTxn = {};
+    const perGroup = {};
+    await Promise.all(Array.from(bySessionYear.entries()).map(async ([sessionStartYear, quarters]) => {
+      try {
+        const res = await calculateLateFine({
+          session_start_year: sessionStartYear,
+          as_of: today,
+          quarters: Array.from(quarters.entries()).map(([quarter, group]) => ({
+            quarter,
+            outstanding_amount: group.outstanding,
+            settled_on: group.allPaid ? group.latestPaidDate : null,
+          })),
+        });
+        if (res.success) {
+          // Matched by the quarter code each result names, not by array position -
+          // the request/response order isn't a contract worth relying on.
+          (res.data.quarters || []).forEach((q) => {
+            const group = quarters.get(q.quarter);
+            if (!group) return;
+            perGroup[`${sessionStartYear}-${q.quarter}`] = q.total;
+            group.ids.forEach((id) => { perTxn[id] = q.total; });
+          });
+        }
+      } catch {
+        // Leave this session year's rows unset - rendered as "-".
+      }
+    }));
+    setFineByTxnId(perTxn);
+    setFineByGroup(perGroup);
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError('');
     const res = await getFeeTransactions({ student_id: studentId });
-    if (res.success) setTransactions(res.data || []);
-    else setLoadError(res.detail || 'Could not load this student’s fee records');
+    if (res.success) {
+      const txns = res.data || [];
+      setTransactions(txns);
+      await loadFines(txns);
+    } else {
+      setLoadError(res.detail || 'Could not load this student’s fee records');
+      // Stale rows/totals sitting next to the error banner would look like they
+      // still belong to a (failed, unrefreshed) list. Discount isn't reset here -
+      // it's fetched unconditionally below on every load() call.
+      setTransactions([]);
+      setFineByTxnId({});
+      setFineByGroup({});
+    }
+    try {
+      const discountRes = await getFeeDiscounts(studentId);
+      setTotalDiscount(discountRes.success ? Number(discountRes.data?.total_discount || 0) : 0);
+    } catch {
+      setTotalDiscount(0);
+    }
     setLoading(false);
-  }, [studentId]);
+  }, [studentId, loadFines]);
 
   useEffect(() => { load(); }, [load]);
 
   // Same convention as `FeeCollection.js`: paid/partial contribute their
   // `paid_amount` (falling back to the full `amount` when unset) to collected;
   // pending/overdue/partial contribute the remainder to pending.
-  const collected = transactions.reduce((sum, t) => {
-    if (t.status === 'paid') return sum + Number(t.amount || 0);
-    if (t.status === 'partial') return sum + Number(t.paid_amount || 0);
-    return sum;
-  }, 0);
+  const collected = transactions.reduce((sum, t) => sum + feesPaidFor(t), 0);
   const pending = transactions.reduce((sum, t) => {
     if (t.status === 'pending' || t.status === 'overdue') return sum + Number(t.amount || 0);
     if (t.status === 'partial') return sum + Math.max(Number(t.amount || 0) - Number(t.paid_amount || 0), 0);
@@ -239,16 +354,13 @@ export default function StudentFeePanel({ studentId, studentName, onClose }) {
               {transactions.length === 0 ? (
                 <div style={{ color: 'var(--c-faint)', fontSize: 12 }}>No fee transactions recorded yet.</div>
               ) : (
-                <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid var(--c-border)', borderRadius: 8 }}>
+                <div style={{ maxHeight: 480, overflowX: 'auto', overflowY: 'auto', border: '1px solid var(--c-border)', borderRadius: 8 }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                     <thead>
                       <tr style={{ textAlign: 'left', color: 'var(--c-faint)' }}>
-                        <th style={{ padding: '6px 10px' }}>Period</th>
-                        <th style={{ padding: '6px 10px' }}>Head</th>
-                        <th style={{ padding: '6px 10px' }}>Amount</th>
-                        <th style={{ padding: '6px 10px' }}>Status</th>
-                        <th style={{ padding: '6px 10px' }}>Due</th>
-                        <th style={{ padding: '6px 10px' }}>Actions</th>
+                        {HISTORY_COLUMN_LABELS.map((label) => (
+                          <th key={label} style={{ padding: '6px 10px' }}>{label}</th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
@@ -258,7 +370,14 @@ export default function StudentFeePanel({ studentId, studentName, onClose }) {
                             <td style={{ padding: '6px 10px' }}>{t.fee_period || '-'}</td>
                             <td style={{ padding: '6px 10px' }}>{t.fee_head || t.fee_type || '-'}</td>
                             <td style={{ padding: '6px 10px' }}>{`₹${Number(t.amount || 0).toLocaleString('en-IN')}`}</td>
+                            <td style={{ padding: '6px 10px' }}>{`₹${feesPaidFor(t).toLocaleString('en-IN')}`}</td>
+                            <td style={{ padding: '6px 10px' }}>{`₹${totalDiscount.toLocaleString('en-IN')}`}</td>
+                            <td style={{ padding: '6px 10px' }}>
+                              {fineByTxnId[t.id] != null ? `₹${Number(fineByTxnId[t.id]).toLocaleString('en-IN')}` : '-'}
+                            </td>
                             <td style={{ padding: '6px 10px' }}>{t.status || '-'}</td>
+                            <td style={{ padding: '6px 10px' }}>{(t.created_at || '').slice(0, 10) || '-'}</td>
+                            <td style={{ padding: '6px 10px' }}>{(t.updated_at || '').slice(0, 10) || '-'}</td>
                             <td style={{ padding: '6px 10px' }}>{t.due_date || '-'}</td>
                             <td style={{ padding: '6px 10px' }}>
                               <div style={{ display: 'flex', gap: 6 }}>
@@ -284,7 +403,7 @@ export default function StudentFeePanel({ studentId, studentName, onClose }) {
                           </tr>
                           {correctingId === t.id && (
                             <tr>
-                              <td colSpan={6} style={{ padding: '10px', background: 'var(--color-surface-raised, rgba(255,255,255,0.03))' }}>
+                              <td colSpan={HISTORY_COLUMN_LABELS.length} style={{ padding: '10px', background: 'var(--color-surface-raised, rgba(255,255,255,0.03))' }}>
                                 {correctionError && <div role="alert" style={{ color: '#f87171', fontSize: 12, marginBottom: 8 }}>{correctionError}</div>}
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                   <div style={twoCol}>
@@ -373,6 +492,27 @@ export default function StudentFeePanel({ studentId, studentName, onClose }) {
                         </React.Fragment>
                       ))}
                     </tbody>
+                    <tfoot>
+                      <tr data-testid="fee-history-total-row" style={{ borderTop: '2px solid var(--c-border)', fontWeight: 700 }}>
+                        <th scope="row" style={{ padding: '6px 10px', textAlign: 'left' }} colSpan={TOTAL_ROW_LEADING_COLSPAN}>Total</th>
+                        <td style={{ padding: '6px 10px' }}>
+                          {`₹${transactions.reduce((sum, t) => sum + Number(t.amount || 0), 0).toLocaleString('en-IN')}`}
+                        </td>
+                        <td style={{ padding: '6px 10px' }}>
+                          {`₹${transactions.reduce((sum, t) => sum + feesPaidFor(t), 0).toLocaleString('en-IN')}`}
+                        </td>
+                        {/* Discount is one student-level figure, not a per-row amount - summing the repeated cells would multiply it. */}
+                        <td style={{ padding: '6px 10px' }}>{`₹${totalDiscount.toLocaleString('en-IN')}`}</td>
+                        <td style={{ padding: '6px 10px' }}>
+                          {/* Fine is grouped by quarter, not by row - summing fineByTxnId would count a shared
+                              quarter total once per contributing transaction instead of once per quarter. */}
+                          {Object.keys(fineByGroup).length > 0
+                            ? `₹${Object.values(fineByGroup).reduce((sum, v) => sum + Number(v || 0), 0).toLocaleString('en-IN')}`
+                            : '-'}
+                        </td>
+                        <td style={{ padding: '6px 10px' }} colSpan={HISTORY_COLUMN_LABELS.length - TOTAL_ROW_LEADING_COLSPAN - TOTAL_ROW_VALUE_COLUMNS} />
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               )}
