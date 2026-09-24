@@ -139,8 +139,7 @@ module.exports = defineConfig(({ mode, command }) => {
       watch: { ignored: ['**/build/**', '**/coverage/**'] },
     },
     build: {
-      outDir: 'build',
-      sourcemap: true,
+      outDir: 'build',      sourcemap: true,
       // The only chunk near this ceiling is html2pdf and it is loaded on demand
       // after a person clicks PDF export. The initial application entry stays
       // below 600 kB and monitoring is also deferred until after first render.

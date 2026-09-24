@@ -1,822 +1,183 @@
 # EduFlow - Claude Code Project Context
 
 **Model:** Claude Sonnet 4.6 (1M context)
-**Last updated:** 2026-08-05
-**Working agent:** any capable coding model (Anthropic Sonnet/Opus or other providers) - execution protocols are written model-agnostically
-
-> ## ✅ SHIPPED - class targeting on announcements (deployed 2026-08-15)
->
-> **LIVE.** Backend `eduflow-classnotice-20260815-96499c9`, frontend Amplify job 169,
-> commit `96499c9`. **Rollback target: `eduflow-approvals-20260815-69a2705`.** Bundle
-> diffed before upload: 247 entries to 249, the two added being this release's new backend
-> files, nothing removed. Environment Ready and Green on the new label.
->
-> **"By Class" saved the chosen classes and nothing ever read them back.** Delivery was by
-> role alone, so a notice meant for one class went to **every student in the school** while
-> the sender was told it worked. Fixed at every surface through one rule,
-> `backend/services/announcement_audience.py`. **Targeting is by class ID, never by a
-> printed label**: the two screens wrote `10th A` and `10th-A` for the same class, so any
-> label comparison has to pick a winner and mis-targets the other.
->
-> **Three more faults found in the same place.** The parent portal filtered on `audience`
-> and `class_id`, two fields an announcement has never carried, so it matched everything
-> and showed parents staff notices, other classes' notices and **unapproved drafts**. It
-> also pinned a branch announcements do not have. And search asked only "is it a draft".
->
-> **"Everyone" now includes the owner** (Abhimanyu, 2026-08-15): a school-wide announcement
-> never reached Aman, because the owner was in no audience list at all. The guard stopping a
-> principal singling the owner out is untouched and still 422s.
->
-> **The stand-in DB was lying about arrays.** `$in` against a list field did not match the
-> way Mongo does. Same class of fault as the 2026-08-12 `insert_one` one. Fixed in
-> `conftest.py`.
->
-> Gate: backend 4,016 / 0 failed; frontend 884 across 74; build clean including lint. The
-> fix was switched off and three tests failed, so the tests prove the fix rather than
-> passing either way. Record:
-> `implementation-artifacts/announcements/class-targeting-fixed-2026-08-15.md`.
->
-> ⛔ **Two announcement questions are PARKED with Abhimanyu pending a discussion with Aman
-> and Adesh. Do not decide them in code:** whether circulars should reach parents and
-> students at all given the messaging system already exists, and whether
-> `announcement-broadcaster` and `circular-sender` become one screen. They remain two.
->
-> ## ✅ SHIPPED - Approvals, the transport head, and searchable lists (deployed 2026-08-15)
->
-> **LIVE.** Backend `eduflow-approvals-20260815-69a2705`, frontend Amplify job 166, commit
-> `69a2705`. **Rollback target: `eduflow-photoleak-20260815-36b04c7`.** Proven live: the
-> new `/api/approvals/*` routes answer 401 while a made-up path under the same prefix
-> answers 404. Bundle diffed before upload: 242 entries to 247, the five added being this
-> release's new backend files, nothing removed.
->
-> **This one deploy carried everything that had been held back**: the approvals workflow,
-> R3-2 and R3-3 (Chaman's profile and the tenth profile for drivers and conductors), and
-> three leftovers closed on the day. They were held because the transport head would
-> otherwise have had buttons whose requests nobody could answer. That reason is gone.
->
-> **The three leftovers, all closed.** A person can now RAISE a request and not only
-> answer one, offered only where the server says they may. "Bring somebody in" lists
-> colleagues BY NAME and narrows as you type, instead of asking for an account id nobody
-> knows; it is scoped to the record, never a staff directory, because these routes are
-> signed-in-only by design. An attachment shows its name and opens, instead of being a
-> count you cannot read.
->
-> **The two staff leave decision paths are ONE.** `decide_leave` is deleted; everything
-> goes through `decide_leave_request`, which also marks the colleague away. Without that
-> row a colleague given leave still read as available everywhere else. Four things were
-> carried across from the deleted path so the merge lost nothing: the guard against
-> deciding twice, **branch scoping** (what stops one branch's principal deciding another
-> branch's leave), the older field names existing screens still read, and an audit action
-> name that tells an approval from a refusal. The operations screen keeps its stricter
-> "a reason either way" rule as its own rather than it being loosened by accident.
->
-> **Every drop-down fed by school data is now type-to-search.** One shared control,
-> `frontend/src/components/ui/SearchableSelect.js`, in 50 drop-downs across 16 files.
-> **A short list is left exactly as it was** and the LIST decides that, not the author, so
-> any screen can adopt it without checking first. The match count is always visible, and
-> the chosen option is never filtered out from under the person. The fixed short lists it
-> deliberately skips (gender, house, blood group, payment mode, sort order) are recorded
-> in `implementation-artifacts/picklists-survey-2026-08-15.md` so nobody redoes them
-> thinking they were missed.
->
-> Gate: backend 4,000 passed / 0 failed / 14 deselected; frontend 884 across 74 suites;
-> production build clean including lint.
->
-> **Still open:** R3-4, handing Chaman his credentials, is a deliberate act nobody has
-> taken. Cover for absence when Aman or Adesh is away is still a later item. Nothing here
-> is proven by signing in as a real profile.
->
-> ## Approvals: one workflow for every approval - the architecture
->
-> **Record of what was done: `_bmad-output/implementation-artifacts/release-3-access/PROGRESS.md`,
-> the entry dated 2026-08-15 (later). Read it before touching any of this.**
->
-> All six approval systems are on one workflow and a seventh joins by adding one entry to
-> `backend/services/approval_registry.py`. **It is NOT a new store the six were migrated
-> into**: each kind is decided by the SAME service its own screen calls, and its
-> `may_decide` mirrors the gate its own route already carries, so the registry can only
-> ever hide a row from somebody entitled to it and can never hand anybody a decision they
-> do not hold. Do not relax that.
->
-> **Three corrections this work produced.** The plan said announcements are Adesh's alone;
-> the code has always allowed Aman OR Adesh and it stays that way (Abhimanyu, 2026-08-15).
-> The history a late joiner may read is a message NUMBER, not a timestamp, because two
-> timestamps can tie and when they did the whole history leaked. And deciding through Flo
-> was not showing the confirm card decision 30 requires; the name has to be in
-> `EXPLICIT_CONFIRMATION_TOOL_NAMES`, never a literal in the registry entry.
->
-> **The bell and the notifications window now carry the SAME two sub-tabs**, "Waiting on
-> you" and "Already happened", from `KIND_TABS` in `notifKinds.js`.
->
-> Gate: backend 3,941 passed / 0 failed / 14 deselected; frontend 868 across 73 suites;
-> production build clean including lint.
->
-> ## The plan behind it (decisions 21 to 31, all settled)
->
-> **Read `_bmad-output/planning-artifacts/approvals-one-workflow-2026-08-15.md` first.**
-> Eleven decisions (21 to 31) from Abhimanyu, all settled, all dated 2026-08-15.
->
-> **Why it exists.** R3-2 gave the transport head things he must ask permission for, and
-> then a check found **there is no screen anywhere for Aman or Adesh to approve or reject
-> anything.** The frontend has the code to do it and nothing calls it. The platform can ask
-> for permission and cannot receive it.
->
-> **Scope, and it is deliberate.** ALL SIX approval systems onto one workflow - general
-> requests, certificates, staff leave, announcements, staff profile changes and student
-> leave - plus any approval invented later joining automatically. Not the general one first.
->
-> **Three things that will catch you out:**
->
-> 1. **Flo is NEVER in the shared approval thread.** Each person gets Flo privately, on
->    their own screen, in their own profile, and nothing Flo says enters the transcript.
->    Aman's Flo sees far more than Chaman's, so a shared Flo would print an answer built on
->    Aman's access in front of somebody who does not hold it.
-> 2. **Every kind keeps the approvers it has today.** Announcements are Adesh's alone;
->    student leave is teacher-then-principal. A screen must never widen access.
-> 3. **Adesh sees Aman's approval decisions.** That does NOT reverse the Release 4 rule that
->    Adesh cannot see Aman's changes in the ACTION LOG. Different surface. Keep them apart.
->
-> ## R3-2 and R3-3 are BUILT and GREEN and deliberately NOT DEPLOYED (2026-08-15)
->
-> Chaman Singh's profile, and the tenth profile for drivers and conductors. **Held on
-> purpose**: his credentials are not going out for at least two days, and shipping him
-> before the approvals workflow would give him buttons whose requests nobody can answer.
-> Full record: `implementation-artifacts/release-3-access/PROGRESS.md`.
->
-> **The reversal you need to know:** the plan said the transport head sees **no money at
-> all**. Abhimanyu changed that on 2026-08-15. **He holds full financial visibility of
-> school TRANSPORT**, fares and who owes what included. Everything else - tuition,
-> concessions, salaries - stays refused, enforced by giving him ONE purpose-built money
-> tool rather than the finance domain.
->
-> Gate at the time of writing: backend 3,851 passed / 0 failed; frontend 855 passed across
-> 72 suites; production build clean including lint.
-
-> ## SHIPPED: Enterprise Commercial Operations (2026-08-05)
->
-> Commit `3d989e1` is merged to `origin/main`. EduFlow now has lightweight legal-entity
-> ownership/reporting, admissions CRM activities and opportunities, campus POS/retail with
-> shifts, split payments and returns, entity-aware accounting-period controls, confirmed Flo
-> write tools backed by the same domain services as REST, a permanent built-in `/stop-slop`
-> communication habit, hardened prompt/KB context, and nine responsive owner/principal
-> management hubs. Branding, theme, legacy records, the single active Joya branch, and current
-> deep links were preserved. Hostel and full ERPNext/Frappe framework complexity remain out of
-> scope. Source of truth: `_bmad-output/implementation-artifacts/spec-enterprise-commercial-operations.md`.
-> Release gate: backend 2,163 passed / 0 failed / 15 credentialed deselected; frontend 439
-> passed; responsive Chromium 3 passed; production build passed. No live school database was
-> read or modified. The code is pushed, but backend deployment is not verified: the configured
-> AWS identity can see no Elastic Beanstalk application or environment in any enabled region.
+**Last updated:** 2026-09-03
+**Working agent:** any capable coding model (Anthropic Sonnet/Opus or other providers)
 
 ---
 
-> ## ✅ SHIPPED - AI Layer Reliability (Zero Silent Failures) - completed 2026-07-10
->
-> This initiative is **DONE and merged** - all 11 epics (R1–R11) shipped, plus the companion
-> non-AI reliability set (R12–R15). See `_bmad-output/platform-quality-sweep.md` rows 18–19
-> and `_bmad-output/implementation-artifacts/ai-reliability/epic-R*-completed.md`. Its planning
-> docs remain in `_bmad-output/planning-artifacts/` for reference; the execution protocol
-> (`EPIC-EXECUTION-PROTOCOL-AI-RELIABILITY.md`) and its 7 standing rules still govern any
-> follow-on AI-layer work. *(This banner previously read "implementation has NOT started" -
-> that was true when written and became stale after the work shipped; corrected 2026-07-23.)*
->
-> ## 🚧 CURRENT INITIATIVE - UI Sweep (owner-reported defects, 2026-07-22) - branch `ui-sweep-2026-07-22`
->
-> Decomposes the owner's reported defects into epics; same 7 standing rules and one-epic-per-run
-> discipline. Plan: `_bmad-output/planning-artifacts/epics-ui-sweep-2026-07-22.md`; live logs in
-> `_bmad-output/implementation-artifacts/ui-sweep/`. As of 2026-07-23, Epics 1–6, 8, 9, 10 are
-> shipped and Epic 7 (School Directory) is built and gate-green, awaiting deploy.
-> **D-44 is CLOSED, both parts, since 2026-08-04.** *(This line said the tool-merge
-> consolidation was "the remaining open work" until 2026-08-15, four months after it
-> finished, and it sent a session looking for work that was already done.)* One merge was
-> made (Fee Receipts into Fee Collection, one screen offered under two names) and six tools
-> were examined and deliberately left separate, each with its reason pinned in
-> `ToolMerge.test.js`. **One thing is genuinely left, and it is a decision, not a build:**
-> `announcement-broadcaster` and `circular-sender` are near-identical but NOT a lossless
-> merge. The broadcaster can target parents and the circular cannot; the circular can target
-> the owner role and the broadcaster cannot; and the two write class labels in different
-> formats (`1-A` against `1 A`), so merging means choosing one, and choosing wrong
-> silently mis-targets circulars. Needs Abhimanyu.
-> **Baseline note (corrected 2026-08-04):** the "25 pinned failures" phrasing below is
-> historical, and so is the "2–3 order-dependent failures" note that replaced it - D-03 ×2 and
-> D-35 were all fixed on 2026-07-23. **The suite baseline is 0 failures.** It was 1967 passed /
-> **1 failed** between 2026-07-25 and 2026-08-04 (the certificate permission test, NEW-01/02);
-> that is now closed. Never re-pin a non-zero baseline.
->
-> ## 🚧 CURRENT INITIATIVE - Inspection Remediation (2026-08-04) - branch `inspection-remediation-2026-08-04`
->
-> The 14 findings of the 2026-08-04 platform inspection, worked in 3 blocks of 5/5/4.
-> Process and the fixed handoff prompt: `_bmad-output/INSPECTION-REMEDIATION-PROTOCOL-2026-08-04.md`.
-> **The register is the only source of truth for progress:**
-> `_bmad-output/planning-artifacts/inspection-findings-2026-08-04.md`.
-> Logs in `_bmad-output/implementation-artifacts/inspection-2026-08-04/`.
+## Current Deploy State
 
-> ## ⛔ A push to `main` IS a frontend deploy. Decide the deploy BEFORE pushing.
->
-> Amplify builds **every** push to `main` automatically. So "code-complete, green, not
-> deployed" **is not a state this repository can hold** for anything with a screen in it.
->
-> Learned the hard way on 2026-08-15: B1 (entrance tests) was pushed as finished-but-not-
-> deployed work, and the Tests tab began shipping to the school while the routes behind it
-> were still only on a laptop. Anybody opening it would have got an error box, which is the
-> exact "button that looks like a feature" fault that item was written to remove. It was
-> caught mid-build and closed by deploying the backend, so both halves went live together.
->
-> **If frontend work must wait, keep it off `main` or put the control behind a flag.**
-> There is no third option where it sits on `main` undeployed. The backend is the opposite
-> and needs a deliberate deploy, which is why the two can drift apart at all.
->
-> ## ✅ SHIPPED - Two photo leaks closed, and staff logins narrowed (deployed 2026-08-15)
->
-> **LIVE.** Backend `eduflow-photoleak-20260815-36b04c7`, frontend Amplify job 164, commit
-> `36b04c7`. **Rollback target: `eduflow-tests-20260815-f7a1be2`.** Proven live: the parent
-> portal, staff and student routes all answer 401 while a made-up path under the same
-> prefix answers 404. Bundle checked before upload, 242 entries either way, nothing added
-> or dropped.
->
-> **The parent portal was handing parents' browsers the previous vendor's public web
-> address for their own child and both parents.** `GET /api/guardian/wards` and the ward
-> detail returned the child's whole record without going through `photo_url_service`, and
-> the guardian `PATCH` response did the same. Of every screen to have missed that rule,
-> the parent portal was the worst one. Both now go through it, pinned by
-> `test_no_vendor_photo_link_escapes_2026_08_15.py`, which also fails if a NEW route module
-> returns a person without so much as importing the service.
->
-> **The photo move off Vedmarg is finished and, for the first time, PROVEN.** All 1,692
-> images are in the school's own bucket (202.8 MB), nothing stranded across students,
-> parents, guardians and staff, and a 21-image sample was signed and read back as real
-> JPEGs. **Two traps that manufacture a false alarm** are recorded in
-> `implementation-artifacts/vedmarg-photos-verified-2026-08-15.md`: `S3_BUCKET` is unset
-> locally, and a link signed for GET returns 403 to a HEAD request, which is
-> indistinguishable from the file being gone. The originals are still on Vedmarg's servers
-> and still public; nothing in this code can change that.
->
-> **Creating a staff record MINTS A LOGIN, and that is now owner and principal only.** The
-> old gate fired only for a privileged account, so every office desk could create a plain
-> teacher and hand out a way in. Refused server-side and hidden in the UI.
->
-> **The Add Staff form used to throw the password away.** It received the one-time password
-> and closed. The username now travels with it (derived from email, phone, employee ID or
-> name, so it cannot be guessed) and both are shown once. **The password is NOT forced to
-> change** (Abhimanyu, 2026-08-15); every profile can change its own from Settings.
->
-> Gate: backend 3,784 passed / 0 failed; frontend 813 passed; production build clean.
->
-> ## ✅ SHIPPED - B1: an entrance test is a record, not a word (deployed 2026-08-15)
->
-> **LIVE.** Backend `eduflow-tests-20260815-f7a1be2`, frontend Amplify job 161, commit
-> `f7a1be2`. **Rollback target: `eduflow-admissions-20260814-52dc341`.** Proven live: the
-> new `/api/admissions/tests` routes answer 401 while a made-up path under the same prefix
-> answers 404.
->
-> `assessment_scheduled` used to be a status and nothing else, so **the school could not
-> pull a list for Sunday**. There is now a Tests tab: a test with a date, a time, a place
-> and a total, the list of who is sitting it, who turned up, and the marks.
->
-> **Two rules, and neither may be relaxed.** "Nobody has marked this yet" is its own state
-> and is never drawn as absent, because a register nobody filled in and a test nobody came
-> to are opposite facts. And a mark reaches the application through
-> `admissions_service.record_assessment` **in the same call**; if that refuses, nothing is
-> stored, including the attendance, so the list and the application can never disagree.
->
-> **The paper's total lives on the TEST and freezes at the first mark.** Before this the
-> maximum was typed per child, so two children sitting one paper could be recorded out of
-> different totals with their percentages silently disagreeing.
->
-> **The Tests tab was asserted ABSENT by a test until B1 built it.** That assertion was
-> flipped, not deleted. Keep it that way: it now fails if the tab exists without its panel.
->
-> **Not built:** no Flo tools for tests yet.
->
-> ## ⛔ B2, B3 and B4 are ON HOLD by Abhimanyu's decision of 2026-08-15. Do not start them.
->
-> He is asking the school **whether the entrance test is sat on the platform or on paper**,
-> and the answer decides what gets built. **B1 supports the written test completely on its
-> own**, so this is a finished place to stop rather than work left half done.
->
-> **B3's on-screen half is the genuinely blocked one**: an applicant is neither a student
-> nor staff and has no sign-in, which is Part 4 of the plan and is not settled. If the
-> school says paper, that question may never need answering. B2 (generate the paper) and B4
-> (enquiry families as a messaging audience) are held with it so stage two ships as one
-> decision.
->
-> ## ✅ SHIPPED - Admissions stage one: the two halves of the funnel are joined (deployed 2026-08-14)
->
-> **LIVE.** A1 to A6 went out together on 2026-08-14 as `52dc341`. Backend
-> `eduflow-admissions-20260814-52dc341`, frontend Amplify job 158. **Rollback target:
-> `eduflow-noshop-20260814-484135d`.** Proven live rather than assumed: the new
-> `/api/commercial/crm/follow-ups` answers 401 while a route that does not exist answers
-> 404 from the same server.
->
-> **Start here:** `_bmad-output/implementation-artifacts/admissions-funnel/PROGRESS.md`
-> is the ONLY record of what is done. The plan is
-> `_bmad-output/planning-artifacts/admissions-funnel-end-to-end-2026-08-14.md`, and its
-> Part 1 decisions are Abhimanyu's and are settled.
->
-> **The one idea.** The platform had two carefully built halves of the admissions journey
-> and nothing joining them, so **the funnel could report a child as enrolled when no child
-> existed**. The test for every item: can a person tell "this child joined the school" from
-> "somebody moved a row to the last column"?
->
-> **Six things you will trip over if you do not know them:**
->
-> - **Enrolment has exactly ONE source, `enroll_application`.** `enrolled` was removed as a
->   choice from every path including the owner's, and from Flo. Do not put it back.
-> - **`admission` is NOT a sub-category this platform recognises.** It is named in
->   `_can_enroll` and in the CRM gate and can never be true. **There is no admissions desk
->   profile.** Do not invent one and do not write a gate that depends on it.
-> - **`sub_categories` on a registry entry does NOT refuse the management head.**
->   `profile_authorization_decision` ignores it for the domain profiles by design. The
->   mechanism that works is `denied_tools` in `profile_matrix.py`, where a denial wins.
->   Without it, Flo would have let him enrol a child the server refuses him.
-> - **TWO generated mirrors, never hand-edited**, each with a drift test:
->   `profileMatrix.generated.js` and `admissionsJourney.generated.js`.
-> - **TWO different pinned count tests.** `EXPECTED_REACH` counts Flo TOOLS;
->   `ProfileMenuSweep.test.js` counts SCREENS. They are not the same thing.
-> - **Stage two (B1 to B4: entrance tests as records, the paper, marking, enquiry families
->   as a messaging audience) is NOT built.** Part 4 of the plan, whether an applicant may
->   have a sign-in to sit a test on screen, is an open question and is not settled.
->
-> ## ✅ SHIPPED - Release 4: the platform can account for itself (deployed 2026-08-13)
->
-> **LIVE.** All six parts went out together on 2026-08-13. Backend
-> `eduflow-release4-20260813-fec72a7`, frontend Amplify job 147, merged as `6daf32f`.
-> Gate: 3,608 backend and 777 frontend tests passing, build and lint clean. Rollback
-> target: `eduflow-msgfix-20260812-6520aed`. *(This banner said "CURRENT INITIATIVE" for a
-> day after the release went out. Never leave a deploy state written down without a date
-> beside it.)*
->
-> **The new routes live under `/api/audit-log`, not `/api/audit`.** Probing the shorter
-> path returns a 404 and reads exactly like a failed deploy; it caused a false alarm on
-> 14 August. Verified live: `/api/audit-log/{retention/plan,my-changes-today,school-summary}`,
-> `/api/issues/platform` and `/api/operator/platform-health` all answer 401.
->
-> **The ticket route now works end to end (fixed 2026-08-14).** *(This paragraph said the
-> last hop was broken and waiting on a Gmail sign-in in n8n. That was true when written and
-> is no longer. The fix is not Gmail: email goes through ZOHO MAIL now, and "reconnect
-> Gmail" is dead wording that must not be carried forward.)* The school raises a ticket, it
-> is stored in LayaaStat under The Aaryans, and n8n emails Abhimanyu and Shubham from
-> `support@layaa.ai`. **Proven, not assumed:** a real send succeeded and the message was
-> received. Detail in `implementation-artifacts/release-4/ticket-email-via-zoho-2026-08-14.md`.
->
-> **All four Release 4 leftovers are closed.** Ticket email works; the dead Resend sender
-> is removed from LayaaStat and deployed; `stat.layaa.ai` is live over a valid certificate;
-> and rotating `CRON_SECRET` is DROPPED by Abhimanyu's decision of 2026-08-14, so do not
-> raise it again as outstanding.
->
-> **LayaaStat runs on AWS Amplify, app `ddsqdblq9ge74`, NOT Vercel.** The repository carries
-> a leftover `vercel.json` that reads as authoritative and is not. The Vercel account holds
-> one unrelated project. Going to the wrong console cost time on 14 August.
->
-> **Start here:** `_bmad-output/implementation-artifacts/release-4/PROGRESS.md` is the ONLY
-> record of what is done, including what is left. The work itself is
-> `_bmad-output/planning-artifacts/release-4-audit-undo-and-honest-menus-2026-08-12.md`.
->
-> **Release 4 was NOT just "audit and undo".** That one line is all that was ever copied
-> into these notes and it is about a quarter of what was agreed on 12 August. It is six
-> parts: one shape for a recorded change, record everything, two-year retention with a
-> monthly summary kept forever, undo what hurts and let Flo guide the rest, Flo watching
-> storage and raising Layaa AI tickets in LayaaStat, and honest menus in one layout.
->
-> **The one idea.** Release 3's faults were all "a query that quietly returned less than
-> it should". Release 4's are the same shape moved sideways: **the platform quietly says
-> less about itself than it should.** A change never written down looks exactly like a
-> quiet day. A button that will be refused looks exactly like a working feature. The test
-> for every part: can a person tell "nothing happened" from "we did not record it"?
->
-> **Nine settled decisions are in Part 1 of the plan. Do not reopen them.** The two that
-> catch people out: **Adesh must NOT see Aman's changes** in the audit trail, and **undo
-> covers only what hurts the platform** while Flo talks people through the rest by hand.
->
-> **What was found by reading, not assuming.** *(Corrected: the first count said "16 of 39
-> areas", which was route files only. Counting every module that writes to the database it
-> was 55 of 75, with 20 modules holding 108 unrecorded writes.)* R4-1 and R4-2 are now DONE:
-> 64 modules record, 15 are excused in writing, 0 undecided. Entries are kept forever and nothing deletes one. Undo is narrow because
-> there are **eight different shapes** a change gets written in and only one carries a
-> before value. The route from the school to Layaa AI **does not exist** (LayaaStat is
-> telemetry one way, not a ticket inbox, and needs a piece in another repository). Menus
-> are better than expected: the eight office desks are already default-deny off
-> `profile_matrix.py` in all three places tools are shown, but **teachers, students and
-> guardians are outside that table** with hand-written menus, and there are three
-> different layouts where there should be one.
->
-> **Grouping never grants, and nothing is ever dropped.** Both rules carry over from the
-> post-Release-3 work and neither may be relaxed for a layout change.
+**Latest backend:** `eduflow-classnotice-20260815-96499c9` · Frontend: Amplify job 169 · Commit: `96499c9`
+**Rollback target:** `eduflow-approvals-20260815-69a2705`
 
-> ## ⛔ Never write a secret to a file inside this repository (2026-08-13)
->
-> **This repository is PUBLIC.** On 13 August a scratch file holding LayaaStat's database
-> address, its secret key and the shared secret guarding LayaaStat's scheduled jobs was
-> written inside the repo, swept in by a blanket `git add`, and pushed. The file is gone,
-> it is ignored, and the history was rewritten and force-pushed, but **none of that is a
-> fix**: the old commit is still reachable by its id and a public repo can be copied or
-> cached. The only real fix is changing the values, which is with Abhimanyu.
->
-> The rule: read credentials fresh from their source each time, never stage a scratch file
-> holding one, and never `git add` without looking at what is being added.
+Everything that was pending has shipped: class-targeted announcements, unified approvals
+workflow, Chaman Singh's transport-head profile (R3-2), tenth profile for drivers and
+conductors (R3-3), searchable drop-downs, entrance-test records (B1), admissions funnel
+(A1–A6), audit log and honest menus (Release 4), photo-leak fixes, staff login narrowing,
+parent messaging, and deferred Flo tool loading.
 
-> ## ⚠️ TWO different things are called Release 3, and two are called Release 4
->
-> **Read `_bmad-output/planning-artifacts/release-numbering-collision-2026-08-14.md` before
-> using a release number in any sentence.** *(An earlier version of this section said there
-> was "no seven-release plan anywhere". That was wrong: the plan is in the Release 2
-> document at line 18 and had been there since 10 August. Corrected 2026-08-14.)*
->
-> There is a **seven step access ladder**, given by Abhimanyu on 2026-08-09 and recorded in
-> `release-2-person-profiles-2026-08-10.md`: 1 Aman and Adesh, 2 + Sonu and Lalit,
-> **3 + department heads**, **4 + whole admin staff**, 5 + teachers, 6 + students,
-> 7 + parents. **The access ladder stopped after step 2.**
->
-> The work that shipped as "Release 3" (tables, downloads, phone sizing) and "Release 4"
-> (audit, undo, menus) is unrelated and took those numbers on 11 and 12 August without
-> anybody noticing the clash. Both were needed and both shipped. But **department heads and
-> the admin staff have never been catered for**, while the numbering makes it look as
-> though they were passed two releases ago.
->
-> **✅ CLOSED 2026-08-15. The seven office logins have been REMOVED.** *(This section
-> previously described them as a live exposure needing investigation. That was true when
-> written.)* Migration 041 created seven office logins on 2026-08-12, four of them carrying
-> the `accountant` or `management` profile, which are Sonu's and Lalit's. So two assistant
-> accountants held exactly what the accountant head holds, salaries included, and two admin
-> staff held exactly what the management head holds. Never designed, never discussed.
->
-> Abhimanyu confirmed on 2026-08-15 that **the one-time passwords were never handed out**;
-> only four handovers went out and they stop at Lalit. Proven read-only before anything was
-> deleted: all seven were still on their one-time password with **zero sessions ever**. The
-> seven logins and the seven `users` profile rows that migration 047 created for them are
-> gone; the seven staff records are untouched and still on the roll. Each of those people
-> gets a proper profile in their own release.
->
-> Full record, including the trap that `users.id` is NOT `auth_users.id`:
-> `implementation-artifacts/release-3-access/unused-office-logins-removed-2026-08-15.md`.
->
-> **✅ AND THE FOUR SHARED DESK LOGINS ARE GONE TOO (2026-08-15).** `transport`,
-> `reception`, `ittech` and `maintenance` were accounts standing for a department rather
-> than a person, and `Transport Desk` held `transport_head`, the same profile Chaman Singh
-> was given hours earlier. Removed by `050_remove_shared_desk_logins.py` after proving
-> read-only that they had zero sessions ever and that **no document anywhere in the
-> database** referenced them. **Every login on the platform now belongs to one named
-> person.** Do not create a department account again: the whole release plan is one profile
-> per person. Record:
-> `implementation-artifacts/release-3-access/shared-desk-logins-removed-2026-08-15.md`.
-> The four `sub_category` values stay in the code; this deleted accounts, not profiles.
->
-> ⛔ **Never close this with `041_office_staff_logins.py --rollback`.** That file also clears
-> the staff link for Adesh Singh and Lalit Thomas, who both sign in for real.
->
-> **"Dormant" is documentation, not a lock.** Nothing in the running code reads the
-> `status` field; it appears only in tests and the mirror generator. A dormant profile with
-> a login reaches its listed screens with no Flo tools and no ability to write, which reads
-> as a broken platform rather than a locked one.
->
-> **The messaging question is ANSWERED (2026-08-14, decision 17): messaging stops at
-> teachers, students never get it.** Teachers are already inside the staff group and
-> students are already outside it, so nothing changes except adding a test that pins it.
-> Note separately that **there is no way to create a staff or teacher login** through the
-> platform. Only students have a login-creation route; every staff login so far came from a
-> hand-run migration.
->
-> **`profile_matrix.py` does NOT gate the REST API.** It decides menus, Flo tools and
-> exports, and nothing else. Every route carries a hand-written gate, and
-> `require_role("owner", "admin")` ignores the sub-category, so every office desk passes it.
-> Proven by probe on 2026-08-14: a support staff account can `POST /api/transport` and read
-> the whole student and staff lists. Money is properly refused everywhere tested.
->
-> **Current work: `_bmad-output/planning-artifacts/release-3-access-department-heads-2026-08-14.md`,
-> progress in `implementation-artifacts/release-3-access/PROGRESS.md`, handoff
-> `HANDOFF-2026-08-14-access-ladder.md`.**
->
-> **R3-0 is RETIRED by Abhimanyu's decision of 2026-08-14 and will NOT be built.** *(This
-> line previously read "R3-0 must land before any credential is handed out". That was true
-> when written.)* A credential goes out only once that person's profile is ready, so a lock
-> refusing a not-ready profile never fires.
->
-> **The consequence is now CLOSED (2026-08-15).** *(It read "ACCEPTED, not closed" until the
-> seven accounts were removed.)* "Dormant" still means nothing at runtime, so a dormant
-> profile with a login would still reach real screens and still write. There is simply no
-> such login any more: the seven were deleted rather than left resting on the handover
-> process. If a dormant profile is ever given a login again, this risk comes straight back,
-> because nothing in the running code reads the `status` field.
->
-> The twenty questions R3-0 raised are KEPT, named test by test, in
-> `implementation-artifacts/release-3-access/R3-0-retired-and-the-twenty-questions-2026-08-14.md`.
-> Two of them are not rubber stamps: the eleven transport tests are the map of what Chaman
-> can already do and are R3-2's starting point, and the procurement one may be a genuine
-> narrowing. **R3-4 is no longer blocked**; it was blocked only by R3-0 being parked.
-
-> ## ✅ SHIPPED - Release 3: the whole list, on any device (2026-08-12)
->
-> **LIVE.** All thirteen items shipped together on 2026-08-12, as Abhimanyu decided.
-> Backend `eduflow-release3-20260812-810fe43`, frontend Amplify job 143. *(This banner
-> read "CODE-COMPLETE, GREEN, AND NOT DEPLOYED" until it went out; that was true when
-> written and stale within hours. Do not leave a deploy state written down without a
-> date beside it.)*
->
-> **`main` has moved past it.** Release 3 is `810fe43`. Two more commits landed the same
-> day from owner reports found once it was live, and they are NOT Release 3 scope - see
-> "After Release 3" below. Current `main`: `e6f82fb`.
->
-> **Start here:** `_bmad-output/implementation-artifacts/release-3/PROGRESS.md` is the ONLY
-> record of what is done. Read it first, update it last, every run. There is no separate
-> planning artifact for Release 3; the PROGRESS file carries the reasoning too.
->
-> **The one idea behind the whole release.** Every serious fault found on 11 and 12 August
-> was the same shape: **a query that quietly returned less than it should.** A lookup
-> matching nobody looks like a lookup with nothing to do. A colleague missing to a 50-row
-> cap looks like a colleague who left. "All" showing one row looks like a school with one
-> student. An export stopping at 2,000 looks like a school with 2,000 children. So wherever
-> this release added a filter, an "all" view, a download or a scroll, **the count is visible
-> and a partial answer is impossible to mistake for a complete one.**
->
-> **A truncated file is worse than a truncated screen**, because it leaves the building and
-> gets filed as a record. That is why every export is now COMPLETE OR REFUSED, never short.
->
-> Settled decisions, do not reopen: "All" on every table; exports need no confirm window;
-> exports MUST respect the Release 2 permission table; the whole-school workbook is Aman and
-> Adesh only; **a spreadsheet is NEVER trimmed** (Word and PDF still trim and still say so);
-> audit and undo work is Release 4 and separate.
->
-> ### What Release 3 changed that you will trip over
->
-> | Thing | Where | Why it matters |
-> |---|---|---|
-> | One page-size ceiling, 500 | `backend/pagination.py`, 16 clamp sites | A page size below 1 is **refused with a 400**, never turned into 1. `max(1, -1)` used to make "All" show ONE ROW. |
-> | Every export complete or refused | `routes/exports.py` `_read_all`, ceiling 100,000 | Nothing is ever silently dropped. Past the ceiling the request fails and says no file was made. |
-> | Nine export builders, one dictionary | `EXPORT_BUILDERS` | The screen download, Flo, and the whole-school workbook all read through these. **Add a data set here, never beside a route.** |
-> | Export permission | `require_export` / `may_export`, derived from `profile_matrix` | One rule asked two ways. Never write a second list of role names. |
-> | Download on every table | `lib/exportTable.js`, `ui/ExportButton.js`, `POST /api/export/table` | The control refuses to save a file holding fewer rows than the table says it has. |
-> | Filters on every tool table | `ToolPage.DataTable` | Written once for ~70 tables. **The download follows the filter.** |
-> | Rows drawn as you scroll | `ui/DataTable` | "All" fetches everything; painting is spread out. The count says drawn AND loaded. |
-> | Touch floor: 40px, 16px fields | `index.css` §7 (≤768px) and §7c (`pointer: coarse` + ≥769px) | §7c is NEW. A tablet is 810px wide, so it used to fall off the end of every touch rule and inherit desktop sizes. |
-> | Real device tests | `playwright.config.js` projects `phone-pixel`, `tablet-ipad` | The old "responsive" project was Desktop Chrome made narrow: no touch, no pixel ratio. That is why the owner's iPhone report was missed. |
->
-> **Never bind a module constant as a default argument** (`max_rows: int = MAX_ROWS`). Python
-> evaluates it once at import, so the constant stops being live and every test that changes
-> it is silently ignored. This cost a real failure on 12 August. Default to `None` and
-> resolve inside the function.
+**Full release history and deploy hashes:** `_bmad-output/RELEASE-HISTORY.md`
 
 ---
 
-> ## ✅ SHIPPED - After Release 3: four owner reports from the live platform (2026-08-12)
->
-> Found by Abhimanyu once Release 3 was live, fixed and deployed the same day. These are
-> NOT Release 3 scope. Backend `eduflow-msgfix-20260812-6520aed`; frontend Amplify job 145.
-> Current `main`: `e6f82fb`.
->
-> **1. Every staff message send was returning a 500, and the message was saved anyway.**
-> `insert_one` writes Mongo's `_id` into the caller's dict IN PLACE, and `send_message`
-> echoed that same dict back. An ObjectId is not JSON, so FastAPI raised AFTER the write
-> committed: the sender was told the opposite of what happened and sent again. **The
-> stand-in DB is what hid it** - `FakeCollection.insert_one` appended without stamping
-> `_id`, so the dict was clean in tests and dirty in production. It now stamps an ObjectId
-> in place, exactly like Mongo, which closes the class rather than the instance. With the
-> route fix reverted, three tests fail; before the conftest change, zero did.
-> **Never return the dict you just inserted.** Read it back with `{"_id": 0}` or strip the key.
->
-> **2. There was no inactivity sign-out anywhere, for any profile.** The Settings
-> "Session timeout" dropdown offering 30 min / 1 hour / 2 hours **saved nothing and nothing
-> read it**, so a protection that did not exist read as a decision already taken. A sign-in
-> lasted 7 days and renewed itself. Now `frontend/src/lib/idleLogout.js`: **one hour, every
-> profile, the owner included** (Abhimanyu, 2026-08-12), and the Settings control is real
-> and drives it. It stores a **deadline, not a countdown** - a sleeping laptop stops timers,
-> so a countdown would wake with time still on it and leave school records open on an
-> unattended machine. One shared deadline in localStorage across tabs. A missing deadline
-> means "not idle": a late sign-out is a smaller harm than throwing somebody out mid-sentence.
->
-> **3. Same tab names on every profile.** Only owner and principal menus were clubbed; the
-> accountant head, management head, office desks, teachers and students got one flat list.
-> `groupToolsIntoHubs` in `lib/managementHubs.js` + `getGroupConfig` in `Sidebar.js`.
-> **Two rules, neither may be relaxed:** grouping NEVER grants (each profile's tool list is
-> resolved exactly as before; this only picks a tab, so a layout change can never widen the
-> permission table), and **nothing is dropped** - `staff-tracker` is in the management head's
-> list and in NO hub, so a tabs-only menu would have quietly removed it, which to the person
-> looking is identical to access being withdrawn. Orphans are still listed.
->
-> **4. The duplicate group icon in Messages is gone.** It opened the same window as the plus,
-> which already carries a Direct/Group switch.
->
-> ### Still open
->
-> - **Aman showed "online" in messaging with nobody signed in. UNEXPLAINED - do not guess.**
->   The light is driven by whether a live stream connection exists right now
->   (`sse_is_connected`), not a stale timestamp, so it could not be reproduced from the code.
->   Two candidates: a genuinely open session somewhere (which the missing idle logout made
->   easy), or a stream registered in `sse_connect` whose `finally` never ran, leaving the
->   entry until the process restarts. The server has restarted since. **If it is still lit
->   with nobody signed in, it is the second one.** Ask before fixing.
-> - **The idle sign-out has no "you are about to be signed out" warning**, and unsaved typing
->   is lost when it fires. Flagged to Abhimanyu; build it if it becomes a nuisance.
-> - **The idle sign-out was proven by tests, not by sitting in a browser for an hour.** The
->   sleeping-laptop case is covered by a test. Real-device observation is still outstanding.
+## Active Holds — Do Not Start
+
+- **B2, B3, B4** (admissions stage two) — ON HOLD by Abhimanyu's decision of 2026-08-15.
+  He is asking the school whether the entrance test is sat on the platform or on paper.
+  Do not start any of these three until that question is answered.
+- **`announcement-broadcaster` and `circular-sender` merge** — NOT decided. They write
+  class labels in different formats (`1-A` vs `1 A`) and target different roles, so
+  merging means choosing one format and choosing wrong silently mis-targets circulars.
+  Needs Abhimanyu.
+- **R3-4** (handing Chaman his credentials) — a deliberate act nobody has taken yet.
 
 ---
 
-> ## ✅ SHIPPED - Release 2: person profiles for Sonu and Lalit (2026-08-10)
->
-> Merged and live as `eduflow-release2-20260812-accfc64`. `main` is at `0b74b6e`.
-> **Permissions are now granted by a written-down table, not by subtraction** -
-> `backend/services/profile_matrix.py` is the source of truth and
-> `frontend/src/lib/toolPermissions.js` is a GENERATED mirror of it. Never hand-edit the
-> mirror. The pinned per-profile reach counts in
-> `tests/backend/unit/test_all_nine_profiles_sweep_r2_13.py` are the alarm: a count moving
-> without a written reason means somebody's access changed and nobody decided to.
->
-> The school's accountant head (Sonu Ruhal) and management person (Lalit Thomas) have their
-> own logins. **Reference, in this order:**
->
-> 1. `_bmad-output/implementation-artifacts/release-2/PROGRESS.md` ← the ONLY record of
->    what is done. Read it first, update it last, every single run.
-> 2. `_bmad-output/planning-artifacts/release-2-person-profiles-2026-08-10.md` ← what the
->    work is: the audit (Part 1), the 14 sub-parts (Part 2), the order (Part 3), and the
->    working notes an agent needs to resume cold (Part 4).
->
-> **⚠️ The `accountant` and `management` logins are LIVE in production** (confirmed
-> 2026-08-10). So everything below is a present condition, not a future risk. Their
-> passwords are guessable and **that is a recorded decision of Abhimanyu's, not an
-> oversight** (plan, decision 11). Do not change them: it would lock him out of the
-> accounts he uses to check the work.
->
-> **The one thing to understand.** Sonu's and Lalit's permissions are granted today by
-> SUBTRACTION - management is defined as "everything not tagged finance", in
-> `frontend/src/lib/toolPermissions.js` and at the bottom of `ai/tool_functions_v2.py`.
-> Nothing states what they are supposed to have. That is why Lalit can currently see the
-> school's fee figures, read any teacher's salary, open and close the accounting posting
-> lock, and run the year-end promotion. R2-1 replaces subtraction with one written-down
-> grant table, default deny, read by the menu, the server and Flo alike. Do not patch the
-> symptoms without it.
->
-> Eight decisions from Abhimanyu are recorded in the plan and are settled; do not re-open
-> them.
+## Active Constraints
 
----
+> ### ⛔ A push to `main` IS a frontend deploy. Decide before pushing.
+>
+> Amplify app `ddxpej151tf13` (EduFlow_v2) builds **every** push to `main` automatically.
+> "Code-complete, green, not deployed" is not a state this repository can hold for anything
+> with a screen. Keep unfinished frontend off `main` or put the control behind a flag.
+> Check deploy status: `aws amplify list-jobs --app-id ddxpej151tf13 --branch-name main`.
 
-> ## ⚠️ Deploys MUST run as the `claude-hosting` IAM user
+> ### ⛔ Never write a secret to a file inside this repository
+>
+> **This repository is PUBLIC.** Read credentials fresh from their source each time, never
+> stage a scratch file holding one, and never `git add` without looking at what is being
+> added. The old commit is still reachable by its id even after a force-push and history rewrite.
+
+> ### ⚠️ Deploys MUST run as the `claude-hosting` IAM user
 >
 > Three AWS logins exist for account `210447603820`. Only **`claude-hosting`** carries
-> `AdministratorAccess-AWSElasticBeanstalk`. The `Claude` and `claude-code-dev-user`
-> logins can read Elastic Beanstalk and can even create an application version, so a
-> deploy looks fine right up until `update-environment` fails within seconds on
-> `s3:DeleteObject` denied. **That is the wrong-key symptom, not a missing permission.
-> Do not ask anyone to widen IAM for it** (a 2026-08-08 session did, and lost the day).
+> `AdministratorAccess-AWSElasticBeanstalk`. The wrong key fails on `s3:DeleteObject`
+> AFTER the version is created — it looks like a permission gap, not a wrong-key error.
+> Do not ask anyone to widen IAM for it.
 >
-> Keys are `AWS_ACCESS_KEY_ID_HOSTING` / `AWS_SECRET_ACCESS_KEY_HOSTING` in the repo
-> root `.env` (gitignored, untracked - verified). Confirm with
-> `aws sts get-caller-identity` before deploying: the Arn must end `user/claude-hosting`.
+> Keys: `AWS_ACCESS_KEY_ID_HOSTING` / `AWS_SECRET_ACCESS_KEY_HOSTING` in the root `.env`
+> (gitignored). Confirm identity before deploying: `aws sts get-caller-identity` — the Arn
+> must end `user/claude-hosting`. A failed deploy never takes the school down; it leaves
+> the environment Red with "incorrect application version".
 >
-> The failure happens BEFORE the running app is touched, so a failed deploy never takes
-> the school down - it only leaves the environment Red, complaining that the instance
-> runs an "incorrect application version". A successful deploy clears that.
->
-> Verify a deploy by hitting a brand-new route: **401 proves the new code is live and
-> still guarded; 404 means it did not ship.**
->
-> **Building the bundle.** There is no deploy script. Build it by hand and CHECK IT
-> against the last good one before uploading - a first attempt on 2026-08-08 silently
-> dropped `.ebextensions/` (monitoring alarms, SSE timeout, tesseract OCR) and swept in
-> stray files from `backend/uploads/`, which may hold real people's documents:
+> **Building the bundle** (no deploy script — build by hand and diff before uploading):
 > ```bash
 > SHA=$(git rev-parse --short HEAD); ZIP=deploy/eduflow-backend-main-$SHA.zip
 > zip -qr $ZIP application.py Procfile requirements.txt backend .platform .ebextensions \
 >   -x "*__pycache__*" "*.pyc" "backend/.env" "backend/.env.example" "backend/uploads/*"
-> diff <(unzip -Z1 deploy/<last-good>.zip | sort) <(unzip -Z1 $ZIP | sort)   # expect no diff
+> diff <(unzip -Z1 deploy/<last-good>.zip | sort) <(unzip -Z1 $ZIP | sort)  # expect no diff
 > ```
-> Then `aws s3 cp` it to `elasticbeanstalk-ap-south-1-210447603820`,
-> `create-application-version`, and `update-environment`. `deploy/*.zip` is gitignored.
+> Then `aws s3 cp` to `elasticbeanstalk-ap-south-1-210447603820`, `create-application-version`,
+> and `update-environment`. `deploy/*.zip` is gitignored.
 >
-> **The frontend deploys itself.** Amplify app `ddxpej151tf13` (EduFlow_v2) builds on every
-> push to `main`. Check with `aws amplify list-jobs --app-id ddxpej151tf13 --branch-name main`.
+> **Verify a deploy** by hitting a brand-new route: 401 = code is live and still guarded;
+> 404 = it did not ship.
 
-> ## 🆕 Parent messaging + deferred tool loading (2026-08-08) - DEPLOYED 2026-08-08 15:02 IST
+> ### ⚠️ WhatsApp cannot send in production — it is NOT just three unset env vars
 >
-> **Flo can now send WhatsApp/SMS to families for real**, always behind a confirm card that
-> states how many families it reaches. One shared path: `services/messaging_service.py`,
-> reached by `/api/parent-messaging/*` (panels) and `send_parent_message` (Flo), pinned by
-> `tests/backend/parity/messaging_parity_test.py`. Templates live in `message_templates`
-> and Flo can create/edit/delete them.
+> No production WhatsApp sender is registered. The only sender on the Twilio account is
+> `whatsapp:+14155238886`, which is the shared sandbox number and it is `OFFLINE`. The
+> sandbox can only message people who have themselves texted a join code. A WhatsApp
+> Business Account does exist (`waba_id 757370660501818`); a real sender must be registered
+> to it. No school templates exist; the three approved templates are Layaa AI sales outreach.
+> SMS credentials are US numbers (`+12286410951`, `+15612508971`) — expensive and filtered by
+> Indian carriers. Do not imply WhatsApp or SMS is ready for school use.
+
+> ### ⚠️ LayaaStat runs on AWS Amplify, app `ddsqdblq9ge74`, NOT Vercel
 >
-> **SMS wording is free; WhatsApp wording is not.** Meta requires pre-approved templates,
-> so `update_message_template` on a WhatsApp template changes only the local PREVIEW. Real
-> new wording goes through `submit_whatsapp_template` (Twilio Content API → Meta approval,
-> minutes to a day, can be refused). Do not let any doc or prompt imply otherwise.
->
-> ⚠️ **WhatsApp cannot send in production, and it is NOT just three unset env vars.**
-> Corrected 2026-08-08 by reading the Twilio account directly. `TWILIO_WHATSAPP_FROM`
-> and both template SIDs are indeed unset on Elastic Beanstalk - but there is nothing
-> valid to set them to yet:
->
-> - **No production WhatsApp sender exists.** The only sender on the account is
->   `whatsapp:+14155238886`, which is Twilio's shared *sandbox* number, and it is
->   `OFFLINE`. The sandbox can only message people who have themselves texted a join
->   code, so it can never reach the school's families. A WhatsApp Business Account does
->   exist (`waba_id 757370660501818`); a real sender number must be registered to it.
-> - **No school templates exist.** The account holds 3 approved templates, all
->   `MARKETING`-category Layaa AI sales outreach. Fee and attendance reminders are
->   `UTILITY` and must be written and submitted separately. Sending school reminders on
->   a marketing template is wrong and risks the WhatsApp Business Account.
->
-> The OLD bulk route silently recorded every recipient as "not_configured" and returned
-> success - the new path fails loudly with a 503 naming the missing variable instead.
->
-> SMS does have working credentials, but both numbers on the account are **US numbers**
-> (`+12286410951`, `+15612508971`). To Indian parents that is expensive per message,
-> arrives as an international sender, and is the kind of number Indian carriers filter.
-> An Indian DLT-registered sender is the right answer for school SMS.
->
-> **Deferred tool loading** (`ai/tool_search.py`) cut an owner/principal turn from ~36,400
-> to ~9,700 tokens (73%). A small CORE set is described in full; everything else is listed
-> BY NAME and its schema fetched via `search_tools` on demand. It replaced the old
-> hide-by-role trim (`EXCLUDE_FOR_ROLE`, now empty), which had caused Flo to tell the
-> school's owner an operation was "not available to me" about something they could do.
-> **Nothing is ever hidden** - `test_tool_search.py` proves every authorized tool stays
-> reachable for all 10 role profiles. Kill switch: `EDUFLOW_TOOL_SEARCH=0`.
->
-> Adding a tool? Put it in CORE only if it is genuinely everyday - every CORE name is paid
-> for on every turn by every user of that role.
+> The repository carries a leftover `vercel.json` that reads as authoritative and is not.
+> The Vercel account holds one unrelated project. Going to the wrong console costs time.
 
 ---
 
-> ## 🆕 Spreadsheet import is segment-scoped across four profiles (2026-08-08) - LIVE
->
-> Live as `eduflow-main-20260808-9f5e224`. Import is no longer owner/principal-only:
->
-> | Profile | May import |
-> |---|---|
-> | owner, principal (`leadership`) | the whole student record |
-> | accountant (`finance`) | bank fields + contact numbers (fee reminders go to those) |
-> | management (`non_finance`) | everything except the bank fields |
->
-> **One place decides:** `data_import_service.IMPORT_FIELD_SCOPES`, keyed by
-> `ai_action_policy.privileged_profile()` - the function that already defines these four
-> profiles. Do not add a second copy of that mapping anywhere.
->
-> **Out-of-segment columns are REPORTED, never silently dropped** -
-> `columns_outside_your_access`, named in the preview before anyone confirms and in the
-> result afterwards. A silently dropped column is indistinguishable from an imported one.
-> For the same reason, an import where every usable column was out of scope says exactly
-> that instead of "the database already has this information".
->
-> **Three entrances, one service.** Flo's `preview_data_import` / `import_data_file`
-> (chat attachment, by `file_id`), `POST /api/data-import/{preview,apply}` (JSON), and
-> `POST /api/data-import/upload-{preview,apply}` (multipart, used by the screen). All
-> reach `_build_plan` / `_apply_plan`; `tests/backend/parity/data_import_profile_scope_test.py`
-> pins that the screen and the chat produce identical writes.
->
-> ⚠️ **The sidebar "Data Import" panel has TWO tabs, and they are not the same feature.**
-> "Update existing records" is the scoped import above, open to all four profiles.
-> "Add new students" is the OLD `/api/import/{validate,commit}` route
-> (`routes/import_data.py`), which **creates** students - minting admission numbers like
-> `IMP20260808A3F2C` plus a guardian row each - and is **owner/principal only**, with no
-> field scoping because the records are new. Never conflate the two: opening the create
-> path to more profiles is how duplicate children and school-unapproved admission numbers
-> get onto the roll.
->
-> Import can never set fees, class, or enrolment status (`PROTECTED_FIELDS`), matches on
-> admission number and never on name, and fills blanks only unless `overwrite=true`.
->
-> **Fixed at the same time:** `import_data_file` was missing from `BULK_TOOL_NAMES`, so the
-> loop at the bottom of `tool_functions_v2.py` set `requires_confirmation=False` and the
-> confirm card its own description promised never appeared - on a tool that rewrites fields
-> across the whole roll. Also removed a dead `"access_domain": "students"` literal on both
-> import tools: that field is assigned from `SHARED_LOOKUP_TOOL_NAMES` further down the
-> module, so the literal was overwritten while still reading as authoritative.
+## Code Facts That Will Trip You Up
+
+These are still live rules derived from production incidents; all are pinned by tests.
+
+**Never return the dict you just passed to `insert_one`.** Mongo stamps `_id` (an
+ObjectId) into the caller's dict in place. An ObjectId is not JSON, so FastAPI raises
+AFTER the write commits — the caller is told the opposite of what happened. Read it back
+with `{"_id": 0}` or strip the key before returning.
+
+**All photos must go through `photo_url_service`.** `test_no_vendor_photo_link_escapes_2026_08_15.py`
+fails if any NEW route module returns a person record without importing the service.
+
+**Never bind a module constant as a default argument** (`max_rows: int = MAX_ROWS`).
+Python evaluates it once at import; the constant stops being live and every test that
+monkeypatches it is silently ignored. Default to `None` and resolve inside the function.
+
+**`/api/audit-log`, not `/api/audit`.** Probing the shorter path returns a 404 that looks
+exactly like a failed deploy.
+
+**Adesh must NOT see Aman's changes in the audit trail.** This is a settled decision from
+Release 4 (2026-08-12). Adesh seeing Aman's *approval decisions* (in the approvals
+workflow) is different and intentional. Keep the two surfaces apart.
+
+**`decide_leave` is deleted.** Everything goes through `decide_leave_request`. Do not
+recreate the deleted path or route any leave approval through it.
+
+**`$in` against a list field in `FakeCollection` now stamps correctly.** If you see `$in`
+test failures against list fields it is almost certainly a conftest.py version mismatch,
+not a logic error.
+
+**`idleLogout.js` stores a deadline, not a countdown.** A sleeping laptop stops timers;
+a countdown wakes with time still on it. The deadline is in localStorage and shared across
+tabs. A missing deadline means "not idle" (a late sign-out is safer than throwing someone
+out mid-sentence). One hour, every profile including the owner.
+
+**The Tests tab (B1) was asserted ABSENT until B1 was built.** That assertion was flipped,
+not deleted. It now fails if the tab exists without its panel.
+
+**Announcement targeting is by class ID, never by printed label.** Two screens wrote
+`10th A` and `10th-A` for the same class. Any label comparison picks a winner and
+mis-targets the other. The rule lives in `backend/services/announcement_audience.py`.
+
+**Transport head has FULL financial visibility of school transport** (fares, who owes
+what). The original plan said zero money; Abhimanyu reversed that on 2026-08-15. Everything
+else (tuition, concessions, salaries) stays refused — enforced by giving him ONE
+purpose-built money tool, not the finance domain.
+
+**TWO different things are called Release 3, and two are called Release 4.** Read
+`_bmad-output/planning-artifacts/release-numbering-collision-2026-08-14.md` before using
+a release number in any sentence or PR title.
 
 ---
 
 ## How To Talk To The Humans Here (MANDATORY)
 
 **Always use plain, human, non-technical language** when explaining, reporting, or
-replying - every message, not just end-of-task summaries. Abhimanyu and Shubham
+replying — every message, not just end-of-task summaries. Abhimanyu and Shubham
 read these to make decisions and to relay them to the school's staff, not to
 review implementation detail.
 
 - Lead with what it means in ordinary words. Use a technical name only when they
-  have to type or click it - then give the exact string, clearly marked.
+  have to type or click it — then give the exact string, clearly marked.
 - Leave out internal machinery (file paths, class names, framework terms) unless
   asked, or unless it's the thing that must change.
-- Plain ≠ vague or softened. Be just as direct about failures, costs, and risks -
+- Plain ≠ vague or softened. Be just as direct about failures, costs, and risks —
   only in everyday words. If tests fail, say so plainly.
 - This governs prose written *to* the user. Code, commit messages, and the epic
   logs keep their normal technical precision.
 
 ---
 
----
-
 ## IMPORTANT: `owner` is a SCHOOL role, not Abhimanyu
 
 `owner` in this codebase is **the school's owner** (the account is "Aman Litt"). Abhimanyu is
-the **founder of the platform** - he commissions the work and approves deploys, and he does
+the **founder of the platform** — he commissions the work and approves deploys, and he does
 NOT hold the `owner` role. Corrected 2026-08-04 after several documents addressed him as
 though he did ("your AI limit is used up", "only you can print certificates"), which is a
 statement about a school staff account and could have produced the wrong decision about who
 may do what.
 
-In prose written to Abhimanyu, never say "you" for an `owner`-role capability - say "the
+In prose written to Abhimanyu, never say "you" for an `owner`-role capability — say "the
 school's owner". In code, `owner` means exactly what it always did; nothing about the
 permission model changes.
 
 ## What This Project Is
 
-EduFlow is a **chat-first, multi-role school management SaaS** for The Aaryans (CBSE school, Joya, Amroha, UP, India). **ONE branch, `branch-joya`, and all 1,876 students sit on it** (1,842 active; counted live 2026-08-08 - every doc previously said 1,802, a figure that went stale after the 6 Aug load and was then copied forward. Do not hardcode a roll anywhere: count it) - the trust has other branches but this platform serves Joya only (Abhimanyu, 2026-07-22; see `backend/school_identity.py`). The wording here used to say "multi-branch", which was wrong and led an agent to raise branch-scoping as a live gap on 2026-08-04. Branch scoping still exists in the code and stays, but it guards a future second branch, not a present one.
+EduFlow is a **chat-first, multi-role school management SaaS** for The Aaryans (CBSE school, Joya, Amroha, UP, India). **ONE branch, `branch-joya`, and all 1,876 students sit on it** (1,842 active; counted live 2026-08-08 — do not hardcode a roll anywhere: count it) — the trust has other branches but this platform serves Joya only (Abhimanyu, 2026-07-22; see `backend/school_identity.py`). Branch scoping exists in the code and stays, but it guards a future second branch, not a present one.
 
 School staff (owner, principal, teachers, accountants, etc.) manage attendance, fees, academics, staff, and operations through an AI chat assistant + structured tool panels.
 
@@ -839,11 +200,9 @@ School staff (owner, principal, teachers, accountants, etc.) manage attendance, 
 | 5–16 | ✅ All Done | 699 tests, full party-mode + adversarial ceremony |
 | **Operations.py** | 🔧 Wave 3 in progress | expenses/incidents/transport branch isolation |
 
-> **These are historical per-part figures, not a baseline.** They record how many tests each
-> part added at the time it shipped; they are not the size of the suite today and must never
-> be copied into a "the suite should show N" instruction (D-51/D-56). **The bar is the FAILURE
-> count and it is ZERO.** No pass count is recorded here on purpose: every one ever written
-> down went stale within days and was then copied forward as a target. Run the commands in
+> **These are historical per-part figures, not a baseline.** The bar is the FAILURE count
+> and it is ZERO. No pass count is recorded here on purpose: every one ever written down
+> went stale within days and was then copied forward as a target. Run the commands in
 > **Running Tests** below and read the number they print.
 
 **Epic files for all parts:** `_bmad-output/planning-artifacts/epic-part*.md`
@@ -903,10 +262,10 @@ db.classes.find(scoped_filter({}))  # branch-scope: intentional - cross-branch c
 ```bash
 grep -n "scoped_filter(" backend/routes/<new_file>.py
 ```
-Every hit must EITHER have a `# branch-scope: intentional - <reason>` comment (approved, do not change) OR be migrated to `scoped_query(branch_id=user.get("branch_id"))`. A hit WITH the comment is a passing result - never convert intentional cross-branch queries.
+Every hit must EITHER have a `# branch-scope: intentional - <reason>` comment (approved, do not change) OR be migrated to `scoped_query(branch_id=user.get("branch_id"))`. A hit WITH the comment is a passing result — never convert intentional cross-branch queries.
 
 ### Database
-- All DB ops must be `async`/`await` with Motor - never pymongo in request handlers
+- All DB ops must be `async`/`await` with Motor — never pymongo in request handlers
 - **Motor cursors:** `find()` returns a cursor, NOT a coroutine. Always chain `.to_list(N)`:
   ```python
   # CORRECT
@@ -915,7 +274,7 @@ Every hit must EITHER have a `# branch-scope: intentional - <reason>` comment (a
   items = await db.students.find(query)
   ```
 - Never expose `_id` in responses: `.find(query, {"_id": 0})`
-- IDs are string UUID4 - never MongoDB ObjectId
+- IDs are string UUID4 — never MongoDB ObjectId
 - N+1 queries: batch with `{"id": {"$in": [...]}}` + build a dict, never loop queries
 - New indexes go in `database.py → _create_indexes()` only
 - New migrations: add to `backend/migrations/` AND update `backend/migrations/run_all.py` in the same PR
@@ -924,7 +283,7 @@ Every hit must EITHER have a `# branch-scope: intentional - <reason>` comment (a
 
 **Run migrations one at a time, after reading what that specific file does.** Not the runner.
 
-`_create_indexes()` does **not** run in production (see `database.py` - it is gated on
+`_create_indexes()` does **not** run in production (see `database.py` — it is gated on
 `CREATE_INDEXES_ON_STARTUP` / non-prod `ENVIRONMENT`, deliberately, so deploying code can never
 silently alter the school's data). That means migrations are the only way indexes reach
 production, which makes the runner tempting. Do not use it.
@@ -941,18 +300,13 @@ to students who already have them.
 The tracking collection records each entry with a category and evidence, with
 `marked_without_running: true` where nothing was executed.
 
-**`012_migrate_uploads_to_s3` is CLOSED as NOT APPLICABLE (2026-08-15).** *(It was described
-here as "the only one still pending" and "genuinely outstanding". Checked, and it has nothing
-to move.)* Production holds **five** upload records: three are already on S3, and **none**
-carries binary data in Mongo. The other two are from April 2026 and their `path` points at a
-developer's own Mac (`/Users/shashisharma/...`), so those bytes never existed on the server;
-012 would report them "missing" and change nothing. Recorded in `_migrations` with that
-evidence. Do not schedule a rehearsal against a copy of production for it.
+**`012_migrate_uploads_to_s3` is CLOSED as NOT APPLICABLE (2026-08-15).** Production holds
+five upload records: three are already on S3 and two point at a developer's own Mac
+(`/Users/shashisharma/...`) — those bytes never existed on the server. Do not schedule a
+rehearsal for it.
 
-**What IS left from those two rows, and it is small:** they are broken file links on two
-student records, a photo and a character certificate, pointing at files that cannot be
-retrieved. Leaving them or clearing them is a data-quality decision for Abhimanyu, not a
-migration.
+**What IS left:** two broken file links on two student records (a photo and a character
+certificate). Leaving them or clearing them is a data-quality decision for Abhimanyu.
 
 ```bash
 # Correct: read the file, then run that one migration and record it.
@@ -1011,6 +365,27 @@ import { Button } from '@/components/ui/button'  // not ../../components/...
 // Tool routing - use React Router v7 primitives (useSearchParams or <Route>)
 // NEVER use raw window.location.hash alongside react-router-dom - they conflict
 ```
+
+### Approvals architecture (do not relax)
+All six approval kinds route through `backend/services/approval_registry.py`. A seventh
+adds one registry entry. `may_decide` mirrors the gate its own route carries — the
+registry can only HIDE a row, never GRANT a decision someone doesn't hold. Flo is NEVER
+in the shared approval thread — each person gets Flo privately. See
+`_bmad-output/implementation-artifacts/release-3-access/PROGRESS.md` for the full record.
+
+### Admissions: six traps
+- **Enrolment has exactly ONE source: `enroll_application`.** `enrolled` was removed as a
+  choice from every path including the owner's, and from Flo. Do not put it back.
+- **`admission` is NOT a sub-category this platform recognises.** There is no admissions
+  desk profile. Do not invent one and do not write a gate that depends on it.
+- **`sub_categories` on a registry entry does NOT refuse the management head.**
+  `profile_authorization_decision` ignores it for domain profiles by design. The mechanism
+  that works is `denied_tools` in `profile_matrix.py`, where a denial wins.
+- **TWO generated mirrors, never hand-edited**, each with a drift test:
+  `profileMatrix.generated.js` and `admissionsJourney.generated.js`.
+- **TWO different pinned count tests.** `EXPECTED_REACH` counts Flo TOOLS;
+  `ProfileMenuSweep.test.js` counts SCREENS. They are not the same thing.
+- **Stage two (B2–B4) is ON HOLD** — do not start.
 
 ---
 
@@ -1110,6 +485,7 @@ tests/backend/
 _bmad-output/
 ├── project-context.md     # 34 critical patterns - load before implementing
 ├── platform-quality-sweep.md  # master sweep tracker
+├── RELEASE-HISTORY.md     # full deploy record and historical release notes
 ├── planning-artifacts/    # epic files for all parts
 └── parts/                 # per-part ADRs, architecture, epics
 ```
@@ -1168,14 +544,11 @@ Sprint-status keys: `hotfix-1-file-serve-unauthenticated`, `hotfix-2-fee-collect
 python -m pytest tests/backend/ -q
 
 # Frontend unit tests - the bar is 0 failed. RUN FROM THE `frontend/` FOLDER, not the root.
-# (The two LayoutRouting.test.js failures this line used to warn about were fixed by T12 on
-# 2026-08-04; the suite is fully green.)
 cd frontend && CI=true npx jest
 
 # ⚠️  This line used to read `npx craco test --watchAll=false`. The frontend moved to Vite +
 # plain Jest and craco is NOT installed - that command dies with "could not determine
-# executable to run", which reads like a broken machine rather than a stale doc. Corrected
-# 2026-08-08. There is no craco.config.js in the repo; do not reintroduce that command.
+# executable to run". There is no craco.config.js in the repo; do not reintroduce that command.
 
 # Frontend production build - this is what Amplify runs, and it RUNS LINT FIRST
 # (`npm run build` = `eslint src --max-warnings=0` then `vite build`). A lint warning
@@ -1185,29 +558,22 @@ cd frontend && npm run build
 # Frontend E2E
 npx playwright test
 
-# Phone and tablet (Release 3, item E). These are REAL device profiles - touch,
-# `isMobile`, and a proper device pixel ratio. The older `responsive-chromium` project is
-# Desktop Chrome with the window made narrow, which is a small desktop and not a phone;
-# that is why the owner's iPhone 15 Pro report of 2026-08-06 was not caught by a green
-# suite. Phone and tablet are the PRIMARY devices; desktop is secondary.
+# Phone and tablet - REAL device profiles (touch, isMobile, proper pixel ratio).
+# The older `responsive-chromium` project is Desktop Chrome with the window made narrow.
+# Phone and tablet are the PRIMARY devices; desktop is secondary.
 npx playwright test --project=phone-pixel --project=tablet-ipad
 
-# ⚠️ Running the E2E suite against the app on a port OTHER than 3000
-# `tests/support/e2e_backend.py` is a stand-in server. It used to pin its allowed origin
-# to `http://localhost:3000`, so on any other port the browser SILENTLY DROPPED every
-# reply and the sign-in page just sat there with no error on it - a dropped response
-# looks exactly like a server that never answered. It now echoes the caller's origin
-# back, so any port works. If something else on this machine already holds :3000 (it
-# often does), build the frontend with `REACT_APP_BACKEND_URL=http://localhost:8000`,
-# serve it with `npx vite preview --port 3100`, and pass `BASE_URL=http://localhost:3100`.
+# ⚠️ Running E2E on a port OTHER than 3000
+# `tests/support/e2e_backend.py` now echoes the caller's origin back, so any port works.
+# If :3000 is taken: build with `REACT_APP_BACKEND_URL=http://localhost:8000`,
+# serve with `npx vite preview --port 3100`, pass `BASE_URL=http://localhost:3100`.
 
 # Dev server
 cd backend && uvicorn server:app --reload --port 8000
-cd frontend && npm start        # Vite on :3000 (both package-lock.json and yarn.lock
-                                # exist; npm is what the build and CI actually use)
+cd frontend && npm start        # Vite on :3000 (use npm, not yarn)
 ```
 
-**If tests skip silently:** a file is missing `from __future__ import annotations` - find it and add it.
+**If tests skip silently:** a file is missing `from __future__ import annotations` — find it and add it.
 
 ---
 
@@ -1218,7 +584,7 @@ cd frontend && npm start        # Vite on :3000 (both package-lock.json and yarn
 3. Run `python -m pytest tests/backend/ -x -q` to confirm baseline
 4. Check the specific route file + its test file before writing new code
 5. Every new test file needs `from __future__ import annotations`. It does NOT need
-   `pytestmark = pytest.mark.asyncio` - `asyncio_mode = auto` handles that (audit A-8)
+   `pytestmark = pytest.mark.asyncio` — `asyncio_mode = auto` handles that (audit A-8)
 6. Every new endpoint needs: unauthenticated test + wrong-role test (security convention)
 7. Role-vertical stories (Parts 9-13): run `grep -n "scoped_filter(" backend/routes/<file>.py` and audit every hit
 
