@@ -200,6 +200,135 @@ def test_create_subscription_session_unknown_plan_400(app_client, autouse_clean)
     assert resp.status_code == 400
 
 
+# ─── Pay-as-you-go: checkout session ──────────────────────────────────────────
+
+def test_create_payg_checkout_session_owner_success(app_client, autouse_clean):
+    resp = app_client.post(
+        "/api/tokens/create-payg-checkout-session",
+        json={"amount_inr": 500, "success_url": "https://app.test?recharge=success", "cancel_url": "https://app.test?recharge=cancel"},
+        headers=_owner_headers(),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert data["data"]["checkout_url"] == FAKE_PAYMENT_LINK["short_url"]
+    assert data["data"]["session_id"] == FAKE_PAYMENT_LINK["id"]
+    # 500 * PAYG_TOKENS_PER_INR (1000) = 500,000 - a preview only, the webhook recomputes it.
+    assert data["data"]["tokens"] == 500_000
+
+
+def test_create_payg_checkout_session_unauthenticated_401(app_client, autouse_clean):
+    resp = app_client.post("/api/tokens/create-payg-checkout-session", json={"amount_inr": 500})
+    assert resp.status_code == 401
+
+
+def test_create_payg_checkout_session_wrong_role_403(app_client, autouse_clean):
+    resp = app_client.post(
+        "/api/tokens/create-payg-checkout-session",
+        json={"amount_inr": 500},
+        headers=_student_headers(),
+    )
+    assert resp.status_code == 403
+
+
+def test_create_payg_checkout_session_below_min_400(app_client, autouse_clean):
+    resp = app_client.post(
+        "/api/tokens/create-payg-checkout-session",
+        json={"amount_inr": 10},
+        headers=_owner_headers(),
+    )
+    assert resp.status_code == 400
+
+
+def test_create_payg_checkout_session_above_max_400(app_client, autouse_clean):
+    resp = app_client.post(
+        "/api/tokens/create-payg-checkout-session",
+        json={"amount_inr": 50_000},
+        headers=_owner_headers(),
+    )
+    assert resp.status_code == 400
+
+
+def test_create_payg_checkout_session_non_numeric_400(app_client, autouse_clean):
+    resp = app_client.post(
+        "/api/tokens/create-payg-checkout-session",
+        json={"amount_inr": "not-a-number"},
+        headers=_owner_headers(),
+    )
+    assert resp.status_code == 400
+
+
+def test_packs_endpoint_includes_payg_config(app_client, autouse_clean):
+    resp = app_client.get("/api/tokens/packs", headers=_owner_headers())
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["payg"]["tokens_per_inr"] == 1000
+    assert data["payg"]["min_inr"] == 50
+    assert data["payg"]["max_inr"] == 10_000
+
+
+# ─── Pay-as-you-go: webhook credit ────────────────────────────────────────────
+
+async def test_webhook_payment_link_paid_credits_payg_tokens(token_db, monkeypatch):
+    token_db.token_balances.docs[:] = [
+        {"branch_id": "branch-a", "school_topup_pool": 0, "role_limits": {}}
+    ]
+    link = {
+        "id": "plink_payg_1",
+        "status": "paid",
+        "amount": 50_000,  # paise = Rs.500
+        "notes": {"branch_id": "branch-a", "user_id": "owner-1", "amount_inr": "500", "kind": "payg"},
+    }
+
+    import services.razorpay_service as svc
+    await svc.handle_payment_link_paid(link)
+
+    assert token_db.token_balances.docs[0]["personal_topups"]["owner-1"] == 500_000
+    purchase = token_db.token_purchases.docs[0]
+    assert purchase["pack_id"] == "payg"
+    assert purchase["tokens"] == 500_000
+    assert purchase["price_inr"] == 500
+
+
+async def test_webhook_payment_link_paid_payg_amount_mismatch_skipped(token_db, monkeypatch):
+    token_db.token_balances.docs[:] = [
+        {"branch_id": "branch-a", "school_topup_pool": 0, "role_limits": {}}
+    ]
+    link = {
+        "id": "plink_payg_tampered",
+        "status": "paid",
+        "amount": 10_000,  # paise = Rs.100, but notes claim Rs.500
+        "notes": {"branch_id": "branch-a", "user_id": "owner-1", "amount_inr": "500", "kind": "payg"},
+    }
+
+    import services.razorpay_service as svc
+    await svc.handle_payment_link_paid(link)
+
+    assert token_db.token_balances.docs[0].get("personal_topups", {}) == {}
+    assert token_db.token_purchases.docs == []
+
+
+async def test_webhook_payment_link_paid_payg_idempotent(token_db, monkeypatch):
+    token_db.token_balances.docs[:] = [
+        {"branch_id": "branch-a", "school_topup_pool": 0, "role_limits": {}}
+    ]
+    token_db.token_purchases.docs[:] = [
+        {"razorpay_reference_id": "plink_payg_dup", "payment_provider": "razorpay"}
+    ]
+    link = {
+        "id": "plink_payg_dup",
+        "status": "paid",
+        "amount": 10_000,
+        "notes": {"branch_id": "branch-a", "user_id": "owner-1", "amount_inr": "100", "kind": "payg"},
+    }
+
+    import services.razorpay_service as svc
+    await svc.handle_payment_link_paid(link)
+
+    assert token_db.token_balances.docs[0].get("personal_topups", {}) == {}
+    assert len(token_db.token_purchases.docs) == 1
+
+
 # ─── AC3 + AC4: Webhook handler - payment_link.paid ───────────────────────────
 
 async def test_webhook_payment_link_paid_credits_tokens(token_db, monkeypatch):

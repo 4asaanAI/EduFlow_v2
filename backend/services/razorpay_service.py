@@ -29,7 +29,7 @@ from pymongo.errors import DuplicateKeyError
 from database import get_db, get_raw_db, get_txn_session
 from services import audit_changes
 from services.audit_service import write_audit
-from services.token_service import DEFAULT_ROLE_LIMITS, PACKS
+from services.token_service import DEFAULT_ROLE_LIMITS, PACKS, calculate_payg_tokens
 from tenant import _school_id_var
 
 logger = logging.getLogger(__name__)
@@ -325,6 +325,38 @@ async def create_checkout_session(
     return {"checkout_url": link["short_url"], "session_id": link["id"]}
 
 
+async def create_payg_checkout_session(
+    amount_inr: int,
+    branch_id: str,
+    user_id: str,
+    success_url: str,
+    cancel_url: str,
+) -> dict:
+    """Create a Razorpay Payment Link for a custom pay-as-you-go top-up amount.
+
+    Same one-time Payment Link flow as `create_checkout_session` (fixed packs) -
+    not a Subscription. `amount_inr` is carried in `notes` so the webhook can
+    recompute the token grant itself rather than trusting a client-sent value.
+    """
+    client = _razorpay_client()
+    link = client.payment_link.create(
+        {
+            "amount": amount_inr * 100,
+            "currency": "INR",
+            "description": f"EduFlow Pay-as-you-go top-up - Rs.{amount_inr}",
+            "notes": {
+                "branch_id": branch_id,
+                "user_id": user_id,
+                "amount_inr": str(amount_inr),
+                "kind": "payg",
+            },
+            "callback_url": success_url,
+            "callback_method": "get",
+        }
+    )
+    return {"checkout_url": link["short_url"], "session_id": link["id"]}
+
+
 async def create_subscription_session(
     plan_id: str,
     branch_id: str,
@@ -379,24 +411,45 @@ def verify_webhook(raw_body: bytes, signature: str) -> dict:
 
 
 async def handle_payment_link_paid(link: dict) -> None:
-    """Credit a one-time top-up from a paid Razorpay Payment Link entity."""
+    """Credit a one-time top-up (fixed pack or pay-as-you-go) from a paid Razorpay Payment Link."""
     if link.get("status") != "paid":
         return
 
     notes = link.get("notes") or {}
     branch_id = notes.get("branch_id")
     user_id = notes.get("user_id")
-    pack_id = notes.get("pack_id")
     reference_id = link.get("id")
 
-    if not all([branch_id, user_id, pack_id, reference_id]):
-        logger.warning("payment_link_paid_missing_notes", extra={"reference_id": reference_id})
-        return
-
-    pack = PACKS.get(pack_id)
-    if not pack:
-        logger.error("payment_link_paid_unknown_pack", extra={"pack_id": pack_id, "reference_id": reference_id})
-        return
+    if notes.get("kind") == "payg":
+        amount_raw = notes.get("amount_inr")
+        if not all([branch_id, user_id, reference_id, amount_raw]):
+            logger.warning("payment_link_paid_missing_notes", extra={"reference_id": reference_id})
+            return
+        try:
+            amount_inr = int(amount_raw)
+        except (TypeError, ValueError):
+            logger.error("payment_link_paid_invalid_payg_amount", extra={"reference_id": reference_id})
+            return
+        # Belt-and-braces: the amount actually paid must match what the notes
+        # claim, even though the notes were set server-side at link creation.
+        paid_paise = link.get("amount_paid") or link.get("amount")
+        if paid_paise is not None and int(paid_paise) != amount_inr * 100:
+            logger.error("payment_link_paid_amount_mismatch", extra={"reference_id": reference_id})
+            return
+        pack_id = "payg"
+        tokens = calculate_payg_tokens(amount_inr)
+        payg_price_inr = amount_inr
+    else:
+        payg_price_inr = None
+        pack_id = notes.get("pack_id")
+        if not all([branch_id, user_id, pack_id, reference_id]):
+            logger.warning("payment_link_paid_missing_notes", extra={"reference_id": reference_id})
+            return
+        pack = PACKS.get(pack_id)
+        if not pack:
+            logger.error("payment_link_paid_unknown_pack", extra={"pack_id": pack_id, "reference_id": reference_id})
+            return
+        tokens = pack["tokens"]
 
     # R12.2: resolve school_id from branch, not from ambient env-default.
     raw_db = get_raw_db()
@@ -415,7 +468,7 @@ async def handle_payment_link_paid(link: dict) -> None:
         if existing:
             logger.info("payment_link_paid_already_processed", extra={"reference_id": reference_id})
             return
-        await purchase_topup_razorpay(db, branch_id, user_id, pack_id, reference_id, pack["tokens"])
+        await purchase_topup_razorpay(db, branch_id, user_id, pack_id, reference_id, tokens, price_inr=payg_price_inr)
     finally:
         _school_id_var.reset(ctx_token)
 
@@ -640,9 +693,12 @@ async def purchase_topup_razorpay(
     pack_id: str,
     razorpay_reference_id: str,
     tokens: int,
+    price_inr: int | None = None,
 ) -> None:
     now_iso = datetime.now(timezone.utc).isoformat()
-    pack = PACKS.get(pack_id, {})
+    # Fixed packs carry their own price; pay-as-you-go passes the actual paid
+    # amount explicitly since there's no PACKS entry for it.
+    resolved_price = price_inr if price_inr is not None else PACKS.get(pack_id, {}).get("price_inr", 0)
 
     # R12.3: atomic - claim insert and balance increment in a single transaction.
     session = await get_txn_session()
@@ -655,7 +711,7 @@ async def purchase_topup_razorpay(
                         "user_id": user_id,
                         "pack_id": pack_id,
                         "tokens": tokens,
-                        "price_inr": pack.get("price_inr", 0),
+                        "price_inr": resolved_price,
                         "razorpay_reference_id": razorpay_reference_id,
                         "payment_provider": "razorpay",
                         "created_at": now_iso,

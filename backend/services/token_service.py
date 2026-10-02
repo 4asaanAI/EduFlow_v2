@@ -32,6 +32,25 @@ PACKS = {
     "school":   {"tokens": 3_000_000, "price_inr": 1499},
 }
 
+# ─── Pay-as-you-go (custom amount) ──────────────────────────────────────────
+# Flat conversion rate for a custom top-up amount, pinned to the cheapest
+# subscription plan's effective rate (monthly_starter: 1,000,000 / 999 ~= 1001
+# tokens/rupee) so paying as-you-go never undercuts committing to a plan.
+PAYG_TOKENS_PER_INR = 1000
+PAYG_MIN_INR = 50
+PAYG_MAX_INR = 10_000
+
+
+def calculate_payg_tokens(amount_inr: int) -> int:
+    """Single source of truth for the pay-as-you-go amount -> tokens conversion.
+
+    Called both when quoting a preview to the frontend and when crediting a
+    webhook - the webhook always recomputes from `amount_inr`, never trusting
+    a token count that may have come from the client.
+    """
+    return int(amount_inr) * PAYG_TOKENS_PER_INR
+
+
 # Default per-role monthly token limits (can be overridden per branch)
 DEFAULT_ROLE_LIMITS = {
     "owner":   1_000_000,

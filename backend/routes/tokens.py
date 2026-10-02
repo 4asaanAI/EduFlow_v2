@@ -9,6 +9,7 @@ Endpoints:
   GET  /api/tokens/packs                    - available top-up packs + subscription plans
   PUT  /api/tokens/limits                   - update per-role limits (owner only)
   POST /api/tokens/create-checkout-session  - Razorpay one-time payment link (owner only)
+  POST /api/tokens/create-payg-checkout-session - Razorpay one-time link, custom amount (owner only)
   POST /api/tokens/create-subscription-session - Razorpay subscription (owner only)
   POST /api/tokens/webhook                  - Razorpay webhook receiver (no JWT auth)
 """
@@ -25,6 +26,7 @@ from services.razorpay_service import (
     SUBSCRIPTION_PLANS,
     begin_webhook_event,
     create_checkout_session,
+    create_payg_checkout_session,
     create_subscription_session,
     handle_payment_link_paid,
     handle_school_fee_payment_link_paid,
@@ -36,6 +38,10 @@ from services.razorpay_service import (
 )
 from services.token_service import (
     PACKS,
+    PAYG_MAX_INR,
+    PAYG_MIN_INR,
+    PAYG_TOKENS_PER_INR,
+    calculate_payg_tokens,
     get_balance,
     get_usage_stats,
     update_role_limits,
@@ -133,7 +139,13 @@ async def packs_endpoint(request: Request):
         for plan_id, info in SUBSCRIPTION_PLANS.items()
     ]
 
-    return {"success": True, "data": {"packs": packs_list, "subscriptions": subscriptions_list}}
+    payg = {
+        "tokens_per_inr": PAYG_TOKENS_PER_INR,
+        "min_inr": PAYG_MIN_INR,
+        "max_inr": PAYG_MAX_INR,
+    }
+
+    return {"success": True, "data": {"packs": packs_list, "subscriptions": subscriptions_list, "payg": payg}}
 
 
 # ─── PUT /api/tokens/limits ──────────────────────────────────────────────────
@@ -197,6 +209,54 @@ async def create_checkout_session_endpoint(
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception:
         logger.error("create_checkout_session_failed", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to create checkout session.")
+
+
+# ─── POST /api/tokens/create-payg-checkout-session ───────────────────────────
+# Pay-as-you-go: customer enters a rupee amount, server computes the token
+# grant (never trusts a token count from the frontend) and opens a normal
+# Razorpay Payment Link - the same one-time order flow as fixed packs, not a
+# Razorpay Subscription. The webhook recomputes tokens from amount_inr again
+# before crediting, so this response's "tokens" field is a preview only.
+
+@router.post("/create-payg-checkout-session")
+async def create_payg_checkout_session_endpoint(
+    request: Request, user: dict = Depends(_require_can_purchase)
+):
+    branch_id = _resolve_branch(user)
+    body = await request.json()
+    success_url = (body.get("success_url") or "").strip()
+    cancel_url = (body.get("cancel_url") or "").strip()
+
+    raw_amount = body.get("amount_inr")
+    try:
+        amount_inr = int(raw_amount)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="amount_inr must be a whole number of rupees.")
+    if amount_inr < PAYG_MIN_INR or amount_inr > PAYG_MAX_INR:
+        raise HTTPException(
+            status_code=400,
+            detail=f"amount_inr must be between {PAYG_MIN_INR} and {PAYG_MAX_INR}.",
+        )
+    _validate_redirect_url(success_url, "success_url")
+    _validate_redirect_url(cancel_url, "cancel_url")
+    if not os.getenv("RAZORPAY_KEY_ID"):
+        raise HTTPException(status_code=400, detail="Razorpay is not configured on this server.")
+
+    try:
+        result = await create_payg_checkout_session(
+            amount_inr=amount_inr,
+            branch_id=branch_id,
+            user_id=user["id"],
+            success_url=success_url or "https://app.eduflow.in?recharge=success",
+            cancel_url=cancel_url or "https://app.eduflow.in?recharge=cancel",
+        )
+        result["tokens"] = calculate_payg_tokens(amount_inr)
+        return {"success": True, "data": result}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception:
+        logger.error("create_payg_checkout_session_failed", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to create checkout session.")
 
 

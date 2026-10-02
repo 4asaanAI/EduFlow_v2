@@ -1586,6 +1586,20 @@ export async function createSubscriptionCheckout(planId) {
   return res.json();
 }
 
+export async function createPaygCheckout(amountInr) {
+  const origin = window.location.origin;
+  const res = await apiFetch(`${API}/tokens/create-payg-checkout-session`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({
+      amount_inr: amountInr,
+      success_url: `${origin}?recharge=success`,
+      cancel_url: `${origin}?recharge=cancel`,
+    }),
+  });
+  return res.json();
+}
+
 export async function createTopupCheckout(packId) {
   const origin = window.location.origin;
   const res = await apiFetch(`${API}/tokens/create-checkout-session`, {
