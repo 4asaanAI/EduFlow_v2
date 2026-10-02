@@ -276,6 +276,10 @@ class LLMClient:
     # leaving no room for the system prompt + history. Cap each tool result at
     # ~1,200 chars (~300 tokens) when in Groq mode so the follow-up call fits.
     _GROQ_TOOL_RESULT_CHAR_LIMIT = 4800  # ~1,200 tokens; generous for small results
+    # Bedrock->Groq fallback only: the system prompt is built for Bedrock (no
+    # cap) and can alone exceed Groq's 8,000-token budget. ~5,000 chars leaves
+    # headroom for the 6 trimmed history messages + response.
+    _GROQ_SYSTEM_PROMPT_CHAR_LIMIT = 5000
 
     def _build_messages(self, system_prompt: str, messages: list) -> list:
         """Translate our internal message list to the chat-completions shape.
@@ -654,8 +658,12 @@ class LLMClient:
                 model=self.deployment, provider_name=self._provider, duration_ms=duration,
                 error_type=error_code or error_name or "bedrock_failed", trace_id=session_id,
             )
-            # Fallback to Groq if available; trim history to last 6 messages so
-            # the total stays under Groq's 8,000-token limit.
+            # Fallback to Groq if available; trim history to last 6 messages AND
+            # cap the system prompt so the total stays under Groq's 8,000-token
+            # limit. The system prompt was sized for Bedrock (no cap) - passing
+            # it through unchanged is what caused the 413 "Payload Too Large"
+            # seen in production (2026-10-02): Bedrock's prompt alone can exceed
+            # Groq's entire budget.
             if self._groq_key and OpenAI:
                 logger.warning("Bedrock failed; falling back to Groq | session=%s", session_id)
                 groq = LLMClient.__new__(LLMClient)
@@ -665,7 +673,11 @@ class LLMClient:
                 groq._bedrock_client = None
                 groq._bedrock_token = ""
                 trimmed = messages[-6:] if len(messages) > 6 else messages
-                return await groq.chat(system_prompt, trimmed, session_id, role=None,
+                capped_prompt = system_prompt
+                if len(capped_prompt) > self._GROQ_SYSTEM_PROMPT_CHAR_LIMIT:
+                    capped_prompt = capped_prompt[:self._GROQ_SYSTEM_PROMPT_CHAR_LIMIT] + \
+                        "\n...[truncated for token limit]"
+                return await groq.chat(capped_prompt, trimmed, session_id, role=None,
                                        tools=tools, tool_choice=tool_choice)
             return ai_unavailable_result(error_code or error_name or "bedrock_failed")
 
