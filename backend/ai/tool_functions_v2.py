@@ -4726,7 +4726,7 @@ async def tool_export_data_file(params: dict, user: dict, scope: dict = None) ->
 
     try:
         headers, rows, title = await build_export(dataset, user, {
-            k: params.get(k) for k in ("status", "fee_period", "start_date", "end_date")
+            k: params.get(k) for k in ("status", "fee_period", "start_date", "end_date", "class_name")
             if params.get(k)
         })
     except HTTPException as exc:
@@ -5560,9 +5560,11 @@ TOOL_REGISTRY = {
             "or exam results. Use this, NOT draft_document, whenever someone asks for "
             "records 'in Excel', 'as a spreadsheet', 'as a file' or 'to download'. It "
             "reads the rows itself, so the file holds every matching row rather than "
-            "only the ones already mentioned in this conversation. Returns a short "
-            "`file_id` (not a link); append it in a `file` rich block and the download "
-            "button fetches a fresh link on tap."
+            "only the ones already mentioned in this conversation. For dataset "
+            "'students', pass `class_name` to limit the file to one class (e.g. "
+            "'1A', '4th-C') instead of the whole school. Returns a short `file_id` "
+            "(not a link); append it in a `file` rich block and the download button "
+            "fetches a fresh link on tap."
         ),
         "params_schema": {
             "dataset": {
@@ -5575,6 +5577,13 @@ TOOL_REGISTRY = {
             "fee_period": {"type": "string", "description": "fee-transactions only: e.g. April"},
             "start_date": {"type": "string", "description": "attendance only: YYYY-MM-DD"},
             "end_date": {"type": "string", "description": "attendance only: YYYY-MM-DD"},
+            "class_name": {
+                "type": "string",
+                "description": (
+                    "students only: limit the file to one class, in any form a "
+                    "person would type it - '1A', '1-A', '4th C', 'Class IV-C'"
+                ),
+            },
         },
     },
     # Read-class, same as `export_data_file`, and gated INSIDE the function to the

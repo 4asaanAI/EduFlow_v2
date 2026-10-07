@@ -43,6 +43,7 @@ from middleware.auth import get_current_user, require_owner_or_principal
 from services import profile_matrix
 from tenant import scoped_query
 from services.document_builder import build_document, build_workbook, DocumentBuildError
+from ai.class_resolver import find_classes, describe_no_match
 import csv
 import io
 import re
@@ -261,11 +262,41 @@ def make_export_response(rows: list, headers: list, basename: str, fmt: str = "c
 
 
 async def build_students(db, user, params=None):
-    """(headers, rows, title) for the student list."""
+    """(headers, rows, title) for the student list. Honours `class_name` (e.g. "1A", "4-C").
+
+    Owner report 2026-08-07 (see `ai/class_resolver.py`): a class label typed as it
+    reads on screen ("1A") never matched the stored `name`+`section` fields on its
+    own, so this export used to ignore the filter entirely and hand back the whole
+    school. It now resolves the label the same way every other class-aware tool
+    does, and refuses with the list of real classes rather than guessing.
+    """
+    params = params or {}
     bid = user.get("branch_id")
-    students = await _read_all(db.students.find(scoped_query({"is_active": True}, branch_id=bid), {"_id": 0}), "students")
-    headers = ["Name", "Admission No.", "Roll No.", "Gender", "DOB", "Status", "Admission Date"]
-    rows = [[s.get("name"), s.get("admission_number", ""), s.get("roll_number", ""), s.get("gender", ""), s.get("dob", ""), s.get("status", ""), s.get("admission_date", "")] for s in students]
+    query: dict = {"is_active": True}
+    if params.get("class_name"):
+        class_scope = scoped_query({}, branch_id=bid)
+        matched = await find_classes(db, params["class_name"], class_scope)
+        if not matched:
+            all_classes = await db.classes.find(class_scope, {"_id": 0}).to_list(200)
+            raise HTTPException(status_code=404, detail=describe_no_match(params["class_name"], all_classes))
+        matched_ids = [c["id"] for c in matched]
+        query["class_id"] = matched_ids[0] if len(matched_ids) == 1 else {"$in": matched_ids}
+    students = await _read_all(db.students.find(scoped_query(query, branch_id=bid), {"_id": 0}), "students")
+
+    # One batched class lookup instead of one find_one per student (same pattern as
+    # build_fees below).
+    class_ids = list({s.get("class_id") for s in students if s.get("class_id")})
+    classes_list = await db.classes.find(
+        {"id": {"$in": class_ids}}, {"_id": 0, "id": 1, "name": 1, "section": 1},
+    ).to_list(None) if class_ids else []
+    class_map = {c["id"]: f"{c.get('name', '')} {c.get('section', '')}".strip() for c in classes_list}
+
+    headers = ["Name", "Class", "Admission No.", "Roll No.", "Gender", "DOB", "Status", "Admission Date"]
+    rows = [[
+        s.get("name"), class_map.get(s.get("class_id") or "", ""), s.get("admission_number", ""),
+        s.get("roll_number", ""), s.get("gender", ""), s.get("dob", ""), s.get("status", ""),
+        s.get("admission_date", ""),
+    ] for s in students]
     return headers, rows, "Students"
 
 
