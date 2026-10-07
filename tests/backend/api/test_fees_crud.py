@@ -69,7 +69,12 @@ class TestFeeCrud:
         assert missing_reason.status_code == 400
         assert corrected.status_code == 200
         assert corrected.json()["data"]["amount"] == 2600
-        assert fake_db.fee_transaction_corrections.docs[0]["original_record"]["amount"] == 2500
+        # Look up THIS correction by its transaction. The stand-in collection is shared across
+        # the run, so docs[0] can be another test's leftover (it read 3000.0 in a full run).
+        mine = [d for d in fake_db.fee_transaction_corrections.docs
+                if d["original_record"].get("id") == created["id"]]
+        assert len(mine) == 1
+        assert mine[0]["original_record"]["amount"] == 2500
         assert fake_db.audit_logs.docs[-1]["action"] == "correct"
 
     def test_overdue_query_summary_status_and_contact_log(self, client, auth_headers, fake_db):

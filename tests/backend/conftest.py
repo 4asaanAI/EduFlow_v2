@@ -892,6 +892,22 @@ def _clear_school_status_cache_between_tests():
         pass
 
 
+@pytest.fixture(autouse=True)
+def _reset_login_ip_rate_limit_between_tests():
+    """Start every test with an empty per-address sign-in counter.
+
+    The 2026-09-02 hardening limits sign-ins to 30 per address per 15 minutes, kept in a
+    module-level dict. Every test signs in from the same test address, so a whole-suite run
+    crossed 30 and every later test saw "Too many login attempts" (429). Tests that
+    exercise the limit set up their own counter after this runs.
+    """
+    try:
+        from routes import auth as _auth_routes
+        _auth_routes._ip_attempts.clear()
+    except Exception:
+        pass
+
+
 @pytest_asyncio.fixture(scope="session")
 async def async_client() -> AsyncGenerator:
     """

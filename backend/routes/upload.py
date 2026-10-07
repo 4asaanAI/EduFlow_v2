@@ -36,6 +36,10 @@ MAX_SIZE_BY_ROLE = {
     "student": 10 * 1024 * 1024,
 }
 LARGE_UPLOAD_WARNING_BYTES = 20 * 1024 * 1024
+# Content-Length counts the whole form-data request (boundary lines and part headers as
+# well as the file), so comparing it to the file cap alone refuses a file that is within
+# a few hundred bytes of its limit. The exact check on the file's own bytes still runs below.
+MULTIPART_ALLOWANCE_BYTES = 64 * 1024
 
 EXPECTED_MIME_BY_EXTENSION = {
     "pdf": {"application/pdf"},
@@ -112,7 +116,7 @@ async def upload_file(
     content_length = request.headers.get("content-length")
     if content_length:
         try:
-            if int(content_length) > max_size:
+            if int(content_length) > max_size + MULTIPART_ALLOWANCE_BYTES:
                 raise HTTPException(
                     400,
                     f"File size exceeds {role} upload limit of {_format_size_limit(max_size)}",
