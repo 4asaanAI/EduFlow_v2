@@ -5,6 +5,35 @@ For active rules and constraints see CLAUDE.md.
 
 ---
 
+## ✅ SHIPPED - Sign-in through the site's own address (deployed 2026-10-08)
+
+**LIVE.** Frontend only. Commit `329649a`, Amplify job 189 (code, setting off) then job 190 (setting on,
+no code change). **Rollback:** remove Amplify variable `REACT_APP_AUTH_VIA_SITE`, rebuild `main`.
+The backend was not touched.
+
+`AUTH_API` in `frontend/src/lib/api.js` sends login, logout, refresh, set-password and change-password
+through the website's own address when `REACT_APP_AUTH_VIA_SITE=1`; with the flag unset nothing changes.
+An Amplify rewrite `/api/auth/<*>` to the server's CloudFront address (status 200) sits before the two
+catch-all rules. Checked live: the site and login page load; a session-refresh request to the site's own
+address returns the server's own answer (`Refresh token missing`, 401); a made-up login reaches the server
+with the right headers; the published code uses the new path. **NOT checked: a real sign-in followed by a
+reload.** Watch for "Too many login attempts from this network" (30 attempts per visitor address per 15
+minutes; the server reads the visitor from the first address in the forwarding chain, not measured).
+
+Two tests already fail in one file on the untouched repo; they failed identically before this change.
+
+## Between 2026-08-15 and 2026-10-07: 24 commits, live, not written up here
+
+All are on `main`, all are live, none has a release entry. Mostly Shubham's: Groq then Bedrock as the
+primary LLM provider with fallbacks (08-18), security hardening, rate limiting and a content security policy
+(09-02/03), subscription and token top-up work (09-03 to 10-02, including pay-as-you-go at
+`POST /api/tokens/create-payg-checkout-session`), an AI concurrency gate (09-10), student-profile fee
+collection and fee-history columns (09-23/24), and class labels in the student Excel export (10-07, `8ec6302`).
+Verified live on 2026-10-08: the server package equals `origin/main` file for file, and the pay-as-you-go
+route answers 401 (present and guarded). Read `git log 96499c9..8ec6302` for the detail.
+
+---
+
 ## ✅ SHIPPED - Class targeting on announcements (deployed 2026-08-15)
 
 **LIVE.** Backend `eduflow-classnotice-20260815-96499c9`, frontend Amplify job 169,

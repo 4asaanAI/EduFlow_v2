@@ -8,8 +8,26 @@
 
 ## Current Deploy State
 
-**Latest backend:** `eduflow-classnotice-20260815-96499c9` · Frontend: Amplify job 169 · Commit: `96499c9`
-**Rollback target:** `eduflow-approvals-20260815-69a2705`
+**Corrected 2026-10-08.** This block used to say the latest backend was
+`eduflow-classnotice-20260815-96499c9`. That was stale by 25 commits.
+
+**Live backend:** runs commit `8ec6302`. Elastic Beanstalk env `Eduflow-env-1` (app `eduflow`) still
+carries the OLD label `eduflow-classnotice-20260815-971`, but the package behind it is
+`1791381327567-eduflow-backend-main-8ec6302.zip` (created 2026-10-07), and all 249 of its backend files
+were checked byte for byte against `origin/main` on 2026-10-08: identical. **A version label is not the
+version. Open the package behind it.**
+**Live frontend:** Amplify `ddxpej151tf13`, job 190 (built from `329649a`, setting `REACT_APP_AUTH_VIA_SITE=1`).
+**Rollback targets:** frontend: Amplify job 188 (`8ec6302`) with the setting removed; backend: nothing
+changed on 2026-10-08, so none is needed.
+
+**2026-10-08 change (`329649a`, frontend only):** sign-in calls (login, logout, refresh, set and change
+password) go through the website's own address, with a forwarding rule `/api/auth/<*>` ahead of the two
+catch-alls. Why: the website and the server are different web addresses, so the sign-in refresh cookie was
+cross-site and browsers that block those signed people out on every reload. **Not yet verified by a real
+sign-in and reload.** Undo (about 3 minutes): remove the Amplify variable `REACT_APP_AUTH_VIA_SITE`, rebuild
+`main`. Everyone signs in again once either way. Record:
+`implementation-artifacts/closeout-2026-10-08-demo-and-live.md` in the DEMO repo (`Eduflow-Clone`), and the
+vault note `Projects/Layaa AI/eduflow.md`.
 
 Everything that was pending has shipped: class-targeted announcements, unified approvals
 workflow, Chaman Singh's transport-head profile (R3-2), tenth profile for drivers and
