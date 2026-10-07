@@ -129,6 +129,7 @@ module.exports = defineConfig(({ mode, command }) => {
     },
     define: {
       'process.env.REACT_APP_BACKEND_URL': JSON.stringify(backendUrl),
+      'process.env.REACT_APP_AUTH_VIA_SITE': JSON.stringify(env.VITE_AUTH_VIA_SITE || env.REACT_APP_AUTH_VIA_SITE || ''),
       'process.env.NODE_ENV': JSON.stringify(isDev ? 'development' : 'production'),
       'process.env.PUBLIC_URL': JSON.stringify(env.PUBLIC_URL || ''),
     },

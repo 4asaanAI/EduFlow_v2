@@ -8,7 +8,7 @@ import {
   refreshAccessToken,
   setAuthSession,
 } from '../lib/authSession';
-import { API } from '../lib/api';
+import { AUTH_API } from '../lib/api';
 
 // NEW-08: this file used to read `REACT_APP_BACKEND_URL` itself, so it never got
 // the http→https upgrade commit 80d803b added - on the login and token-refresh
@@ -42,7 +42,7 @@ export function UserProvider({ children }) {
         return;
       }
       try {
-        const data = await refreshAccessToken(API);
+        const data = await refreshAccessToken(AUTH_API);
         setCurrentUser(data.user);
         setToken(data.access_token || data.token);
         setIsAuthenticated(true);
@@ -71,7 +71,7 @@ export function UserProvider({ children }) {
   const loginPassword = useCallback(async (username, password) => {
     let res;
     try {
-      res = await fetch(`${API}/auth/login`, {
+      res = await fetch(`${AUTH_API}/auth/login`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -108,7 +108,7 @@ export function UserProvider({ children }) {
 
   const logout = useCallback(async () => {
     try {
-      await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' });
+      await fetch(`${AUTH_API}/auth/logout`, { method: 'POST', credentials: 'include' });
     } catch {}
     clearAuthSession();
     setCurrentUser(null);
