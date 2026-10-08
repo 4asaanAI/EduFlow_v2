@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useUser } from '../contexts/UserContext';
 import { X, Sun, Moon, Bell, Lock, Check, KeyRound, Eye, EyeOff } from 'lucide-react';
-import { API, apiFetch, getSchoolSettings, getAcademicYear } from '../lib/api';
+import { API, AUTH_API, apiFetch, getSchoolSettings, getAcademicYear } from '../lib/api';
 import { readIdleMinutes, writeIdleMinutes } from '../lib/idleLogout';
 
 
@@ -110,7 +110,7 @@ export default function SettingsModal({ onClose }) {
     setPwSaving(true);
     try {
       const authToken = token || currentUser?.token || '';
-      const res = await apiFetch(`${API}/auth/set-password`, {
+      const res = await apiFetch(`${AUTH_API}/auth/set-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({ new_password: pwForm.new_password }),

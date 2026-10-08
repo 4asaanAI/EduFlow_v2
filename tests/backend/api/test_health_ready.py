@@ -6,10 +6,30 @@ import pytest
 import server
 
 
+def _detailed_headers(monkeypatch):
+    """Since the 2026-09-02 hardening, only a caller holding the health token sees the
+    breakdown; everybody else gets the bare ready/down answer."""
+    monkeypatch.setenv("HEALTH_CHECK_TOKEN", "test-health-token")
+    return {"X-Health-Token": "test-health-token"}
+
+
+def test_health_ready_anonymous_caller_gets_only_the_overall_answer(client, monkeypatch):
+    monkeypatch.setenv("HEALTH_CHECK_TOKEN", "test-health-token")
+    resp = client.get("/api/health/ready")
+    assert resp.status_code == 200
+    assert resp.json() == {"overall": "ready"}
+
+
+def test_health_ready_wrong_token_gets_only_the_overall_answer(client, monkeypatch):
+    monkeypatch.setenv("HEALTH_CHECK_TOKEN", "test-health-token")
+    resp = client.get("/api/health/ready", headers={"X-Health-Token": "wrong"})
+    assert resp.json() == {"overall": "ready"}
+
+
 def test_health_ready_includes_school_id_configured_true(client, monkeypatch):
     """When SCHOOL_ID is set, health/ready must report school_id_configured: true."""
     monkeypatch.setenv("SCHOOL_ID", "my-school")
-    resp = client.get("/api/health/ready")
+    resp = client.get("/api/health/ready", headers=_detailed_headers(monkeypatch))
     assert resp.status_code == 200
     data = resp.json()
     assert data["school_id_configured"] is True
@@ -18,7 +38,7 @@ def test_health_ready_includes_school_id_configured_true(client, monkeypatch):
 def test_health_ready_includes_school_id_configured_false(client, monkeypatch):
     """When SCHOOL_ID is unset, health/ready must report school_id_configured: false."""
     monkeypatch.delenv("SCHOOL_ID", raising=False)
-    resp = client.get("/api/health/ready")
+    resp = client.get("/api/health/ready", headers=_detailed_headers(monkeypatch))
     assert resp.status_code == 200
     data = resp.json()
     assert data["school_id_configured"] is False
@@ -26,7 +46,7 @@ def test_health_ready_includes_school_id_configured_false(client, monkeypatch):
 
 def test_health_ready_includes_db_and_ai_fields(client, monkeypatch):
     """health/ready must always include the db and ai status fields."""
-    resp = client.get("/api/health/ready")
+    resp = client.get("/api/health/ready", headers=_detailed_headers(monkeypatch))
     assert resp.status_code == 200
     data = resp.json()
     assert "db" in data
@@ -47,7 +67,7 @@ def test_health_ready_degrades_when_s3_degraded(client, monkeypatch):
     monkeypatch.setattr(server, "_check_sms", ok)
     monkeypatch.setattr(server, "_check_ai", ok)
 
-    resp = client.get("/api/health/ready")
+    resp = client.get("/api/health/ready", headers=_detailed_headers(monkeypatch))
 
     assert resp.status_code == 200
     data = resp.json()

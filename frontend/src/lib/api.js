@@ -17,6 +17,18 @@ export const BACKEND = typeof window !== 'undefined' && window.location.protocol
   : _rawBackend;
 export const API = `${BACKEND}/api`;
 
+// Where the sign-in calls go. On a host whose site and server are two different web
+// addresses (this one: the Amplify site and the CloudFront server), the refresh cookie is
+// a cross-site cookie, and browsers that block those sign people out on every page
+// reload. With REACT_APP_AUTH_VIA_SITE=1 the sign-in calls (and only those) go to the
+// site's OWN address, which forwards them to the server (an Amplify rewrite of
+// /api/auth/*), so the cookie belongs to the site and survives a reload.
+// Off by default: without that forwarding rule, the site's address has no server.
+// Same change as the demo (2026-10-07).
+export const AUTH_API = process.env.REACT_APP_AUTH_VIA_SITE === '1' && typeof window !== 'undefined'
+  ? `${window.location.origin}/api`
+  : API;
+
 // D-47 CLOSED 2026-08-04 (owner's decision: delete the second address, map everything
 // to the one that remains).
 //
@@ -57,7 +69,7 @@ export async function apiFetch(url, options = {}) {
 
   if (res.status === 401) {
     try {
-      await refreshAccessToken(API);
+      await refreshAccessToken(AUTH_API);
       const retryOptions = {
         ...options,
         headers: {
@@ -265,7 +277,7 @@ export function sendMessageStream(convId, text, user, onEvent, sessionId = null,
       // is safe (it cannot duplicate a write). Only if the retry still fails do we
       // surface a VISIBLE error event (never a silent redirect/no-op).
       try {
-        await refreshAccessToken(API);
+        await refreshAccessToken(AUTH_API);
         res = await doFetch();
       } catch {}
       if (res.status === 401) {
@@ -386,7 +398,7 @@ export function subscribeSSE(path, onEvent, { onReconnect, reconnect = true, max
       // once and reopening is safe. Same shape as `sendMessageStream` above.
       if (res.status === 401) {
         try {
-          await refreshAccessToken(API);
+          await refreshAccessToken(AUTH_API);
           res = await request();
         } catch {}
         if (res.status === 401) {
@@ -1437,7 +1449,7 @@ export async function markDisbursementProcessed(disbursementId) {
 }
 
 export async function changePassword(currentPassword, newPassword) {
-  const res = await apiFetch(`${API}/auth/change-password`, {
+  const res = await apiFetch(`${AUTH_API}/auth/change-password`, {
     method: 'POST',
     headers: getHeaders(),
     body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
