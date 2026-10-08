@@ -319,6 +319,7 @@ export default function AccountMenu({ onOpenProfile, onOpenSettings, onSelectToo
           canPurchase={currentUser.role !== 'student'}
           activePlan={usage?.subscription_plan}
           subscriptionActive={usage?.subscription_status === 'active'}
+          hasPurchasedPlan={!!usage?.subscription_plan}
         />
       )}
 

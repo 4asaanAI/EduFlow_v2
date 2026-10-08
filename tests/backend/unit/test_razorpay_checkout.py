@@ -201,8 +201,18 @@ def test_create_subscription_session_unknown_plan_400(app_client, autouse_clean)
 
 
 # ─── Pay-as-you-go: checkout session ──────────────────────────────────────────
+# Gate: PAYG requires the branch to have purchased a subscription plan at
+# least once (`subscription_plan` on token_balances). It stays set even after
+# a cancellation, so a lapsed subscription still qualifies.
 
-def test_create_payg_checkout_session_owner_success(app_client, autouse_clean):
+def _give_branch_a_plan(token_db, status="active"):
+    token_db.token_balances.docs.append(
+        {"branch_id": "branch-a", "subscription_plan": "monthly_starter", "subscription_status": status}
+    )
+
+
+def test_create_payg_checkout_session_owner_success(app_client, autouse_clean, token_db):
+    _give_branch_a_plan(token_db)
     resp = app_client.post(
         "/api/tokens/create-payg-checkout-session",
         json={"amount_inr": 500, "success_url": "https://app.test?recharge=success", "cancel_url": "https://app.test?recharge=cancel"},
@@ -222,7 +232,8 @@ def test_create_payg_checkout_session_unauthenticated_401(app_client, autouse_cl
     assert resp.status_code == 401
 
 
-def test_create_payg_checkout_session_wrong_role_403(app_client, autouse_clean):
+def test_create_payg_checkout_session_wrong_role_403(app_client, autouse_clean, token_db):
+    _give_branch_a_plan(token_db)
     resp = app_client.post(
         "/api/tokens/create-payg-checkout-session",
         json={"amount_inr": 500},
@@ -231,7 +242,41 @@ def test_create_payg_checkout_session_wrong_role_403(app_client, autouse_clean):
     assert resp.status_code == 403
 
 
-def test_create_payg_checkout_session_below_min_400(app_client, autouse_clean):
+def test_create_payg_checkout_session_no_plan_purchased_403(app_client, autouse_clean):
+    """No token_balances doc at all (branch never purchased anything) -> blocked."""
+    resp = app_client.post(
+        "/api/tokens/create-payg-checkout-session",
+        json={"amount_inr": 500},
+        headers=_owner_headers(),
+    )
+    assert resp.status_code == 403
+    assert "plan" in resp.json()["detail"].lower()
+
+
+def test_create_payg_checkout_session_balance_doc_without_plan_403(app_client, autouse_clean, token_db):
+    """A balance doc exists (e.g. role limits were configured) but no plan was ever bought."""
+    token_db.token_balances.docs.append({"branch_id": "branch-a", "subscription_plan": None})
+    resp = app_client.post(
+        "/api/tokens/create-payg-checkout-session",
+        json={"amount_inr": 500},
+        headers=_owner_headers(),
+    )
+    assert resp.status_code == 403
+
+
+def test_create_payg_checkout_session_allowed_after_subscription_lapsed(app_client, autouse_clean, token_db):
+    """subscription_plan persists through cancellation, so PAYG stays unlocked."""
+    _give_branch_a_plan(token_db, status="canceled")
+    resp = app_client.post(
+        "/api/tokens/create-payg-checkout-session",
+        json={"amount_inr": 500},
+        headers=_owner_headers(),
+    )
+    assert resp.status_code == 200
+
+
+def test_create_payg_checkout_session_below_min_400(app_client, autouse_clean, token_db):
+    _give_branch_a_plan(token_db)
     resp = app_client.post(
         "/api/tokens/create-payg-checkout-session",
         json={"amount_inr": 10},
@@ -240,7 +285,8 @@ def test_create_payg_checkout_session_below_min_400(app_client, autouse_clean):
     assert resp.status_code == 400
 
 
-def test_create_payg_checkout_session_above_max_400(app_client, autouse_clean):
+def test_create_payg_checkout_session_above_max_400(app_client, autouse_clean, token_db):
+    _give_branch_a_plan(token_db)
     resp = app_client.post(
         "/api/tokens/create-payg-checkout-session",
         json={"amount_inr": 50_000},
@@ -249,7 +295,8 @@ def test_create_payg_checkout_session_above_max_400(app_client, autouse_clean):
     assert resp.status_code == 400
 
 
-def test_create_payg_checkout_session_non_numeric_400(app_client, autouse_clean):
+def test_create_payg_checkout_session_non_numeric_400(app_client, autouse_clean, token_db):
+    _give_branch_a_plan(token_db)
     resp = app_client.post(
         "/api/tokens/create-payg-checkout-session",
         json={"amount_inr": "not-a-number"},

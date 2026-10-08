@@ -167,7 +167,7 @@ function PlanCard({ plan, meta, isDark, onSelect, busy, isSelected, isCurrentPla
   );
 }
 
-export default function TokenUpgradeModal({ onClose, currentUsage, roleLimit, canPurchase, activePlan, subscriptionActive }) {
+export default function TokenUpgradeModal({ onClose, currentUsage, roleLimit, canPurchase, activePlan, subscriptionActive, hasPurchasedPlan }) {
   const { isDark } = useTheme();
   const [plans, setPlans] = useState([]);
   const [fetchLoading, setFetchLoading] = useState(true);
@@ -209,8 +209,10 @@ export default function TokenUpgradeModal({ onClose, currentUsage, roleLimit, ca
   const paygValid = !!paygConfig && Number.isFinite(paygAmount)
     && paygAmount >= paygConfig.min_inr && paygAmount <= paygConfig.max_inr;
 
+  const paygLocked = !hasPurchasedPlan;
+
   const handlePaygPay = useCallback(async () => {
-    if (!canPurchase || !paygValid) return;
+    if (!canPurchase || !paygValid || paygLocked) return;
     setPaygLoading(true);
     setPaygError('');
     try {
@@ -225,7 +227,7 @@ export default function TokenUpgradeModal({ onClose, currentUsage, roleLimit, ca
       setPaygError('Network error. Try again.');
       setPaygLoading(false);
     }
-  }, [canPurchase, paygValid, paygAmount]);
+  }, [canPurchase, paygValid, paygAmount, paygLocked]);
 
   const handleSelect = useCallback(async (planId) => {
     if (!canPurchase) return;
@@ -334,73 +336,82 @@ export default function TokenUpgradeModal({ onClose, currentUsage, roleLimit, ca
                 <span style={{ fontSize: 11, color: muted }}>- one-time top-up, no subscription</span>
               </div>
 
-              <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-                {[100, 500, 1000].map(preset => (
-                  <button
-                    key={preset}
-                    onClick={() => setPaygAmount(preset)}
-                    style={{
-                      padding: '5px 12px', borderRadius: 8,
-                      border: `1.5px solid ${paygAmount === preset ? '#06b6d4' : border}`,
-                      background: paygAmount === preset ? (isDark ? '#0e3a40' : '#cffafe') : 'transparent',
-                      color: paygAmount === preset ? (isDark ? '#67e8f9' : '#0e7490') : muted,
-                      fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                    }}
-                  >
-                    {'₹'}{preset.toLocaleString('en-IN')}
-                  </button>
-                ))}
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: muted }}>{'₹'}</span>
-                  <input
-                    type="number"
-                    min={paygConfig.min_inr}
-                    max={paygConfig.max_inr}
-                    step={1}
-                    value={paygAmount}
-                    onChange={e => setPaygAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                    style={{
-                      width: 110, padding: '8px 10px', borderRadius: 9,
-                      border: `1.5px solid ${border}`, background: surface, color: text,
-                      fontSize: 15, fontWeight: 700,
-                    }}
-                  />
+              {paygLocked ? (
+                <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.5 }}>
+                  Choose a subscription plan above first. Once you've purchased any plan,
+                  pay-as-you-go top-ups unlock for whenever you need extra tokens.
                 </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                    {[100, 500, 1000].map(preset => (
+                      <button
+                        key={preset}
+                        onClick={() => setPaygAmount(preset)}
+                        style={{
+                          padding: '5px 12px', borderRadius: 8,
+                          border: `1.5px solid ${paygAmount === preset ? '#06b6d4' : border}`,
+                          background: paygAmount === preset ? (isDark ? '#0e3a40' : '#cffafe') : 'transparent',
+                          color: paygAmount === preset ? (isDark ? '#67e8f9' : '#0e7490') : muted,
+                          fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                        }}
+                      >
+                        {'₹'}{preset.toLocaleString('en-IN')}
+                      </button>
+                    ))}
+                  </div>
 
-                <div style={{ fontSize: 13, color: muted }}>
-                  {'→'} <span style={{ fontWeight: 800, color: isDark ? '#67e8f9' : '#0e7490' }}>{fmtTokens(paygTokens)}</span> tokens
-                </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 16, fontWeight: 700, color: muted }}>{'₹'}</span>
+                      <input
+                        type="number"
+                        min={paygConfig.min_inr}
+                        max={paygConfig.max_inr}
+                        step={1}
+                        value={paygAmount}
+                        onChange={e => setPaygAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                        style={{
+                          width: 110, padding: '8px 10px', borderRadius: 9,
+                          border: `1.5px solid ${border}`, background: surface, color: text,
+                          fontSize: 15, fontWeight: 700,
+                        }}
+                      />
+                    </div>
 
-                <button
-                  onClick={handlePaygPay}
-                  disabled={!canPurchase || !paygValid || paygLoading}
-                  style={{
-                    marginLeft: 'auto',
-                    padding: '9px 18px', borderRadius: 10, border: 'none',
-                    background: (!canPurchase || !paygValid) ? (isDark ? '#252525' : '#f3f4f6') : '#06b6d4',
-                    color: (!canPurchase || !paygValid) ? muted : '#fff',
-                    fontSize: 12.5, fontWeight: 700,
-                    cursor: (!canPurchase || !paygValid) ? 'default' : (paygLoading ? 'wait' : 'pointer'),
-                    display: 'flex', alignItems: 'center', gap: 6,
-                  }}
-                >
-                  {paygLoading ? (
-                    <span style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
-                  ) : <ArrowRight size={13} />}
-                  {paygLoading ? 'Redirecting…' : 'Pay / Add Tokens'}
-                </button>
-              </div>
+                    <div style={{ fontSize: 13, color: muted }}>
+                      {'→'} <span style={{ fontWeight: 800, color: isDark ? '#67e8f9' : '#0e7490' }}>{fmtTokens(paygTokens)}</span> tokens
+                    </div>
 
-              {!paygValid && paygAmount !== '' && (
-                <div style={{ marginTop: 8, fontSize: 11, color: '#ef4444' }}>
-                  Enter an amount between {'₹'}{paygConfig.min_inr} and {'₹'}{paygConfig.max_inr.toLocaleString('en-IN')}.
-                </div>
-              )}
-              {paygError && (
-                <div style={{ marginTop: 8, fontSize: 12, color: '#ef4444' }}>{paygError}</div>
+                    <button
+                      onClick={handlePaygPay}
+                      disabled={!canPurchase || !paygValid || paygLoading}
+                      style={{
+                        marginLeft: 'auto',
+                        padding: '9px 18px', borderRadius: 10, border: 'none',
+                        background: (!canPurchase || !paygValid) ? (isDark ? '#252525' : '#f3f4f6') : '#06b6d4',
+                        color: (!canPurchase || !paygValid) ? muted : '#fff',
+                        fontSize: 12.5, fontWeight: 700,
+                        cursor: (!canPurchase || !paygValid) ? 'default' : (paygLoading ? 'wait' : 'pointer'),
+                        display: 'flex', alignItems: 'center', gap: 6,
+                      }}
+                    >
+                      {paygLoading ? (
+                        <span style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
+                      ) : <ArrowRight size={13} />}
+                      {paygLoading ? 'Redirecting…' : 'Pay / Add Tokens'}
+                    </button>
+                  </div>
+
+                  {!paygValid && paygAmount !== '' && (
+                    <div style={{ marginTop: 8, fontSize: 11, color: '#ef4444' }}>
+                      Enter an amount between {'₹'}{paygConfig.min_inr} and {'₹'}{paygConfig.max_inr.toLocaleString('en-IN')}.
+                    </div>
+                  )}
+                  {paygError && (
+                    <div style={{ marginTop: 8, fontSize: 12, color: '#ef4444' }}>{paygError}</div>
+                  )}
+                </>
               )}
             </div>
           )}

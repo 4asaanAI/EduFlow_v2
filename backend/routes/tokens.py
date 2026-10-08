@@ -21,6 +21,7 @@ import os
 import razorpay
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from database import get_db
 from middleware.auth import get_current_user, require_owner, require_role
 from services.razorpay_service import (
     SUBSCRIPTION_PLANS,
@@ -45,6 +46,11 @@ from services.token_service import (
     get_balance,
     get_usage_stats,
     update_role_limits,
+)
+
+_PAYG_REQUIRES_PLAN_MESSAGE = (
+    "Pay-as-you-go top-ups unlock after you've purchased a subscription plan. "
+    "Choose a plan first, then pay-as-you-go becomes available."
 )
 
 logger = logging.getLogger(__name__)
@@ -242,6 +248,14 @@ async def create_payg_checkout_session_endpoint(
     _validate_redirect_url(cancel_url, "cancel_url")
     if not os.getenv("RAZORPAY_KEY_ID"):
         raise HTTPException(status_code=400, detail="Razorpay is not configured on this server.")
+
+    # Pay-as-you-go is only available to branches that have purchased a
+    # subscription plan at least once. `subscription_plan` is set on first
+    # activation and is never cleared on cancellation, so this also covers a
+    # branch whose subscription has since lapsed.
+    balance_doc = await get_db().token_balances.find_one({"branch_id": branch_id})
+    if not (balance_doc or {}).get("subscription_plan"):
+        raise HTTPException(status_code=403, detail=_PAYG_REQUIRES_PLAN_MESSAGE)
 
     try:
         result = await create_payg_checkout_session(
