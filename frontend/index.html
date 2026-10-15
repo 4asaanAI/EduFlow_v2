@@ -18,6 +18,9 @@
         t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
         y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
       })(window, document, "clarity", "script", "x31sads28i");
+      // Eduflow-Clone embeds this exact same project id, so without a custom tag
+      // Clarity has no way to tell this app's sessions apart from the clone's.
+      window.clarity("set", "app", "eduflow");
     </script>
     <script>window.addEventListener("error",function(e){if(e.error instanceof DOMException&&e.error.name==="DataCloneError"&&e.message&&e.message.includes("PerformanceServerTiming")){e.stopImmediatePropagation();e.preventDefault()}},true);</script>
     <script>window.addEventListener("error",function(e){if(e&&e.message&&e.message.includes("Loading chunk")){var k="chunk_reload_"+e.message;if(!sessionStorage.getItem(k)){sessionStorage.setItem(k,"1");window.location.reload()}}},true);</script>
